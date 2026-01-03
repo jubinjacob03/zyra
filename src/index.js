@@ -133,7 +133,7 @@ class MusicQueue {
 
         try {
             // Extract stream URL using yt-dlp (bypasses YouTube restrictions)
-            const streamUrl = await youtubedl(song.url, {
+            const ytdlpOptions = {
                 dumpSingleJson: true,
                 noCheckCertificates: true,
                 noWarnings: true,
@@ -144,9 +144,16 @@ class MusicQueue {
                     'referer:youtube.com',
                     'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 ],
-                extractor_args: 'youtube:player_client=android,web',
-                noPlaylist: true
-            }).then(info => {
+                extractorArgs: 'youtube:player_client=android,web;player_skip=webpage,configs',
+                noPlaylist: true,
+                // Add geo bypass
+                geoBypass: true,
+                // Use OAuth if available
+                username: 'oauth2',
+                password: ''
+            };
+            
+            const streamUrl = await youtubedl(song.url, ytdlpOptions).then(info => {
                 // Prefer audio-only format for better performance
                 const format = info.formats.find(f => f.acodec !== 'none' && !f.vcodec) || 
                               info.formats.find(f => f.acodec !== 'none');

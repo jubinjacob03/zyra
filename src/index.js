@@ -642,6 +642,22 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
     console.log(`🌐 Health check server running on port ${PORT}`);
+    
+    // Self-ping every 10 minutes to keep alive 24/7
+    if (process.env.RENDER_EXTERNAL_URL) {
+        const https = require('https');
+        const selfPingUrl = process.env.RENDER_EXTERNAL_URL;
+        
+        setInterval(() => {
+            https.get(`${selfPingUrl}/health`, (res) => {
+                console.log(`🏓 Self-ping: ${res.statusCode}`);
+            }).on('error', (err) => {
+                console.error('Self-ping error:', err.message);
+            });
+        }, 10 * 60 * 1000); 
+        
+        console.log('⏰ Self-ping enabled: keeping service alive 24/7');
+    }
 });
 
 if (!process.env.DISCORD_TOKEN) {

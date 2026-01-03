@@ -621,6 +621,29 @@ async function updateMusicPanel(guildId, client) {
 client.on('error', console.error);
 process.on('unhandledRejection', error => console.error('Unhandled rejection:', error));
 
+// Simple HTTP server for Render health checks (required for free tier)
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+
+const server = http.createServer((req, res) => {
+    if (req.url === '/health' || req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+            status: 'ok', 
+            bot: client.user?.tag || 'Starting...',
+            uptime: process.uptime(),
+            guilds: client.guilds.cache.size 
+        }));
+    } else {
+        res.writeHead(404);
+        res.end('Not Found');
+    }
+});
+
+server.listen(PORT, () => {
+    console.log(`🌐 Health check server running on port ${PORT}`);
+});
+
 if (!process.env.DISCORD_TOKEN) {
     console.error('❌ DISCORD_TOKEN is not set in .env file!');
     process.exit(1);

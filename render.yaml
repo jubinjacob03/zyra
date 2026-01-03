@@ -1,10 +1,11 @@
 services:
-  - type: worker
+  - type: web
     name: zyra-music-bot
     env: node
     plan: free
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: DISCORD_TOKEN
         sync: false

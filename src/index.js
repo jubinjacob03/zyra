@@ -138,7 +138,14 @@ class MusicQueue {
                 noCheckCertificates: true,
                 noWarnings: true,
                 preferFreeFormats: true,
-                addHeader: ['referer:youtube.com', 'user-agent:googlebot']
+                youtubeSkipDashManifest: true,
+                format: 'bestaudio[ext=webm]/bestaudio/best',
+                addHeader: [
+                    'referer:youtube.com',
+                    'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                ],
+                extractor_args: 'youtube:player_client=android,web',
+                noPlaylist: true
             }).then(info => {
                 // Prefer audio-only format for better performance
                 const format = info.formats.find(f => f.acodec !== 'none' && !f.vcodec) || 

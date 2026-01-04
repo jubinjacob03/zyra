@@ -405,22 +405,23 @@ async function searchSong(query, user) {
     const videoPattern = /^(https?:\/\/)?(www\.)?(m\.|music\.)?(youtube\.com|youtu\.?be)\/.+$/;
     const playlistPattern = /^.*(list=)([^#\&\?]*).*/;
     
-    // Cookie options for yt-dlp (bypass bot detection)
-    const cookieOptions = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
+    // Cookie options for yt-dlp
+    const cookieOpts = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
     
-    // Direct YouTube video URL
+    // Direct YouTube video URL - use yt-dlp with cookies
     if (videoPattern.test(query) && !playlistPattern.test(query)) {
         const info = await youtubedl(query, {
             dumpSingleJson: true,
             noWarnings: true,
             noCheckCertificates: true,
-            ...cookieOptions
+            skipDownload: true,
+            ...cookieOpts
         });
         
         return {
             type: 'song',
             name: info.title,
-            url: info.webpage_url || info.url,
+            url: info.webpage_url || query,
             duration: parseInt(info.duration) || 0,
             formattedDuration: formatDuration(parseInt(info.duration) || 0),
             thumbnail: info.thumbnail,
@@ -428,12 +429,13 @@ async function searchSong(query, user) {
             user: user,
         };
     } else if (playlistPattern.test(query)) {
-        // YouTube playlist URL
+        // YouTube playlist - use yt-dlp with cookies
         const info = await youtubedl(query, {
             dumpSingleJson: true,
             flatPlaylist: true,
             noWarnings: true,
-            ...cookieOptions
+            skipDownload: true,
+            ...cookieOpts
         });
         
         const videos = info.entries || [];
@@ -442,7 +444,7 @@ async function searchSong(query, user) {
             name: info.title || 'Playlist',
             url: info.webpage_url || query,
             thumbnail: info.thumbnail || videos[0]?.thumbnail,
-            songs: videos.map(v => ({
+            songs: videos.slice(0, 50).map(v => ({ // Limit to 50 videos
                 name: v.title,
                 url: v.url || `https://youtube.com/watch?v=${v.id}`,
                 duration: v.duration || 0,
@@ -453,28 +455,26 @@ async function searchSong(query, user) {
             }))
         };
     } else {
-        // Search query - use youtube-sr for searching
+        // Search query - use youtube-sr then yt-dlp
         const result = await youtube.searchOne(query);
         if (!result) return null;
         
-        const cookieOptions = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
-        
-        // Get full video info using yt-dlp
-        const info = await youtubedl(`https://youtube.com/watch?v=${result.id}`, {
+        const url = `https://youtube.com/watch?v=${result.id}`;
+        const info = await youtubedl(url, {
             dumpSingleJson: true,
             noWarnings: true,
-            noCheckCertificates: true,
-            ...cookieOptions
+            skipDownload: true,
+            ...cookieOpts
         });
         
         return {
             type: 'song',
             name: info.title,
-            url: info.webpage_url || info.url,
+            url: info.webpage_url || url,
             duration: parseInt(info.duration) || 0,
             formattedDuration: formatDuration(parseInt(info.duration) || 0),
             thumbnail: info.thumbnail,
-            author: info.uploader || info.channel || 'Unknown',
+            author: info.uploader || 'Unknown',
             user: user,
         };
     }

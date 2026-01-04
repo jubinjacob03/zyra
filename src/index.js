@@ -405,36 +405,50 @@ async function searchSong(query, user) {
     const videoPattern = /^(https?:\/\/)?(www\.)?(m\.|music\.)?(youtube\.com|youtu\.?be)\/.+$/;
     const playlistPattern = /^.*(list=)([^#\&\?]*).*/;
     
+    // Cookie options for yt-dlp (bypass bot detection)
+    const cookieOptions = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
+    
     // Direct YouTube video URL
     if (videoPattern.test(query) && !playlistPattern.test(query)) {
-        const songInfo = await play.video_basic_info(query);
+        const info = await youtubedl(query, {
+            dumpSingleJson: true,
+            noWarnings: true,
+            noCheckCertificates: true,
+            ...cookieOptions
+        });
         
         return {
             type: 'song',
-            name: songInfo.video_details.title,
-            url: songInfo.video_details.url,
-            duration: parseInt(songInfo.video_details.durationInSec),
-            formattedDuration: formatDuration(parseInt(songInfo.video_details.durationInSec)),
-            thumbnail: songInfo.video_details.thumbnails[0]?.url,
-            author: songInfo.video_details.channel?.name || 'Unknown',
+            name: info.title,
+            url: info.webpage_url || info.url,
+            duration: parseInt(info.duration) || 0,
+            formattedDuration: formatDuration(parseInt(info.duration) || 0),
+            thumbnail: info.thumbnail,
+            author: info.uploader || info.channel || 'Unknown',
             user: user,
         };
     } else if (playlistPattern.test(query)) {
         // YouTube playlist URL
-        const playlist = await play.playlist_info(query, { incomplete: true });
-        const videos = await playlist.all_videos();
+        const info = await youtubedl(query, {
+            dumpSingleJson: true,
+            flatPlaylist: true,
+            noWarnings: true,
+            ...cookieOptions
+        });
+        
+        const videos = info.entries || [];
         return {
             type: 'playlist',
-            name: playlist.title,
-            url: playlist.url,
-            thumbnail: playlist.thumbnail?.url,
+            name: info.title || 'Playlist',
+            url: info.webpage_url || query,
+            thumbnail: info.thumbnail || videos[0]?.thumbnail,
             songs: videos.map(v => ({
                 name: v.title,
-                url: v.url,
-                duration: v.durationInSec,
-                formattedDuration: formatDuration(v.durationInSec),
-                thumbnail: v.thumbnails[0]?.url,
-                author: v.channel?.name || 'Unknown',
+                url: v.url || `https://youtube.com/watch?v=${v.id}`,
+                duration: v.duration || 0,
+                formattedDuration: formatDuration(v.duration || 0),
+                thumbnail: v.thumbnail,
+                author: v.uploader || v.channel || 'Unknown',
                 user: user,
             }))
         };
@@ -443,17 +457,24 @@ async function searchSong(query, user) {
         const result = await youtube.searchOne(query);
         if (!result) return null;
         
-        // Get full video info
-        const songInfo = await play.video_basic_info(`https://youtube.com/watch?v=${result.id}`);
+        const cookieOptions = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
+        
+        // Get full video info using yt-dlp
+        const info = await youtubedl(`https://youtube.com/watch?v=${result.id}`, {
+            dumpSingleJson: true,
+            noWarnings: true,
+            noCheckCertificates: true,
+            ...cookieOptions
+        });
         
         return {
             type: 'song',
-            name: songInfo.video_details.title,
-            url: songInfo.video_details.url,
-            duration: parseInt(songInfo.video_details.durationInSec),
-            formattedDuration: formatDuration(parseInt(songInfo.video_details.durationInSec)),
-            thumbnail: songInfo.video_details.thumbnails[0]?.url,
-            author: songInfo.video_details.channel?.name || 'Unknown',
+            name: info.title,
+            url: info.webpage_url || info.url,
+            duration: parseInt(info.duration) || 0,
+            formattedDuration: formatDuration(parseInt(info.duration) || 0),
+            thumbnail: info.thumbnail,
+            author: info.uploader || info.channel || 'Unknown',
             user: user,
         };
     }

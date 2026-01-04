@@ -146,11 +146,9 @@ class MusicQueue {
                 ],
                 extractorArgs: 'youtube:player_client=android,web;player_skip=webpage,configs',
                 noPlaylist: true,
-                // Add geo bypass
                 geoBypass: true,
-                // Use OAuth if available
-                username: 'oauth2',
-                password: ''
+                // Use cookies if available (REQUIRED for hosting providers to bypass bot detection)
+                ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' })
             };
             
             const streamUrl = await youtubedl(song.url, ytdlpOptions).then(info => {

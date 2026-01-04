@@ -29,7 +29,7 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setColor('#9B59B6')
-            .setTitle('🎵 Zyra Music Bot')
+            .setTitle('🎵 Remani Music Bot')
             .setDescription('Your premium music experience')
             .addFields(
                 commands.map(cmd => ({

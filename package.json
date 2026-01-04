@@ -1,7 +1,7 @@
 {
-  "name": "zyra-music-bot",
-  "version": "2.0.0",
-  "description": "Zyra - A premium Discord music bot with YouTube, Spotify & SoundCloud support",
+  "name": "remani-music-bot",
+  "version": "1.0.0",
+  "description": "Remani - A premium Discord music bot with YouTube, Spotify & SoundCloud support",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

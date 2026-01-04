@@ -45,7 +45,7 @@ function createMusicPanel(queue) {
             { name: '🔁 Loop', value: loopModes[queue.repeatMode], inline: true },
             { name: '📋 Queue', value: `${queue.songs.length} songs`, inline: true }
         )
-        .setFooter({ text: `Zyra Music • 0:00/${song.formattedDuration}` })
+        .setFooter({ text: `Remani Music • 0:00/${song.formattedDuration}` })
         .setTimestamp();
 
     const row1 = new ActionRowBuilder().addComponents(

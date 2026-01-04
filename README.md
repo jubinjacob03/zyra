@@ -1,4 +1,4 @@
-# Zyra Music Bot 🎵
+# Remani Music Bot 🎵
 
 A premium Discord music bot with YouTube support using yt-dlp for reliable streaming.
 
@@ -294,11 +294,11 @@ MIT License - Free to use and modify
 ## Credits 👏
 
 - **Author**: God BlazXx
-- **Bot Name**: Zyra
+- **Bot Name**: Remani
 - **Powered by**: discord.js, yt-dlp, Node.js
 
 ---
 
-⭐ **Enjoy free premium-quality music streaming with Zyra!** ⭐
+⭐ **Enjoy free premium-quality music streaming with Remani!** ⭐
 
 Made with ❤️ for the Discord community

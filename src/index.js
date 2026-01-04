@@ -7,7 +7,8 @@ const {
     AudioPlayerStatus,
     VoiceConnectionStatus,
     entersState,
-    NoSubscriberBehavior
+    NoSubscriberBehavior,
+    StreamType
 } = require('@discordjs/voice');
 const play = require('play-dl');
 const youtubedlExec = require('youtube-dl-exec');
@@ -83,15 +84,13 @@ class MusicQueue {
      * Handles song transitions and playback errors
      */
     setupPlayerEvents() {
-        // Handle song completion and queue progression
         this.player.on(AudioPlayerStatus.Idle, () => {
             this.processQueue();
         });
 
-        // Handle playback errors gracefully
         this.player.on('error', error => {
             console.error('Player error:', error);
-            this.textChannel.send(`❌ Player error: ${error.message}`);
+            this.textChannel.send(`❌ Player error: ${error.message}`).catch(console.error);
             this.processQueue();
         });
     }
@@ -132,46 +131,30 @@ class MusicQueue {
         this.paused = false;
 
         try {
-            // Extract stream URL using yt-dlp (bypasses YouTube restrictions)
-            const ytdlpOptions = {
-                dumpSingleJson: true,
-                noCheckCertificates: true,
+            const ytdlpProcess = youtubedl.exec(song.url, {
+                output: '-',
+                quiet: true,
                 noWarnings: true,
-                preferFreeFormats: true,
-                youtubeSkipDashManifest: true,
                 format: 'bestaudio[ext=webm]/bestaudio/best',
-                addHeader: [
-                    'referer:youtube.com',
-                    'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                ],
-                extractorArgs: 'youtube:player_client=android,web;player_skip=webpage,configs',
                 noPlaylist: true,
                 geoBypass: true,
-                // Use cookies if available (REQUIRED for hosting providers to bypass bot detection)
+                noCheckCertificates: true,
+                addHeader: [
+                    'referer:youtube.com',
+                    'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                ],
+                extractorArgs: 'youtube:player_client=android,web',
                 ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' })
-            };
-            
-            const streamUrl = await youtubedl(song.url, ytdlpOptions).then(info => {
-                // Prefer audio-only format for better performance
-                const format = info.formats.find(f => f.acodec !== 'none' && !f.vcodec) || 
-                              info.formats.find(f => f.acodec !== 'none');
-                return format?.url || info.url;
             });
             
-            console.log('✅ Stream URL obtained from yt-dlp');
-            
-            // Create audio resource with volume control
-            this.currentResource = createAudioResource(streamUrl, {
+            this.currentResource = createAudioResource(ytdlpProcess.stdout, {
                 metadata: song,
                 inlineVolume: true
             });
+            
             this.currentResource.volume.setVolume(this.volume / 100);
             
-            console.log('✅ Playing audio resource...');
             this.player.play(this.currentResource);
-            
-            // Send or update music panel UI
-            console.log('✅ Sending music panel...');
             const { embed, components } = createMusicPanel(this);
             const message = await this.textChannel.send({ embeds: [embed], components });
             
@@ -499,7 +482,7 @@ for (const file of commandFiles) {
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
-    console.log(`\n🎵 Zyra Music Bot is online!`);
+    console.log(`\n🎵 Remani Music Bot is online!`);
     console.log(`📡 Logged in as ${readyClient.user.tag}`);
     console.log(`🌐 Serving ${readyClient.guilds.cache.size} servers\n`);
     

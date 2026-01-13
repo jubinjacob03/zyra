@@ -1,13 +1,14 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { errorEmbed } = require('../utils/embed');
+const { errorEmbed, playlistEmbed, COLORS, ICONS } = require('../utils/embed');
+const { createCompleteMusicController } = require('../utils/componentsV2');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('play')
-        .setDescription('Play a song or playlist from YouTube')
+        .setDescription('Play a song or playlist from YouTube or Spotify')
         .addStringOption(option =>
             option.setName('query')
-                .setDescription('Song name or YouTube URL')
+                .setDescription('Song name, YouTube URL, or Spotify URL')
                 .setRequired(true)),
 
     async execute(interaction, client) {
@@ -24,10 +25,17 @@ module.exports = {
             return interaction.reply({ embeds: [errorEmbed('I need permissions to join and speak in your voice channel!')], flags: 64 });
         }
 
+        // Defer reply immediately to prevent timeout
         await interaction.deferReply();
 
         try {
-            const result = await client.searchSong(query, member);
+            // Add timeout wrapper for the entire operation
+            const result = await Promise.race([
+                client.searchSong(query, member),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Operation timeout - please try a simpler query')), 25000)
+                )
+            ]);
             
             if (!result) {
                 return interaction.editReply({ embeds: [errorEmbed('No results found for your query.')] });
@@ -43,46 +51,71 @@ module.exports = {
             if (result.type === 'playlist') {
                 await queue.addSongs(result.songs);
                 
-                const embed = new EmbedBuilder()
-                    .setColor('#9B59B6')
-                    .setTitle('✅ Added Playlist')
-                    .setDescription(`**[${result.name}](${result.url})**`)
-                    .addFields(
-                        { name: '🎵 Songs', value: `${result.songs.length}`, inline: true },
-                        { name: '👤 Requested by', value: `${member}`, inline: true }
-                    )
-                    .setThumbnail(result.thumbnail || result.songs[0]?.thumbnail)
-                    .setTimestamp();
+                // Create clean music controller for playlist
+                const controller = createCompleteMusicController(queue);
                 
-                await interaction.editReply({ embeds: [embed] });
+                await interaction.editReply({
+                    embeds: controller.embeds,
+                    components: controller.components
+                });
                 
                 if (isNewQueue) {
                     await queue.play();
+                }
+                
+                // Start background processing for remaining Spotify tracks
+                if (result.spotifyData?.remainingTracks && result.spotifyData.remainingTracks.length > 0) {
+                    client.processSpotifyPlaylistBackground(queue, result.spotifyData.remainingTracks, interaction.channel);
                 }
             } else {
                 await queue.addSong(result);
                 
+                // Create and send controller immediately
+                const controller = createCompleteMusicController(queue);
+                await interaction.editReply({
+                    embeds: controller.embeds,
+                    components: controller.components
+                });
+                
                 if (isNewQueue) {
+                    // Start playback after sending the controller
                     await queue.play();
-                    await interaction.deleteReply();
-                } else {
-                    const embed = new EmbedBuilder()
-                        .setColor('#9B59B6')
-                        .setTitle('✅ Added to Queue')
-                        .setDescription(`**[${result.name}](${result.url})**`)
-                        .addFields(
-                            { name: '⏱️ Duration', value: result.formattedDuration, inline: true },
-                            { name: '👤 Requested by', value: `${member}`, inline: true },
-                            { name: '📋 Position', value: `${queue.songs.length}`, inline: true }
-                        )
-                        .setThumbnail(result.thumbnail)
-                        .setTimestamp();
-                    
-                    await interaction.editReply({ embeds: [embed] });
                 }
             }
         } catch (error) {
             console.error('Play error:', error);
+            
+            // Special handling for Mix playlist errors
+            if (error.message.includes('Mix playlists are not supported')) {
+                const embed = new EmbedBuilder()
+                    .setColor('#E74C3C')
+                    .setTitle('❌ YouTube Mix Playlists Not Supported')
+                    .setDescription('Mix playlists are personalized and user-specific - they cannot be accessed by bots.')
+                    .addFields(
+                        { 
+                            name: '💡 Alternatives', 
+                            value: '• Use a regular YouTube playlist instead\n• Search for individual songs\n• Create a custom playlist with your favorite tracks',
+                            inline: false 
+                        },
+                        {
+                            name: '🔍 How to identify Mix playlists',
+                            value: 'URLs containing `RD`, `RDMM`, `RDAMPL`, or `RDCLAK` in the playlist ID',
+                            inline: false
+                        }
+                    )
+                    .setFooter({ text: 'Try using a regular playlist or search for songs individually' })
+                    .setTimestamp();
+                
+                return interaction.editReply({ embeds: [embed] });
+            }
+            
+            // Handle timeout errors
+            if (error.message.includes('timeout')) {
+                return interaction.editReply({ 
+                    embeds: [errorEmbed('⏱️ Search took too long. Please try a simpler query or check your internet connection.')] 
+                });
+            }
+            
             await interaction.editReply({ embeds: [errorEmbed(`Could not play: ${error.message}`)] });
         }
     },

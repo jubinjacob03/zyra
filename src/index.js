@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, Events, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, ActivityType, EmbedBuilder } = require('discord.js');
 const { 
     joinVoiceChannel, 
     createAudioPlayer, 
@@ -16,31 +16,56 @@ const youtube = require('youtube-sr').default;
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { createMusicPanel, createNowPlayingEmbed } = require('./utils/embed');
+const { createMusicPanel, createNowPlayingEmbed, createProgressBar, formatDuration } = require('./utils/embed');
+const SpotifyAPI = require('./utils/spotify');
+const YouTubeSearchEngine = require('./utils/youtubeSearch');
 
 // Cross-platform yt-dlp configuration
 // Windows: Use WinGet system installation (no spaces in path)
-// Linux/Mac (Render/Railway): Use bundled binary from youtube-dl-exec
+// Linux/Mac: Use bundled binary from youtube-dl-exec
 let youtubedl;
 if (os.platform() === 'win32') {
-    // Windows: Try system installation first
     const systemYtdlp = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'WinGet', 'Packages', 'yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe', 'yt-dlp.exe');
     if (fs.existsSync(systemYtdlp)) {
         youtubedl = youtubedlExec.create(systemYtdlp);
         console.log('✅ Using system yt-dlp (Windows)');
     } else {
-        // Fallback for Windows without WinGet installation
         youtubedl = youtubedlExec;
         console.log('⚠️ Using bundled yt-dlp');
     }
 } else {
-    // Linux/Mac: Use bundled binary (works on Render/Railway)
+    // Linux/Mac: Use bundled binary
     youtubedl = youtubedlExec;
     console.log('✅ Using bundled yt-dlp (Linux/Mac)');
 }
 
 const ffmpegPath = require('ffmpeg-static');
 process.env.FFMPEG_PATH = ffmpegPath;
+
+// Global error handlers for cleaner logs
+process.on('unhandledRejection', (reason, promise) => {
+    // Only log non-yt-dlp errors and non-Discord API errors
+    if (reason && typeof reason === 'object') {
+        if (reason.command && reason.command.includes('yt-dlp')) {
+            // Suppress yt-dlp broken pipe errors - they're expected when audio completes
+            return;
+        }
+        if (reason.code === 10008 || reason.code === 10062) {
+            // Suppress Discord API errors for deleted messages/expired interactions
+            console.log(`Discord API: ${reason.code === 10008 ? 'Message deleted' : 'Interaction expired'}`);
+            return;
+        }
+    }
+    console.error('Unhandled rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    // Only log non-yt-dlp errors
+    if (error.message && error.message.includes('yt-dlp')) {
+        return;
+    }
+    console.error('Uncaught exception:', error);
+});
 
 const client = new Client({
     intents: [
@@ -54,6 +79,15 @@ const client = new Client({
 client.commands = new Collection();
 client.queues = new Map();
 client.musicPanels = new Map();
+
+// Initialize Spotify API if credentials are provided
+let spotifyAPI = null;
+if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
+    spotifyAPI = new SpotifyAPI(process.env.SPOTIFY_CLIENT_ID, process.env.SPOTIFY_CLIENT_SECRET);
+    console.log('✅ Spotify API initialized');
+} else {
+    console.log('⚠️ Spotify credentials not found - Spotify features disabled');
+}
 
 /**
  * Music Queue Manager
@@ -69,7 +103,7 @@ class MusicQueue {
         this.volume = 50;
         this.playing = false;
         this.paused = false;
-        this.repeatMode = 0; // 0: Off, 1: Single, 2: Queue
+        this.repeatMode = 0; 
         this.player = createAudioPlayer({
             behaviors: { noSubscriber: NoSubscriberBehavior.Play }
         });
@@ -135,7 +169,7 @@ class MusicQueue {
                 output: '-',
                 quiet: true,
                 noWarnings: true,
-                format: 'bestaudio[ext=webm]/bestaudio/best',
+                format: 'bestaudio/best',
                 noPlaylist: true,
                 geoBypass: true,
                 noCheckCertificates: true,
@@ -143,31 +177,46 @@ class MusicQueue {
                     'referer:youtube.com',
                     'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 ],
-                extractorArgs: 'youtube:player_client=android,web',
+                extractorArgs: 'youtube:player_client=android',
                 ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' })
             });
             
+            // Suppress stderr to avoid broken pipe warnings
+            ytdlpProcess.stderr?.on('data', () => {});
+            
             this.currentResource = createAudioResource(ytdlpProcess.stdout, {
                 metadata: song,
-                inlineVolume: true
+                inlineVolume: true,
+                inputType: StreamType.Arbitrary
             });
             
             this.currentResource.volume.setVolume(this.volume / 100);
             
             this.player.play(this.currentResource);
-            const { embed, components } = createMusicPanel(this);
-            const message = await this.textChannel.send({ embeds: [embed], components });
             
-            // Clean up old music panel
+            // Send clean music controller embed
+            const { createCompleteMusicController } = require('./utils/componentsV2');
+            const controller = createCompleteMusicController(this);
+            const message = await this.textChannel.send(controller);
+            
+            // Clean up old panel before setting new one
             const oldPanel = client.musicPanels.get(this.guildId);
             if (oldPanel?.message) {
-                try { await oldPanel.message.delete(); } catch {}
+                try { 
+                    await oldPanel.message.delete(); 
+                } catch (error) {
+                    // Ignore deletion errors (message might already be deleted)
+                    console.log('Could not delete old music panel - it may have been already deleted');
+                }
             }
-            client.musicPanels.set(this.guildId, { message, song });
+            
+            client.musicPanels.set(this.guildId, { message, song, startTime: Date.now() });
             console.log('🎵 Now playing:', song.name);
             
+            // Start real-time progress updates via WebSocket
+            this.startProgressUpdates();
+            
         } catch (error) {
-            console.error('Play error:', error);
             this.textChannel.send(`❌ Error playing **${song.name}**: ${error.message}`);
             this.songs.shift();
             this.processQueue();
@@ -180,18 +229,16 @@ class MusicQueue {
      */
     processQueue() {
         if (this.repeatMode === 1) {
-            // Repeat single song
             this.play();
         } else {
             if (this.repeatMode === 2 && this.songs.length > 0) {
-                // Queue repeat: move current song to end
                 this.songs.push(this.songs.shift());
             } else {
-                // Normal mode: remove played song
                 this.songs.shift();
             }
             
             if (this.songs.length === 0) {
+                console.log('🎵 Queue finished');
                 this.textChannel.send('🎵 Queue finished. Add more songs to keep the party going!');
                 this.stop();
             } else {
@@ -232,7 +279,9 @@ class MusicQueue {
         this.playing = false;
         this.player.stop();
         
-        // Only destroy connection if it's not already destroyed
+        // Stop progress updates
+        this.stopProgressUpdates();
+        
         if (this.connection && this.connection.state.status !== VoiceConnectionStatus.Destroyed) {
             try {
                 this.connection.destroy();
@@ -277,6 +326,95 @@ class MusicQueue {
      */
     setRepeatMode(mode) {
         this.repeatMode = mode;
+        this.updateMusicPanel();
+    }
+
+    /**
+     * Start real-time progress updates for the music panel
+     */
+    startProgressUpdates() {
+        // Clear any existing interval
+        if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+        }
+
+        const panelData = client.musicPanels.get(this.guildId);
+        if (!panelData) return;
+
+        this.progressInterval = setInterval(async () => {
+            if (!this.playing || this.paused || !this.songs[0]) {
+                clearInterval(this.progressInterval);
+                this.progressInterval = null;
+                return;
+            }
+
+            try {
+                await this.updateMusicPanel();
+            } catch (error) {
+                console.error('Error in progress update:', error.message);
+                // Stop updates if there's a persistent error
+                clearInterval(this.progressInterval);
+                this.progressInterval = null;
+            }
+        }, 5000); // Update every 5 seconds
+    }
+
+    /**
+     * Update the music panel embed with current progress
+     */
+    async updateMusicPanel() {
+        const panelData = client.musicPanels.get(this.guildId);
+        if (!panelData?.message || !this.songs[0]) return;
+
+        try {
+            // Check if message still exists before updating
+            await panelData.message.fetch();
+            
+            const { embed, components } = createMusicPanel(this);
+            
+            // Calculate current progress
+            const elapsed = this.playing && !this.paused ? 
+                Math.floor((Date.now() - (panelData.startTime || Date.now())) / 1000) : 0;
+            const song = this.songs[0];
+            const progressBar = createProgressBar(elapsed, song.duration || 100, 15);
+            
+            // Update embed description with live progress
+            const volumeIcon = this.volume > 66 ? '🔊' : this.volume > 33 ? '🔉' : '🔈';
+            const loopModes = ['Off', '🔂 Song', '🔁 Queue'];
+            
+            embed.setDescription(`**${song.author || 'Unknown Artist'}**\n\n` +
+                `⏱️ \`${formatDuration(elapsed)} ${progressBar} ${song.formattedDuration}\`\n` +
+                `👤 ${song.user?.displayName || song.user?.username || 'Unknown'}\n` +
+                `${volumeIcon} \`${this.volume}%\` • ${loopModes[this.repeatMode]} • \`${this.songs.length} songs\``
+            );
+
+            await panelData.message.edit({ embeds: [embed], components });
+        } catch (error) {
+            // Handle specific Discord API errors
+            if (error.code === 10008) {
+                // Message was deleted, clean up
+                console.log('Music panel message was deleted - cleaning up');
+                client.musicPanels.delete(this.guildId);
+                this.stopProgressUpdates();
+            } else if (error.code === 10003) {
+                // Unknown channel, clean up
+                console.log('Music panel channel not found - cleaning up');
+                client.musicPanels.delete(this.guildId);
+                this.stopProgressUpdates();
+            } else {
+                console.error('Error updating music panel:', error.message);
+            }
+        }
+    }
+
+    /**
+     * Stop progress updates and clean up
+     */
+    stopProgressUpdates() {
+        if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+            this.progressInterval = null;
+        }
     }
 
     /**
@@ -310,21 +448,6 @@ class MusicQueue {
 }
 
 /**
- * Format seconds into human-readable duration
- * @param {number} seconds - Duration in seconds
- * @returns {string} Formatted duration (HH:MM:SS or MM:SS)
- */
-function formatDuration(seconds) {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    if (hrs > 0) {
-        return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-/**
  * Create and initialize a music queue for a guild
  * @param {string} guildId - Discord guild ID
  * @param {TextChannel} textChannel - Text channel for bot messages
@@ -352,7 +475,6 @@ client.createQueue = async function(guildId, textChannel, voiceChannel) {
     const queue = new MusicQueue(guildId, textChannel, voiceChannel, connection);
     this.queues.set(guildId, queue);
     
-    // Handle network disconnections with automatic reconnection
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
         try {
             await Promise.race([
@@ -360,7 +482,6 @@ client.createQueue = async function(guildId, textChannel, voiceChannel) {
                 entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
             ]);
         } catch {
-            // Connection couldn't be re-established, clean up
             if (queue) queue.stop();
         }
     });
@@ -378,20 +499,298 @@ client.getQueue = function(guildId) {
 };
 
 /**
- * Search for YouTube videos or playlists
- * Handles direct URLs, playlists, and search queries
- * @param {string} query - YouTube URL or search term
+ * Enhanced search function with Spotify support and timeout handling
+ * Handles YouTube URLs, Spotify URLs, and search queries
+ * @param {string} query - YouTube URL, Spotify URL, or search term
  * @param {GuildMember} user - User who requested the song
  * @returns {Promise<Object|null>} Song/playlist object or null
  */
 async function searchSong(query, user) {
+    // Add timeout to prevent hanging - increased to 45 seconds for complex operations
+    return Promise.race([
+        searchSongInternal(query, user),
+        new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Search timeout - please try again')), 45000)
+        )
+    ]);
+}
+
+async function searchSongInternal(query, user) {
     const videoPattern = /^(https?:\/\/)?(www\.)?(m\.|music\.)?(youtube\.com|youtu\.?be)\/.+$/;
     const playlistPattern = /^.*(list=)([^#\&\?]*).*/;
+    
+    // YouTube Mix playlist patterns (user-specific, cannot be accessed)
+    const mixPlaylistPattern = /[?&]list=(RD[A-Za-z0-9_-]+|RDMM[A-Za-z0-9_-]+|RDAMPL[A-Za-z0-9_-]+|RDCLAK[A-Za-z0-9_-]+)/;
+    
+    // Spotify URL patterns
+    const spotifyTrackPattern = /spotify\.com\/track\/([a-zA-Z0-9]+)/;
+    const spotifyPlaylistPattern = /spotify\.com\/playlist\/([a-zA-Z0-9]+)/;
+    const spotifyAlbumPattern = /spotify\.com\/album\/([a-zA-Z0-9]+)/;
+    
+    // Check for YouTube Mix playlists first
+    if (mixPlaylistPattern.test(query)) {
+        throw new Error('❌ **YouTube Mix playlists are not supported**\n\n' +
+            '🔒 Mix playlists are personalized and user-specific - they cannot be accessed by bots.\n\n' +
+            '💡 **Alternatives:**\n' +
+            '• Use a regular YouTube playlist instead\n' +
+            '• Search for individual songs\n' +
+            '• Create a custom playlist with your favorite tracks');
+    }
     
     // Cookie options for yt-dlp
     const cookieOpts = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
     
-    // Direct YouTube video URL - use yt-dlp with cookies
+    // Handle Spotify Track URLs
+    if (spotifyTrackPattern.test(query) && spotifyAPI) {
+        try {
+            const trackId = SpotifyAPI.extractSpotifyId(query, 'track');
+            
+            const spotifyTrack = await spotifyAPI.getTrack(trackId);
+            
+            const youtubeVideo = await YouTubeSearchEngine.findBestMatch(spotifyTrack);
+            
+            if (!youtubeVideo) {
+                // Fallback to direct YouTube search
+                const fallbackQuery = `${spotifyTrack.name} ${spotifyTrack.artists[0]?.name}`;
+                
+                try {
+                    const fallbackResult = await youtube.searchOne(fallbackQuery);
+                    
+                    if (fallbackResult) {
+                        const info = await youtubedl(fallbackResult.url, {
+                            dumpSingleJson: true,
+                            noWarnings: true,
+                            noCheckCertificates: true,
+                            skipDownload: true,
+                            ...cookieOpts
+                        });
+                        
+                        return {
+                            type: 'song',
+                            name: spotifyTrack.name,
+                            url: info.webpage_url || fallbackResult.url,
+                            duration: parseInt(info.duration) || fallbackResult.duration || 0,
+                            formattedDuration: formatDuration(parseInt(info.duration) || fallbackResult.duration || 0),
+                            thumbnail: spotifyTrack.album?.images?.[0]?.url || info.thumbnail,
+                            author: spotifyTrack.artists.map(a => a.name).join(', '),
+                            user: user,
+                            spotifyData: {
+                                originalUrl: query,
+                                trackId: trackId,
+                                isSpotify: true,
+                                fallbackUsed: true
+                            }
+                        };
+                    }
+                } catch (fallbackError) {
+                    // Silent fallback failure
+                }
+                
+                throw new Error('Could not find a matching YouTube video for this Spotify track');
+            }
+            
+            // Get detailed info using yt-dlp
+            const info = await youtubedl(youtubeVideo.url, {
+                dumpSingleJson: true,
+                noWarnings: true,
+                noCheckCertificates: true,
+                skipDownload: true,
+                ...cookieOpts
+            });
+            
+            return {
+                type: 'song',
+                name: spotifyTrack.name,
+                url: info.webpage_url || youtubeVideo.url,
+                duration: parseInt(info.duration) || youtubeVideo.correctedDuration || youtubeVideo.duration || 0,
+                formattedDuration: formatDuration(parseInt(info.duration) || youtubeVideo.correctedDuration || youtubeVideo.duration || 0),
+                thumbnail: spotifyTrack.album?.images?.[0]?.url || info.thumbnail,
+                author: spotifyTrack.artists.map(a => a.name).join(', '),
+                user: user,
+                spotifyData: {
+                    originalUrl: query,
+                    trackId: trackId,
+                    isSpotify: true
+                }
+            };
+        } catch (error) {
+            // For single tracks, try fallback search before giving up
+            if (error.message.includes('Could not find a matching YouTube video')) {
+                try {
+                    const trackId = SpotifyAPI.extractSpotifyId(query, 'track');
+                    const spotifyTrack = await spotifyAPI.getTrack(trackId);
+                    const fallbackQuery = `${spotifyTrack.name} ${spotifyTrack.artists[0]?.name}`;
+                    
+                    const fallbackResult = await youtube.searchOne(fallbackQuery);
+                    if (fallbackResult) {
+                        const info = await youtubedl(fallbackResult.url, {
+                            dumpSingleJson: true,
+                            noWarnings: true,
+                            noCheckCertificates: true,
+                            skipDownload: true,
+                            ...cookieOpts
+                        });
+                        
+                        return {
+                            type: 'song',
+                            name: spotifyTrack.name,
+                            url: info.webpage_url || fallbackResult.url,
+                            duration: parseInt(info.duration) || fallbackResult.duration || 0,
+                            formattedDuration: formatDuration(parseInt(info.duration) || fallbackResult.duration || 0),
+                            thumbnail: spotifyTrack.album?.images?.[0]?.url || info.thumbnail,
+                            author: spotifyTrack.artists.map(a => a.name).join(', '),
+                            user: user,
+                            spotifyData: {
+                                originalUrl: query,
+                                trackId: trackId,
+                                isSpotify: true,
+                                fallbackUsed: true
+                            }
+                        };
+                    }
+                } catch (fallbackError) {
+                    // Silent fallback failure
+                }
+            }
+            throw new Error(`Unable to find this Spotify track on YouTube. Try a different song or search manually.`);
+        }
+    }
+    
+    // Handle Spotify Playlist URLs
+    if (spotifyPlaylistPattern.test(query) && spotifyAPI) {
+        try {
+            const playlistId = SpotifyAPI.extractSpotifyId(query, 'playlist');
+            
+            const { tracks, playlistInfo } = await spotifyAPI.getPlaylistTracks(playlistId);
+            
+            if (!tracks || tracks.length === 0) {
+                throw new Error('Spotify playlist is empty or contains no playable tracks');
+            }
+            
+            // Convert first few tracks immediately, rest in background
+            const immediateConversions = Math.min(tracks.length, 3);
+            const convertedSongs = [];
+            
+            for (let i = 0; i < immediateConversions; i++) {
+                const track = tracks[i].track;
+                console.log(`🎵 Converting track ${i+1}: "${track.name}" by ${track.artists.map(a => a.name).join(', ')}`);
+                try {
+                    const youtubeVideo = await YouTubeSearchEngine.findBestMatch(track);
+                    if (youtubeVideo) {
+                        console.log(`✅ Successfully converted: "${track.name}"`);
+                        convertedSongs.push({
+                            name: track.name,
+                            url: youtubeVideo.url,
+                            duration: youtubeVideo.duration || 0,
+                            formattedDuration: formatDuration(youtubeVideo.duration || 0),
+                            thumbnail: track.album?.images?.[0]?.url || youtubeVideo.thumbnail,
+                            author: track.artists.map(a => a.name).join(', '),
+                            user: user,
+                            spotifyData: {
+                                originalUrl: track.external_urls?.spotify,
+                                trackId: track.id,
+                                isSpotify: true
+                            }
+                        });
+                    } else {
+                        // Silent failure for immediate conversions
+                    }
+                } catch (error) {
+                    // Silent failure for immediate conversions
+                }
+            }
+            
+            if (convertedSongs.length === 0) {
+                throw new Error('Could not convert any tracks from the Spotify playlist');
+            }
+            
+            console.log(`✅ Successfully converted ${convertedSongs.length}/${immediateConversions} immediate tracks`);
+            
+            return {
+                type: 'playlist',
+                name: playlistInfo.name || 'Spotify Playlist',
+                url: query,
+                thumbnail: playlistInfo.images?.[0]?.url,
+                songs: convertedSongs,
+                spotifyData: {
+                    playlistId: playlistId,
+                    totalTracks: tracks.length,
+                    remainingTracks: tracks.slice(immediateConversions),
+                    isSpotify: true
+                }
+            };
+        } catch (error) {
+            throw new Error(`Failed to process Spotify playlist: ${error.message}`);
+        }
+    }
+    
+    // Handle Spotify Album URLs
+    if (spotifyAlbumPattern.test(query) && spotifyAPI) {
+        try {
+            const albumId = SpotifyAPI.extractSpotifyId(query, 'album');
+            
+            const { tracks, albumInfo } = await spotifyAPI.getAlbumTracks(albumId);
+            
+            if (!tracks || tracks.length === 0) {
+                throw new Error('Spotify album is empty or contains no playable tracks');
+            }
+            
+            const convertedSongs = [];
+            const maxConversions = Math.min(tracks.length, 10); // Limit for albums
+            
+            for (let i = 0; i < maxConversions; i++) {
+                const track = tracks[i];
+                try {
+                    // Add album artist info to track for better matching
+                    const trackWithAlbumArtist = {
+                        ...track,
+                        artists: track.artists.length > 0 ? track.artists : albumInfo.artists
+                    };
+                    
+                    const youtubeVideo = await YouTubeSearchEngine.findBestMatch(trackWithAlbumArtist);
+                    if (youtubeVideo) {
+                        convertedSongs.push({
+                            name: track.name,
+                            url: youtubeVideo.url,
+                            duration: youtubeVideo.duration || 0,
+                            formattedDuration: formatDuration(youtubeVideo.duration || 0),
+                            thumbnail: albumInfo.images?.[0]?.url || youtubeVideo.thumbnail,
+                            author: track.artists.map(a => a.name).join(', ') || albumInfo.artists.map(a => a.name).join(', '),
+                            user: user,
+                            spotifyData: {
+                                originalUrl: track.external_urls?.spotify,
+                                trackId: track.id,
+                                isSpotify: true
+                            }
+                        });
+                    }
+                } catch (error) {
+                    // Silent conversion failure for individual tracks
+                }
+            }
+            
+            if (convertedSongs.length === 0) {
+                throw new Error('Could not convert any tracks from the Spotify album');
+            }
+            
+            return {
+                type: 'playlist',
+                name: `${albumInfo.name} - ${albumInfo.artists.map(a => a.name).join(', ')}`,
+                url: query,
+                thumbnail: albumInfo.images?.[0]?.url,
+                songs: convertedSongs,
+                spotifyData: {
+                    albumId: albumId,
+                    totalTracks: tracks.length,
+                    isSpotify: true
+                }
+            };
+        } catch (error) {
+            throw new Error(`Failed to process Spotify album: ${error.message}`);
+        }
+    }
+    
+    // Handle YouTube URLs (existing logic)
     if (videoPattern.test(query) && !playlistPattern.test(query)) {
         const info = await youtubedl(query, {
             dumpSingleJson: true,
@@ -411,34 +810,115 @@ async function searchSong(query, user) {
             author: info.uploader || info.channel || 'Unknown',
             user: user,
         };
-    } else if (playlistPattern.test(query)) {
-        // YouTube playlist - use yt-dlp with cookies
-        const info = await youtubedl(query, {
-            dumpSingleJson: true,
-            flatPlaylist: true,
-            noWarnings: true,
-            skipDownload: true,
-            ...cookieOpts
-        });
+    } 
+    
+    // Handle YouTube Playlists (existing logic)
+    else if (playlistPattern.test(query)) {
+        try {
+            const info = await youtubedl(query, {
+                dumpSingleJson: true,
+                flatPlaylist: true,
+                noWarnings: true,
+                skipDownload: true,
+                ...cookieOpts
+            });
+            
+            const videos = info.entries || [];
+            
+            // Check if this is actually a Mix playlist that slipped through
+            if (videos.length === 0 && (query.includes('RD') || query.includes('RDMM') || query.includes('RDAMPL'))) {
+                throw new Error('❌ **YouTube Mix playlists are not supported**\n\n' +
+                    '🔒 Mix playlists are personalized and user-specific - they cannot be accessed by bots.\n\n' +
+                    '💡 **Alternatives:**\n' +
+                    '• Use a regular YouTube playlist instead\n' +
+                    '• Search for individual songs\n' +
+                    '• Create a custom playlist with your favorite tracks');
+            }
+            
+            if (videos.length === 0) {
+                throw new Error('This playlist is empty or cannot be accessed');
+            }
+            
+            return {
+                type: 'playlist',
+                name: info.title || 'Playlist',
+                url: info.webpage_url || query,
+                thumbnail: info.thumbnail || videos[0]?.thumbnail,
+                songs: videos.slice(0, 50).map(v => ({ 
+                    name: v.title,
+                    url: v.url || `https://youtube.com/watch?v=${v.id}`,
+                    duration: v.duration || 0,
+                    formattedDuration: formatDuration(v.duration || 0),
+                    thumbnail: v.thumbnail,
+                    author: v.uploader || v.channel || 'Unknown',
+                    user: user,
+                }))
+            };
+        } catch (error) {
+            // Check if this is a Mix playlist error
+            if (error.message.includes('Mix playlists are not supported')) {
+                throw error; // Re-throw our custom error
+            }
+            
+            // Check for common Mix playlist error patterns from yt-dlp
+            if (error.message.includes('Unable to extract') || 
+                error.message.includes('playlist does not exist') ||
+                error.message.includes('Private playlist') ||
+                (query.includes('RD') && error.message.includes('ERROR'))) {
+                throw new Error('❌ **YouTube Mix playlists are not supported**\n\n' +
+                    '🔒 Mix playlists are personalized and user-specific - they cannot be accessed by bots.\n\n' +
+                    '💡 **Alternatives:**\n' +
+                    '• Use a regular YouTube playlist instead\n' +
+                    '• Search for individual songs\n' +
+                    '• Create a custom playlist with your favorite tracks');
+            }
+            
+            throw new Error(`Failed to process YouTube playlist: ${error.message}`);
+        }
+    } 
+    
+    // Handle search queries (existing logic with Spotify search option)
+    else {
+        // If Spotify is available, try Spotify search first for better results
+        if (spotifyAPI && !query.startsWith('youtube:') && !query.startsWith('yt:')) {
+            try {
+                const spotifyResults = await spotifyAPI.searchTracks(query, 3);
+                if (spotifyResults && spotifyResults.length > 0) {
+                    const bestSpotifyMatch = spotifyResults[0];
+                    const youtubeVideo = await YouTubeSearchEngine.findBestMatch(bestSpotifyMatch);
+                    
+                    if (youtubeVideo) {
+                        const info = await youtubedl(youtubeVideo.url, {
+                            dumpSingleJson: true,
+                            noWarnings: true,
+                            skipDownload: true,
+                            ...cookieOpts
+                        });
+                        
+                        return {
+                            type: 'song',
+                            name: bestSpotifyMatch.name,
+                            url: info.webpage_url || youtubeVideo.url,
+                            duration: parseInt(info.duration) || youtubeVideo.duration || 0,
+                            formattedDuration: formatDuration(parseInt(info.duration) || youtubeVideo.duration || 0),
+                            thumbnail: bestSpotifyMatch.album?.images?.[0]?.url || info.thumbnail,
+                            author: bestSpotifyMatch.artists.map(a => a.name).join(', '),
+                            user: user,
+                            spotifyData: {
+                                originalUrl: bestSpotifyMatch.external_urls?.spotify,
+                                trackId: bestSpotifyMatch.id,
+                                isSpotify: true,
+                                searchQuery: query
+                            }
+                        };
+                    }
+                }
+            } catch (error) {
+                // Silent Spotify search failure, fallback to YouTube
+            }
+        }
         
-        const videos = info.entries || [];
-        return {
-            type: 'playlist',
-            name: info.title || 'Playlist',
-            url: info.webpage_url || query,
-            thumbnail: info.thumbnail || videos[0]?.thumbnail,
-            songs: videos.slice(0, 50).map(v => ({ // Limit to 50 videos
-                name: v.title,
-                url: v.url || `https://youtube.com/watch?v=${v.id}`,
-                duration: v.duration || 0,
-                formattedDuration: formatDuration(v.duration || 0),
-                thumbnail: v.thumbnail,
-                author: v.uploader || v.channel || 'Unknown',
-                user: user,
-            }))
-        };
-    } else {
-        // Search query - use youtube-sr then yt-dlp
+        // Fallback to YouTube search (existing logic)
         const result = await youtube.searchOne(query);
         if (!result) return null;
         
@@ -463,9 +943,70 @@ async function searchSong(query, user) {
     }
 }
 
-// Attach helper functions to client for global access
+
 client.searchSong = searchSong;
 client.formatDuration = formatDuration;
+
+/**
+ * Background processor for Spotify playlist conversion
+ * Converts remaining Spotify tracks to YouTube in the background
+ */
+async function processSpotifyPlaylistBackground(queue, remainingTracks, textChannel) {
+    if (!remainingTracks || remainingTracks.length === 0) return;
+    
+    let convertedCount = 0;
+    let failedCount = 0;
+    
+    for (let i = 0; i < remainingTracks.length; i++) {
+        const track = remainingTracks[i].track;
+        
+        try {
+            const youtubeVideo = await YouTubeSearchEngine.findBestMatch(track);
+            if (youtubeVideo) {
+                const song = {
+                    name: track.name,
+                    url: youtubeVideo.url,
+                    duration: youtubeVideo.duration || 0,
+                    formattedDuration: formatDuration(youtubeVideo.duration || 0),
+                    thumbnail: track.album?.images?.[0]?.url || youtubeVideo.thumbnail,
+                    author: track.artists.map(a => a.name).join(', '),
+                    user: queue.songs[0]?.user, // Use same user as first song
+                    spotifyData: {
+                        originalUrl: track.external_urls?.spotify,
+                        trackId: track.id,
+                        isSpotify: true
+                    }
+                };
+                
+                await queue.addSong(song);
+                convertedCount++;
+                
+                // Send progress update every 10 conversions
+                if (convertedCount % 10 === 0) {
+                    textChannel.send(`🎵 **Spotify Converter**: Added ${convertedCount}/${remainingTracks.length} tracks to queue`).catch(console.error);
+                }
+            } else {
+                failedCount++;
+            }
+        } catch (error) {
+            failedCount++;
+        }
+        
+        // Rate limiting delay
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Check if queue still exists
+        if (!client.getQueue(queue.guildId)) {
+            break;
+        }
+    }
+    
+    if (convertedCount > 0) {
+        textChannel.send(`✅ **Spotify Converter Complete**: Added ${convertedCount} tracks, ${failedCount} failed`).catch(console.error);
+    }
+}
+
+client.processSpotifyPlaylistBackground = processSpotifyPlaylistBackground;
 
 // Load all slash commands from commands directory
 const commandsPath = path.join(__dirname, 'commands');
@@ -510,16 +1051,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
             await command.execute(interaction, client);
         } catch (error) {
             console.error(`Error executing ${interaction.commandName}:`, error);
+            
+            // Handle specific Discord API errors
             const errorMessage = { content: '❌ There was an error executing this command!', flags: 64 };
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp(errorMessage);
-            } else {
-                await interaction.reply(errorMessage);
+            
+            try {
+                if (error.code === 10062) {
+                    // Unknown interaction - interaction expired
+                    console.log('Interaction expired - cannot respond');
+                    return;
+                }
+                
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp(errorMessage);
+                } else {
+                    await interaction.reply(errorMessage);
+                }
+            } catch (replyError) {
+                console.error('Failed to send error message:', replyError);
             }
         }
     }
 
-    // Handle music panel button interactions
     if (interaction.isButton()) {
         await handleButtonInteraction(interaction, client);
     }
@@ -532,10 +1085,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
  * @param {Client} client - Discord client instance
  */
 async function handleButtonInteraction(interaction, client) {
+    // Use flags instead of ephemeral property
+    try {
+        await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag
+    } catch (error) {
+        // If defer fails, try immediate reply
+        console.error('Failed to defer interaction:', error);
+        return;
+    }
+    
     const queue = client.getQueue(interaction.guildId);
     
     if (!queue) {
-        return interaction.reply({ content: '\u274c Nothing is playing right now.', flags: 64 });
+        return interaction.editReply({ content: '\u274c Nothing is playing right now.' });
     }
 
     const member = interaction.member;
@@ -543,7 +1105,7 @@ async function handleButtonInteraction(interaction, client) {
 
     // Verify user is in the same voice channel as bot
     if (!voiceChannel || voiceChannel.id !== queue.voiceChannel.id) {
-        return interaction.reply({ content: '❌ You need to be in the same voice channel.', flags: 64 });
+        return interaction.editReply({ content: '❌ You need to be in the same voice channel.' });
     }
 
     try {
@@ -551,37 +1113,37 @@ async function handleButtonInteraction(interaction, client) {
             case 'music_pause':
                 if (queue.paused) {
                     queue.resume();
-                    await interaction.reply({ content: '▶️ Resumed the music.', flags: 64 });
+                    await interaction.editReply({ content: '▶️ Resumed the music.' });
                 } else {
                     queue.pause();
-                    await interaction.reply({ content: '⏸️ Paused the music.', flags: 64 });
+                    await interaction.editReply({ content: '⏸️ Paused the music.' });
                 }
                 break;
 
             case 'music_skip':
                 queue.skip();
-                await interaction.reply({ content: '⏭️ Skipped the current song.', flags: 64 });
+                await interaction.editReply({ content: '⏭️ Skipped the current song.' });
                 break;
 
             case 'music_stop':
                 queue.stop();
-                await interaction.reply({ content: '⏹️ Stopped the music and cleared the queue.', flags: 64 });
+                await interaction.editReply({ content: '⏹️ Stopped the music and cleared the queue.' });
                 break;
 
             case 'music_shuffle':
                 queue.shuffle();
-                await interaction.reply({ content: '🔀 Shuffled the queue.', flags: 64 });
+                await interaction.editReply({ content: '🔀 Shuffled the queue.' });
                 break;
 
             case 'music_loop':
                 const modes = ['Off', 'Song', 'Queue'];
                 const nextMode = (queue.repeatMode + 1) % 3;
                 queue.setRepeatMode(nextMode);
-                await interaction.reply({ content: `🔁 Loop mode: **${modes[nextMode]}**`, flags: 64 });
+                await interaction.editReply({ content: `🔁 Loop mode: **${modes[nextMode]}**` });
                 break;
 
             case 'music_previous':
-                await interaction.reply({ content: '⏮️ Previous track not available.', flags: 64 });
+                await interaction.editReply({ content: '⏮️ Previous track not available.' });
                 break;
 
             case 'music_queue':
@@ -589,95 +1151,108 @@ async function handleButtonInteraction(interaction, client) {
                 const queueList = songs.map((song, i) => 
                     `${i === 0 ? '**▶️ Now:**' : `**${i}.**`} [${song.name}](${song.url}) - \`${song.formattedDuration}\``
                 ).join('\n');
-                await interaction.reply({ 
-                    content: `📋 **Queue** (${queue.songs.length} songs)\n\n${queueList}`, 
-                    flags: 64 
+                await interaction.editReply({ 
+                    content: `📋 **Queue** (${queue.songs.length} songs)\n\n${queueList}`
                 });
                 break;
 
             case 'music_voldown':
                 const newVolDown = Math.max(0, queue.volume - 10);
                 queue.setVolume(newVolDown);
-                await interaction.reply({ content: `🔉 Volume: **${newVolDown}%**`, flags: 64 });
+                await interaction.editReply({ content: `🔉 Volume: **${newVolDown}%**` });
                 break;
 
             case 'music_volup':
                 const newVolUp = Math.min(100, queue.volume + 10);
                 queue.setVolume(newVolUp);
-                await interaction.reply({ content: `🔊 Volume: **${newVolUp}%**`, flags: 64 });
+                await interaction.editReply({ content: `🔊 Volume: **${newVolUp}%**` });
+                break;
+
+            case 'music_refresh':
+                await interaction.editReply({ content: '🔄 Music controller refreshed!' });
                 break;
 
             default:
-                await interaction.reply({ content: '❓ Unknown button action.', flags: 64 });
+                await interaction.editReply({ content: '❓ Unknown button action.' });
         }
         
-        await updateMusicPanel(interaction.guildId, client);
+        // Update the music controller after any action (with error handling)
+        await updateMusicController(interaction, queue);
     } catch (error) {
         console.error('Button interaction error:', error);
-        if (!interaction.replied) {
-            await interaction.reply({ content: '❌ An error occurred.', flags: 64 });
+        try {
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: '❌ An error occurred.', flags: 64 });
+            } else {
+                await interaction.editReply({ content: '❌ An error occurred.' });
+            }
+        } catch (replyError) {
+            console.error('Failed to send error message:', replyError);
+        }
+    }
+}
+
+/**
+ * Update the music controller after button interactions
+ */
+async function updateMusicController(interaction, queue) {
+    try {
+        // Check if the original message still exists
+        if (!interaction.message || !interaction.message.id) {
+            console.log('No message to update - interaction message not found');
+            return;
+        }
+
+        const { createCompleteMusicController } = require('./utils/componentsV2');
+        const controller = createCompleteMusicController(queue);
+        
+        if (controller && interaction.message) {
+            // Update the original message with new controller state
+            await interaction.message.edit({
+                embeds: controller.embeds,
+                components: controller.components
+            });
+        }
+    } catch (error) {
+        // Handle specific Discord API errors
+        if (error.code === 10008) {
+            console.log('Message was deleted - cannot update music controller');
+            // Clean up the music panel reference
+            const panelData = client.musicPanels.get(queue.guildId);
+            if (panelData && panelData.message && panelData.message.id === interaction.message.id) {
+                client.musicPanels.delete(queue.guildId);
+            }
+        } else if (error.code === 10062) {
+            console.log('Interaction expired - cannot update music controller');
+        } else {
+            console.error('Error updating music controller:', error.message);
         }
     }
 }
 
 async function updateMusicPanel(guildId, client) {
-    const panelData = client.musicPanels.get(guildId);
     const queue = client.getQueue(guildId);
+    if (!queue) return;
     
-    if (!panelData || !queue || !queue.currentSong) return;
-
-    try {
-        const { embed, components } = createMusicPanel(queue);
-        await panelData.message.edit({ embeds: [embed], components });
-    } catch (error) {
-        client.musicPanels.delete(guildId);
-    }
+    // Use the queue's built-in update method for real-time updates
+    await queue.updateMusicPanel();
 }
 
 client.on('error', console.error);
-process.on('unhandledRejection', error => console.error('Unhandled rejection:', error));
-
-// Simple HTTP server for Render health checks (required for free tier)
-const http = require('http');
-const PORT = process.env.PORT || 3000;
-
-const server = http.createServer((req, res) => {
-    if (req.url === '/health' || req.url === '/') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-            status: 'ok', 
-            bot: client.user?.tag || 'Starting...',
-            uptime: process.uptime(),
-            guilds: client.guilds.cache.size 
-        }));
-    } else {
-        res.writeHead(404);
-        res.end('Not Found');
-    }
-});
-
-server.listen(PORT, () => {
-    console.log(`🌐 Health check server running on port ${PORT}`);
-    
-    // Self-ping every 10 minutes to keep alive 24/7
-    if (process.env.RENDER_EXTERNAL_URL) {
-        const https = require('https');
-        const selfPingUrl = process.env.RENDER_EXTERNAL_URL;
-        
-        setInterval(() => {
-            https.get(`${selfPingUrl}/health`, (res) => {
-                console.log(`🏓 Self-ping: ${res.statusCode}`);
-            }).on('error', (err) => {
-                console.error('Self-ping error:', err.message);
-            });
-        }, 10 * 60 * 1000); 
-        
-        console.log('⏰ Self-ping enabled: keeping service alive 24/7');
-    }
-});
 
 if (!process.env.DISCORD_TOKEN) {
     console.error('❌ DISCORD_TOKEN is not set in .env file!');
+    process.exit(1);
+}
+
+// Validate Spotify credentials if provided
+if (process.env.SPOTIFY_CLIENT_ID && !process.env.SPOTIFY_CLIENT_SECRET) {
+    console.error('❌ SPOTIFY_CLIENT_SECRET is required when SPOTIFY_CLIENT_ID is provided!');
+    process.exit(1);
+}
+
+if (!process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
+    console.error('❌ SPOTIFY_CLIENT_ID is required when SPOTIFY_CLIENT_SECRET is provided!');
     process.exit(1);
 }
 

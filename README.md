@@ -1,12 +1,14 @@
 # Remani Music Bot 🎵
 
-A premium Discord music bot with YouTube support using yt-dlp for reliable streaming.
+A premium Discord music bot with YouTube and Spotify support using yt-dlp for reliable streaming.
 
 **Created by:** God BlazXx
 
 ## Features ✨
 
 - 🎵 YouTube music streaming (videos & playlists)
+- 🎧 Spotify integration (tracks, playlists & albums)
+- 🔍 Smart Spotify-to-YouTube conversion with high accuracy
 - 🎧 High-quality audio playback via yt-dlp
 - 📋 Queue management with shuffle
 - 🔁 Repeat modes (Off/Song/Queue)
@@ -18,7 +20,7 @@ A premium Discord music bot with YouTube support using yt-dlp for reliable strea
 
 ## Commands 📝
 
-- `/play <query>` - Play a song or playlist from YouTube
+- `/play <query>` - Play a song or playlist from YouTube or Spotify
 - `/join` - Join your voice channel
 - `/pause` - Pause playback
 - `/resume` - Resume playback
@@ -39,6 +41,28 @@ A premium Discord music bot with YouTube support using yt-dlp for reliable strea
 - `/filter` - Apply audio filters
 - `/help` - Show help menu
 
+## Spotify Integration 🎧
+
+Remani now supports Spotify URLs with intelligent YouTube conversion:
+
+### Supported Spotify URLs
+- **Tracks**: `https://open.spotify.com/track/...`
+- **Playlists**: `https://open.spotify.com/playlist/...`
+- **Albums**: `https://open.spotify.com/album/...`
+
+### How It Works
+1. **Smart Matching**: Uses advanced algorithms to find the best YouTube match
+2. **High Accuracy**: Matches by title, artist, and duration for precise results
+3. **Background Processing**: Large playlists are processed in the background
+4. **Fallback Search**: If Spotify search fails, falls back to YouTube search
+
+### Example Usage
+```
+/play https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh
+/play https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
+/play bad guy billie eilish
+```
+
 ## Setup 🛠️
 
 ### Prerequisites
@@ -46,6 +70,7 @@ A premium Discord music bot with YouTube support using yt-dlp for reliable strea
 - Node.js 22+ 
 - Discord Bot Token
 - Discord Application Client ID
+- **Spotify API Credentials** (for Spotify features)
 - **Windows only**: yt-dlp via WinGet (recommended for local development)
 - **Render/Railway**: yt-dlp auto-downloads during deployment ✅
 
@@ -57,34 +82,38 @@ git clone <your-repo-url>
 cd "Discord Bot"
 ```
 
-2. **Install yt-dlp (Windows only - for local development)**
+2. **Get Spotify API Credentials** (Optional but recommended)
+   - Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+   - Create a new app
+   - Copy your **Client ID** and **Client Secret**
+
+3. **Install yt-dlp (Windows only - for local development)**
 ```powershell
 winget install yt-dlp.yt-dlp
 ```
 **Note**: On Render/Railway (Linux), yt-dlp is automatically downloaded by `youtube-dl-exec` package. No manual installation needed! 🎉
 
-3. **Install dependencies**
+4. **Install dependencies**
 ```bash
 npm install
 ```
 
-3. **Install dependencies**
-```bash
-npm install
-```
-
-4. **Create `.env` file in root directory**
+5. **Create `.env` file in root directory**
 ```env
 DISCORD_TOKEN=your_discord_bot_token_here
 CLIENT_ID=your_application_client_id_here
+
+# Optional: For Spotify features
+SPOTIFY_CLIENT_ID=your_spotify_client_id_here
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
 ```
 
-5. **Deploy commands to Discord**
+6. **Deploy commands to Discord**
 ```bash
 npm run deploy
 ```
 
-6. **Start the bot**
+7. **Start the bot**
 ```bash
 npm start
 ```
@@ -110,6 +139,8 @@ npm start
 4. **Add Environment Variables**
    - `DISCORD_TOKEN` = your bot token
    - `CLIENT_ID` = your client ID
+   - `SPOTIFY_CLIENT_ID` = your Spotify client ID (optional)
+   - `SPOTIFY_CLIENT_SECRET` = your Spotify client secret (optional)
    - `NODE_ENV` = production
 
 5. **Deploy!**
@@ -148,14 +179,25 @@ Create a `.env` file with:
 ```env
 DISCORD_TOKEN=your_bot_token_here
 CLIENT_ID=your_application_client_id_here
+
+# Optional: For Spotify features
+SPOTIFY_CLIENT_ID=your_spotify_client_id_here
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
 ```
 
 **How to get these values:**
 
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Select your application
-3. **Bot Token**: Bot tab → Reset Token → Copy
-4. **Client ID**: OAuth2 → General → Application ID
+1. **Discord Credentials:**
+   - Go to [Discord Developer Portal](https://discord.com/developers/applications)
+   - Select your application
+   - **Bot Token**: Bot tab → Reset Token → Copy
+   - **Client ID**: OAuth2 → General → Application ID
+
+2. **Spotify Credentials (Optional):**
+   - Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+   - Create a new app
+   - Copy **Client ID** and **Client Secret**
+   - **Note**: Without Spotify credentials, the bot will work with YouTube only
 
 ## Bot Permissions 🔑
 
@@ -186,6 +228,9 @@ All packages are in `package.json` and will install automatically:
 - `youtube-sr` - YouTube search
 - `ffmpeg-static` - Audio processing
 - `@snazzah/davey` - DAVE protocol (modern encryption)
+
+**Spotify Integration:**
+- `axios` - HTTP client for Spotify API calls
 
 **Other:**
 - `dotenv` - Environment variables
@@ -257,18 +302,21 @@ Discord Bot/
 
 1. **Custom Queue System**: Manages song queue, repeat modes, and playback state
 2. **yt-dlp Integration**: Extracts direct stream URLs, bypassing YouTube restrictions
-3. **Voice Connection**: Uses Discord's DAVE protocol for encrypted voice
-4. **Interactive UI**: Music panels with buttons for easy control
-5. **Cross-Platform**: 
+3. **Spotify Integration**: Uses Spotify Web API + intelligent YouTube matching
+4. **Smart Search Algorithm**: Multi-strategy search with similarity scoring
+5. **Voice Connection**: Uses Discord's DAVE protocol for encrypted voice
+6. **Interactive UI**: Music panels with buttons for easy control
+7. **Cross-Platform**: 
    - **Windows**: Uses WinGet-installed yt-dlp (no path issues)
    - **Linux/Mac/Render**: Uses bundled yt-dlp binary (auto-downloads)
    - **No configuration needed** - works everywhere!
 
 ## Limitations ⚠️
 
-- YouTube only (no Spotify/SoundCloud in this version)
-- One queue per server
+- Spotify playlists require API credentials for full functionality
+- Large playlists (500+ songs) are processed in background
 - Free hosting has potential downtime (upgrade for 24/7)
+- Some region-restricted content may not be available
 
 ## Updates & Maintenance 🔄
 

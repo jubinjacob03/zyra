@@ -128,10 +128,22 @@ class MusicQueue {
      */
     setupPlayerEvents() {
         this.player.on(AudioPlayerStatus.Idle, () => {
+            console.log(`[DEBUG] Player went Idle. playing=${this.playing}, currentResource=${!!this.currentResource}`);
             // Only process queue if we were actually playing something
             if (this.playing && this.currentResource) {
+                console.log('[DEBUG] Processing queue from Idle event');
                 this.processQueue();
+            } else {
+                console.log('[DEBUG] Skipping processQueue - not ready yet');
             }
+        });
+
+        this.player.on(AudioPlayerStatus.Playing, () => {
+            console.log('[DEBUG] Player status: Playing');
+        });
+
+        this.player.on(AudioPlayerStatus.Buffering, () => {
+            console.log('[DEBUG] Player status: Buffering');
         });
 
         this.player.on('error', error => {
@@ -173,10 +185,13 @@ class MusicQueue {
         }
 
         const song = this.songs[0];
+        console.log(`[DEBUG] Starting play() for: ${song.name}`);
+        console.log(`[DEBUG] Queue length: ${this.songs.length}`);
         this.playing = true;
         this.paused = false;
 
         try {
+            console.log('[DEBUG] Executing yt-dlp...');
             const ytdlpProcess = youtubedl.exec(song.url, {
                 output: '-',
                 quiet: true,
@@ -200,6 +215,12 @@ class MusicQueue {
             // Suppress stderr to avoid broken pipe warnings
             ytdlpProcess.stderr?.on('data', () => {});
             
+            // Log when audio stream starts
+            ytdlpProcess.stdout?.once('data', () => {
+                console.log('[DEBUG] 🎶 Audio stream started - data flowing through pipe');
+            });
+            
+            console.log('[DEBUG] Creating audio resource...');
             // Create audio resource with optimized buffering to reduce glitching
             this.currentResource = createAudioResource(ytdlpProcess.stdout, {
                 metadata: song,
@@ -208,8 +229,11 @@ class MusicQueue {
             });
             
             this.currentResource.volume.setVolume(this.volume / 100);
+            console.log(`[DEBUG] Audio resource created. Volume: ${this.volume}%`);
             
+            console.log('[DEBUG] Starting player.play()...');
             this.player.play(this.currentResource);
+            console.log(`[DEBUG] Player state after play(): ${this.player.state.status}`);
             
             // Send clean music controller embed
             const { createCompleteMusicController } = require('./utils/componentsV2');
@@ -245,20 +269,27 @@ class MusicQueue {
      * Handles repeat modes and queue progression
      */
     processQueue() {
+        console.log(`[DEBUG] processQueue() called. repeatMode=${this.repeatMode}, queueLength=${this.songs.length}`);
         if (this.repeatMode === 1) {
+            console.log('[DEBUG] Repeating current song');
             this.play();
         } else {
             if (this.repeatMode === 2 && this.songs.length > 0) {
+                console.log('[DEBUG] Queue repeat mode - moving song to end');
                 this.songs.push(this.songs.shift());
             } else {
+                console.log('[DEBUG] Removing current song from queue');
                 this.songs.shift();
             }
             
+            console.log(`[DEBUG] Queue length after shift: ${this.songs.length}`);
             if (this.songs.length === 0) {
+                console.log('[DEBUG] Queue is empty - stopping');
                 console.log('🎵 Queue finished');
                 this.textChannel.send('🎵 Queue finished. Add more songs to keep the party going!');
                 this.stop();
             } else {
+                console.log('[DEBUG] Playing next song in queue');
                 this.play();
             }
         }

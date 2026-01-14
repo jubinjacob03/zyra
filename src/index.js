@@ -128,7 +128,10 @@ class MusicQueue {
      */
     setupPlayerEvents() {
         this.player.on(AudioPlayerStatus.Idle, () => {
-            this.processQueue();
+            // Only process queue if we were actually playing something
+            if (this.playing && this.currentResource) {
+                this.processQueue();
+            }
         });
 
         this.player.on('error', error => {

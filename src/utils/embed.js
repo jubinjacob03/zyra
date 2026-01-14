@@ -2,21 +2,21 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 
 // Modern Material Design inspired color palette for Discord
 const COLORS = {
-    PRIMARY: 0x000000,      // Pure Black
-    SUCCESS: 0x00C851,      // Material Green
-    WARNING: 0xFFBB33,      // Material Amber  
-    ERROR: 0xFF4444,        // Material Red
-    INFO: 0x33B5E5,         // Material Blue
-    MUSIC: 0x1A1A1A,        // Dark Gray
-    SPOTIFY: 0x1DB954,      // Spotify Green
-    YOUTUBE: 0xFF0000,      // YouTube Red
-    ACCENT: 0x6200EA,       // Material Purple
-    MUTED: 0x757575,        // Material Gray
+    PRIMARY: 0x000000,     
+    SUCCESS: 0x00C851,     
+    WARNING: 0xFFBB33,     
+    ERROR: 0xFF4444,       
+    INFO: 0x33B5E5,        
+    MUSIC: 0x1A1A1A,       
+    SPOTIFY: 0x1DB954,     
+    YOUTUBE: 0xFF0000,     
+    ACCENT: 0x6200EA,      
+    MUTED: 0x757575,       
 };
 
 // Clean, minimal icon set
 const ICONS = {
-    // Music Controls
+   
     PLAY: '▶️',
     PAUSE: '⏸️', 
     STOP: '⏹️',
@@ -26,7 +26,7 @@ const ICONS = {
     REPEAT: '🔁',
     REPEAT_ONE: '🔂',
     
-    // Audio & Interface
+   
     VOLUME_HIGH: '🔊',
     VOLUME_MID: '🔉',
     VOLUME_LOW: '🔈',
@@ -34,18 +34,18 @@ const ICONS = {
     MUSIC_NOTE: '🎵',
     HEADPHONES: '🎧',
     
-    // Status & Info
+   
     SUCCESS: '✅',
     ERROR: '❌',
     WARNING: '⚠️',
     INFO: 'ℹ️',
     LIVE: '🔴',
     
-    // Platforms
+   
     SPOTIFY: '🟢',
     YOUTUBE: '🔴',
     
-    // UI Elements
+   
     USER: '👤',
     TIME: '⏱️',
     DOT: '•',
@@ -96,10 +96,10 @@ function createMusicPanel(queue) {
     const volumeIcon = queue.volume > 66 ? ICONS.VOLUME_HIGH : 
                       queue.volume > 33 ? ICONS.VOLUME_MID : ICONS.VOLUME_LOW;
     
-    // Create progress bar (will be updated via WebSocket)
+   
     const progressBar = createProgressBar(0, song.duration || 100, 15);
     
-    // Main embed with Material Design styling
+   
     const embed = new EmbedBuilder()
         .setColor(song.spotifyData?.isSpotify ? COLORS.SPOTIFY : COLORS.PRIMARY)
         .setAuthor({ 
@@ -127,12 +127,12 @@ function createMusicPanel(queue) {
         })
         .setTimestamp();
 
-    // Set thumbnail with fallback
+   
     if (song.thumbnail && typeof song.thumbnail === 'string') {
         embed.setThumbnail(song.thumbnail);
     }
 
-    // Spotify-specific styling
+   
     if (song.spotifyData?.isSpotify) {
         embed.setAuthor({ 
             name: `${ICONS.SPOTIFY} SPOTIFY ${ICONS.ARROW} NOW PLAYING`, 
@@ -140,7 +140,7 @@ function createMusicPanel(queue) {
         });
     }
 
-    // Primary control buttons - Material Design inspired
+   
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('music_shuffle')
@@ -152,7 +152,7 @@ function createMusicPanel(queue) {
             .setEmoji(ICONS.PREVIOUS)
             .setStyle(ButtonStyle.Secondary)
             .setLabel('Previous')
-            .setDisabled(true), // Not implemented
+            .setDisabled(true),
         new ButtonBuilder()
             .setCustomId('music_pause')
             .setEmoji(queue.paused ? ICONS.PLAY : ICONS.PAUSE)
@@ -170,7 +170,7 @@ function createMusicPanel(queue) {
             .setLabel('Stop')
     );
 
-    // Secondary control buttons
+   
     const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('music_voldown')

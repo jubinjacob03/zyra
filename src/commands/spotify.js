@@ -21,7 +21,6 @@ module.exports = {
     async execute(interaction, client) {
         const SpotifyAPI = require('../utils/spotify');
         
-        // Check if Spotify is configured
         if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
             return interaction.reply({ 
                 embeds: [errorEmbed('Spotify integration is not configured. Please add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to your .env file.')], 

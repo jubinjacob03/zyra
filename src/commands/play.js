@@ -25,14 +25,12 @@ module.exports = {
             return interaction.reply({ embeds: [errorEmbed('I need permissions to join and speak in your voice channel!')], ephemeral: true });
         }
 
-        // Send immediate acknowledgment
         await interaction.reply({ content: '🔍 Searching...' });
 
         try {
             const searchStart = Date.now();
             console.log(`🔍 Starting search for: "${query}"`);
             
-            // Add timeout wrapper for the entire operation
             const result = await Promise.race([
                 client.searchSong(query, member),
                 new Promise((_, reject) => 
@@ -56,10 +54,8 @@ module.exports = {
             if (result.type === 'playlist') {
                 await queue.addSongs(result.songs);
                 
-                // Create clean music controller for playlist
                 const controller = createCompleteMusicController(queue);
                 
-                // Delete searching message and send controller
                 await interaction.deleteReply();
                 await interaction.channel.send({
                     embeds: controller.embeds,
@@ -70,17 +66,14 @@ module.exports = {
                     await queue.play();
                 }
                 
-                // Start background processing for remaining Spotify tracks
+               
                 if (result.spotifyData?.remainingTracks && result.spotifyData.remainingTracks.length > 0) {
                     client.processSpotifyPlaylistBackground(queue, result.spotifyData.remainingTracks, interaction.channel);
                 }
             } else {
                 await queue.addSong(result);
                 
-                // Create and send controller immediately
                 const controller = createCompleteMusicController(queue);
-                
-                // Delete searching message and send controller
                 await interaction.deleteReply();
                 await interaction.channel.send({
                     embeds: controller.embeds,
@@ -88,14 +81,13 @@ module.exports = {
                 });
                 
                 if (isNewQueue) {
-                    // Start playback after sending the controller
                     await queue.play();
                 }
             }
         } catch (error) {
             console.error('Play error:', error);
             
-            // Special handling for Mix playlist errors
+           
             if (error.message.includes('Mix playlists are not supported')) {
                 const embed = new EmbedBuilder()
                     .setColor('#E74C3C')
@@ -119,7 +111,7 @@ module.exports = {
                 return interaction.editReply({ embeds: [embed] });
             }
             
-            // Handle timeout errors
+           
             if (error.message.includes('timeout')) {
                 return interaction.editReply({ 
                     embeds: [errorEmbed('⏱️ Search took too long. Please try a simpler query or check your internet connection.')] 

@@ -21,13 +21,13 @@ function createWebUIProgressBar(progress, elapsed, duration) {
     const barLength = 30;
     const position = Math.floor((progress / 100) * barLength);
     
-    // Create a line with a moving dot
+   
     let bar = '';
     for (let i = 0; i < barLength; i++) {
         if (i === position) {
-            bar += 'o'; // Moving dot at current position
+            bar += 'o';
         } else {
-            bar += '─'; // Line character
+            bar += '─';
         }
     }
     
@@ -41,13 +41,13 @@ function createVolumeSlider(volume) {
     const sliderLength = 20;
     const position = Math.floor((volume / 100) * sliderLength);
     
-    // Create a line with a moving dot for volume
+   
     let slider = '';
     for (let i = 0; i < sliderLength; i++) {
         if (i === position) {
-            slider += 'o'; // Moving dot at current volume position
+            slider += 'o';
         } else {
-            slider += '─'; // Line character
+            slider += '─';
         }
     }
     
@@ -60,30 +60,30 @@ function createVolumeSlider(volume) {
 function createWebUIEmbed(queue) {
     const song = queue?.songs?.[0];
     
-    // Calculate progress
+   
     const elapsed = queue?.playing && !queue?.paused ? 
         Math.floor((Date.now() - (queue.startTime || Date.now())) / 1000) : 0;
     const duration = song?.duration || 0;
     const progress = duration > 0 ? (elapsed / duration) * 100 : 0;
     
-    // Song info (matching web UI exactly)
+   
     const songTitle = song?.name || 'No song playing';
     const artistName = song?.author || 'Unknown artist';
     const connectionStatus = queue ? 'Connected to music bot...' : 'Connecting to music bot...';
     
-    // Progress bar (matching web UI)
+   
     const progressBar = createWebUIProgressBar(progress, elapsed, duration);
     
-    // Volume slider (matching web UI)
+   
     const volumeSlider = createVolumeSlider(queue?.volume || 50);
     
-    // Platform indicator
+   
     const platformIcon = song?.spotifyData?.isSpotify ? '🟢' : '🔴';
     const platformText = song?.spotifyData?.isSpotify ? 'Spotify' : 'YouTube';
     
-    // Create embed with exact web UI styling
+   
     const embed = new EmbedBuilder()
-        .setColor(0x000000) // Black background like web UI
+        .setColor(0x000000)
         .setAuthor({ 
             name: 'Remani Music 🎵'
         })
@@ -91,23 +91,23 @@ function createWebUIEmbed(queue) {
         .setThumbnail(typeof song?.thumbnail === 'object' ? song?.thumbnail?.url : song?.thumbnail)
         .addFields(
             {
-                name: '\u200b', // Invisible field name for spacing
+                name: '\u200b',
                 value: `# ${songTitle}\n## ${artistName}`,
                 inline: false
             },
             {
-                name: '\u200b', // Progress section
+                name: '\u200b',
                 value: progressBar,
                 inline: false
             },
             {
-                name: '\u200b', // Volume section  
+                name: '\u200b',
                 value: volumeSlider,
                 inline: false
             }
         );
     
-    // Add platform info if song is playing
+   
     if (song) {
         embed.addFields({
             name: '\u200b',
@@ -116,7 +116,7 @@ function createWebUIEmbed(queue) {
         });
     }
     
-    // Add queue info if there are more songs
+   
     if (queue?.songs?.length > 1) {
         embed.addFields({
             name: 'Up Next',
@@ -134,7 +134,7 @@ function createWebUIEmbed(queue) {
  * Create control buttons that match the web UI layout
  */
 function createWebUIButtons(queue) {
-    // Main control row (matching web UI button layout)
+   
     const mainControls = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
@@ -159,7 +159,7 @@ function createWebUIButtons(queue) {
                 .setStyle(queue?.repeatMode > 0 ? ButtonStyle.Success : ButtonStyle.Secondary)
         );
     
-    // Volume and additional controls
+   
     const secondaryControls = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()

@@ -34,7 +34,6 @@ if (os.platform() === 'win32') {
         console.log('⚠️ Using bundled yt-dlp');
     }
 } else {
-    // Linux/Mac: Try system yt-dlp first (for Railway/production), then bundled
     const systemYtdlp = '/root/.nix-profile/bin/yt-dlp';
     if (fs.existsSync(systemYtdlp)) {
         youtubedl = youtubedlExec.create(systemYtdlp);
@@ -48,16 +47,12 @@ if (os.platform() === 'win32') {
 const ffmpegPath = require('ffmpeg-static');
 process.env.FFMPEG_PATH = ffmpegPath;
 
-// Global error handlers for cleaner logs
 process.on('unhandledRejection', (reason, promise) => {
-    // Only log non-yt-dlp errors and non-Discord API errors
     if (reason && typeof reason === 'object') {
         if (reason.command && reason.command.includes('yt-dlp')) {
-            // Suppress yt-dlp broken pipe errors - they're expected when audio completes
             return;
         }
         if (reason.code === 10008 || reason.code === 10062) {
-            // Suppress Discord API errors for deleted messages/expired interactions
             console.log(`Discord API: ${reason.code === 10008 ? 'Message deleted' : 'Interaction expired'}`);
             return;
         }
@@ -66,7 +61,6 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (error) => {
-    // Only log non-yt-dlp errors
     if (error.message && error.message.includes('yt-dlp')) {
         return;
     }
@@ -81,12 +75,10 @@ const client = new Client({
     ],
 });
 
-// Initialize bot collections
 client.commands = new Collection();
 client.queues = new Map();
 client.musicPanels = new Map();
 
-// Initialize Spotify API if credentials are provided
 let spotifyAPI = null;
 if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
     spotifyAPI = new SpotifyAPI(process.env.SPOTIFY_CLIENT_ID, process.env.SPOTIFY_CLIENT_SECRET);
@@ -113,11 +105,11 @@ class MusicQueue {
         this.player = createAudioPlayer({
             behaviors: { 
                 noSubscriber: NoSubscriberBehavior.Play,
-                maxMissedFrames: Math.round(5000 / 20) // Allow up to 5 seconds of missed frames
+                maxMissedFrames: Math.round(10000 / 20)
             }
         });
         this.currentResource = null;
-        this.streamStarted = false; // Track if audio stream has actually started
+        this.streamStarted = false;
         
         this.connection.subscribe(this.player);
         this.setupPlayerEvents();
@@ -129,22 +121,9 @@ class MusicQueue {
      */
     setupPlayerEvents() {
         this.player.on(AudioPlayerStatus.Idle, () => {
-            console.log(`[DEBUG] Player went Idle. playing=${this.playing}, currentResource=${!!this.currentResource}, streamStarted=${this.streamStarted}`);
-            // Only process queue if stream has actually started (song finished playing)
             if (this.playing && this.currentResource && this.streamStarted) {
-                console.log('[DEBUG] Processing queue from Idle event - song finished');
                 this.processQueue();
-            } else {
-                console.log('[DEBUG] Skipping processQueue - stream never started or not ready');
             }
-        });
-
-        this.player.on(AudioPlayerStatus.Playing, () => {
-            console.log('[DEBUG] Player status: Playing');
-        });
-
-        this.player.on(AudioPlayerStatus.Buffering, () => {
-            console.log('[DEBUG] Player status: Buffering');
         });
 
         this.player.on('error', error => {
@@ -186,14 +165,11 @@ class MusicQueue {
         }
 
         const song = this.songs[0];
-        console.log(`[DEBUG] Starting play() for: ${song.name}`);
-        console.log(`[DEBUG] Queue length: ${this.songs.length}`);
         this.playing = true;
         this.paused = false;
-        this.streamStarted = false; // Reset for new song
+        this.streamStarted = false;
 
         try {
-            console.log('[DEBUG] Executing yt-dlp...');
             const ytdlpProcess = youtubedl.exec(song.url, {
                 output: '-',
                 quiet: true,
@@ -210,28 +186,22 @@ class MusicQueue {
                 ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' })
             });
             
-            // Suppress stderr to avoid broken pipe warnings
             ytdlpProcess.stderr?.on('data', () => {});
             
-            // Log when audio stream starts and mark it
             let streamTimeout;
             ytdlpProcess.stdout?.once('data', () => {
-                console.log('[DEBUG] 🎶 Audio stream started - data flowing through pipe');
                 this.streamStarted = true;
                 if (streamTimeout) clearTimeout(streamTimeout);
             });
             
-            // Add timeout to detect stream failures
             streamTimeout = setTimeout(() => {
                 if (!this.streamStarted) {
-                    console.error('[ERROR] ❌ Audio stream failed to start within 10 seconds!');
+                    console.error('❌ Audio stream failed to start within 10 seconds');
                     this.textChannel.send('❌ Failed to start audio stream. The video might be unavailable or region-locked.').catch(console.error);
                     this.processQueue();
                 }
             }, 10000);
             
-            console.log('[DEBUG] Creating audio resource...');
-            // Create audio resource with optimized buffering to reduce glitching
             this.currentResource = createAudioResource(ytdlpProcess.stdout, {
                 metadata: song,
                 inputType: StreamType.Arbitrary,
@@ -239,24 +209,18 @@ class MusicQueue {
             });
             
             this.currentResource.volume.setVolume(this.volume / 100);
-            console.log(`[DEBUG] Audio resource created. Volume: ${this.volume}%`);
             
-            console.log('[DEBUG] Starting player.play()...');
             this.player.play(this.currentResource);
-            console.log(`[DEBUG] Player state after play(): ${this.player.state.status}`);
             
-            // Send clean music controller embed
             const { createCompleteMusicController } = require('./utils/componentsV2');
             const controller = createCompleteMusicController(this);
             const message = await this.textChannel.send(controller);
             
-            // Clean up old panel before setting new one
             const oldPanel = client.musicPanels.get(this.guildId);
             if (oldPanel?.message) {
                 try { 
                     await oldPanel.message.delete(); 
                 } catch (error) {
-                    // Ignore deletion errors (message might already be deleted)
                     console.log('Could not delete old music panel - it may have been already deleted');
                 }
             }
@@ -264,7 +228,7 @@ class MusicQueue {
             client.musicPanels.set(this.guildId, { message, song, startTime: Date.now() });
             console.log('🎵 Now playing:', song.name);
             
-            // Start real-time progress updates via WebSocket
+           
             this.startProgressUpdates();
             
         } catch (error) {
@@ -279,27 +243,20 @@ class MusicQueue {
      * Handles repeat modes and queue progression
      */
     processQueue() {
-        console.log(`[DEBUG] processQueue() called. repeatMode=${this.repeatMode}, queueLength=${this.songs.length}`);
         if (this.repeatMode === 1) {
-            console.log('[DEBUG] Repeating current song');
             this.play();
         } else {
             if (this.repeatMode === 2 && this.songs.length > 0) {
-                console.log('[DEBUG] Queue repeat mode - moving song to end');
                 this.songs.push(this.songs.shift());
             } else {
-                console.log('[DEBUG] Removing current song from queue');
                 this.songs.shift();
             }
             
-            console.log(`[DEBUG] Queue length after shift: ${this.songs.length}`);
             if (this.songs.length === 0) {
-                console.log('[DEBUG] Queue is empty - stopping');
                 console.log('🎵 Queue finished');
                 this.textChannel.send('🎵 Queue finished. Add more songs to keep the party going!');
                 this.stop();
             } else {
-                console.log('[DEBUG] Playing next song in queue');
                 this.play();
             }
         }
@@ -337,7 +294,7 @@ class MusicQueue {
         this.playing = false;
         this.player.stop();
         
-        // Stop progress updates
+       
         this.stopProgressUpdates();
         
         if (this.connection && this.connection.state.status !== VoiceConnectionStatus.Destroyed) {
@@ -391,7 +348,7 @@ class MusicQueue {
      * Start real-time progress updates for the music panel
      */
     startProgressUpdates() {
-        // Clear any existing interval
+       
         if (this.progressInterval) {
             clearInterval(this.progressInterval);
         }
@@ -410,11 +367,11 @@ class MusicQueue {
                 await this.updateMusicPanel();
             } catch (error) {
                 console.error('Error in progress update:', error.message);
-                // Stop updates if there's a persistent error
+               
                 clearInterval(this.progressInterval);
                 this.progressInterval = null;
             }
-        }, 5000); // Update every 5 seconds
+        }, 5000);
     }
 
     /**
@@ -425,18 +382,18 @@ class MusicQueue {
         if (!panelData?.message || !this.songs[0]) return;
 
         try {
-            // Check if message still exists before updating
+           
             await panelData.message.fetch();
             
             const { embed, components } = createMusicPanel(this);
             
-            // Calculate current progress
+           
             const elapsed = this.playing && !this.paused ? 
                 Math.floor((Date.now() - (panelData.startTime || Date.now())) / 1000) : 0;
             const song = this.songs[0];
             const progressBar = createProgressBar(elapsed, song.duration || 100, 15);
             
-            // Update embed description with live progress
+           
             const volumeIcon = this.volume > 66 ? '🔊' : this.volume > 33 ? '🔉' : '🔈';
             const loopModes = ['Off', '🔂 Song', '🔁 Queue'];
             
@@ -448,14 +405,14 @@ class MusicQueue {
 
             await panelData.message.edit({ embeds: [embed], components });
         } catch (error) {
-            // Handle specific Discord API errors
+           
             if (error.code === 10008) {
-                // Message was deleted, clean up
+               
                 console.log('Music panel message was deleted - cleaning up');
                 client.musicPanels.delete(this.guildId);
                 this.stopProgressUpdates();
             } else if (error.code === 10003) {
-                // Unknown channel, clean up
+               
                 console.log('Music panel channel not found - cleaning up');
                 client.musicPanels.delete(this.guildId);
                 this.stopProgressUpdates();
@@ -564,7 +521,7 @@ client.getQueue = function(guildId) {
  * @returns {Promise<Object|null>} Song/playlist object or null
  */
 async function searchSong(query, user) {
-    // Add timeout to prevent hanging - increased to 60 seconds for mobile devices
+   
     return Promise.race([
         searchSongInternal(query, user),
         new Promise((_, reject) => 
@@ -577,15 +534,15 @@ async function searchSongInternal(query, user) {
     const videoPattern = /^(https?:\/\/)?(www\.)?(m\.|music\.)?(youtube\.com|youtu\.?be)\/.+$/;
     const playlistPattern = /^.*(list=)([^#\&\?]*).*/;
     
-    // YouTube Mix playlist patterns (user-specific, cannot be accessed)
+   
     const mixPlaylistPattern = /[?&]list=(RD[A-Za-z0-9_-]+|RDMM[A-Za-z0-9_-]+|RDAMPL[A-Za-z0-9_-]+|RDCLAK[A-Za-z0-9_-]+)/;
     
-    // Spotify URL patterns
+   
     const spotifyTrackPattern = /spotify\.com\/track\/([a-zA-Z0-9]+)/;
     const spotifyPlaylistPattern = /spotify\.com\/playlist\/([a-zA-Z0-9]+)/;
     const spotifyAlbumPattern = /spotify\.com\/album\/([a-zA-Z0-9]+)/;
     
-    // Check for YouTube Mix playlists first
+   
     if (mixPlaylistPattern.test(query)) {
         throw new Error('❌ **YouTube Mix playlists are not supported**\n\n' +
             '🔒 Mix playlists are personalized and user-specific - they cannot be accessed by bots.\n\n' +
@@ -595,10 +552,10 @@ async function searchSongInternal(query, user) {
             '• Create a custom playlist with your favorite tracks');
     }
     
-    // Cookie options for yt-dlp
+   
     const cookieOpts = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
     
-    // Handle Spotify Track URLs
+   
     if (spotifyTrackPattern.test(query) && spotifyAPI) {
         try {
             const trackId = SpotifyAPI.extractSpotifyId(query, 'track');
@@ -608,7 +565,7 @@ async function searchSongInternal(query, user) {
             const youtubeVideo = await YouTubeSearchEngine.findBestMatch(spotifyTrack);
             
             if (!youtubeVideo) {
-                // Fallback to direct YouTube search
+               
                 const fallbackQuery = `${spotifyTrack.name} ${spotifyTrack.artists[0]?.name}`;
                 
                 try {
@@ -641,13 +598,13 @@ async function searchSongInternal(query, user) {
                         };
                     }
                 } catch (fallbackError) {
-                    // Silent fallback failure
+                   
                 }
                 
                 throw new Error('Could not find a matching YouTube video for this Spotify track');
             }
             
-            // Get detailed info using yt-dlp
+           
             const info = await youtubedl(youtubeVideo.url, {
                 dumpSingleJson: true,
                 noWarnings: true,
@@ -672,7 +629,7 @@ async function searchSongInternal(query, user) {
                 }
             };
         } catch (error) {
-            // For single tracks, try fallback search before giving up
+           
             if (error.message.includes('Could not find a matching YouTube video')) {
                 try {
                     const trackId = SpotifyAPI.extractSpotifyId(query, 'track');
@@ -707,14 +664,14 @@ async function searchSongInternal(query, user) {
                         };
                     }
                 } catch (fallbackError) {
-                    // Silent fallback failure
+                   
                 }
             }
             throw new Error(`Unable to find this Spotify track on YouTube. Try a different song or search manually.`);
         }
     }
     
-    // Handle Spotify Playlist URLs
+   
     if (spotifyPlaylistPattern.test(query) && spotifyAPI) {
         try {
             const playlistId = SpotifyAPI.extractSpotifyId(query, 'playlist');
@@ -725,7 +682,7 @@ async function searchSongInternal(query, user) {
                 throw new Error('Spotify playlist is empty or contains no playable tracks');
             }
             
-            // Convert first few tracks immediately, rest in background
+           
             const immediateConversions = Math.min(tracks.length, 3);
             const convertedSongs = [];
             
@@ -751,10 +708,10 @@ async function searchSongInternal(query, user) {
                             }
                         });
                     } else {
-                        // Silent failure for immediate conversions
+                       
                     }
                 } catch (error) {
-                    // Silent failure for immediate conversions
+                   
                 }
             }
             
@@ -782,7 +739,7 @@ async function searchSongInternal(query, user) {
         }
     }
     
-    // Handle Spotify Album URLs
+   
     if (spotifyAlbumPattern.test(query) && spotifyAPI) {
         try {
             const albumId = SpotifyAPI.extractSpotifyId(query, 'album');
@@ -794,12 +751,12 @@ async function searchSongInternal(query, user) {
             }
             
             const convertedSongs = [];
-            const maxConversions = Math.min(tracks.length, 10); // Limit for albums
+            const maxConversions = Math.min(tracks.length, 10);
             
             for (let i = 0; i < maxConversions; i++) {
                 const track = tracks[i];
                 try {
-                    // Add album artist info to track for better matching
+                   
                     const trackWithAlbumArtist = {
                         ...track,
                         artists: track.artists.length > 0 ? track.artists : albumInfo.artists
@@ -823,7 +780,7 @@ async function searchSongInternal(query, user) {
                         });
                     }
                 } catch (error) {
-                    // Silent conversion failure for individual tracks
+                   
                 }
             }
             
@@ -848,7 +805,7 @@ async function searchSongInternal(query, user) {
         }
     }
     
-    // Handle YouTube URLs (existing logic)
+   
     if (videoPattern.test(query) && !playlistPattern.test(query)) {
         const info = await youtubedl(query, {
             dumpSingleJson: true,
@@ -870,7 +827,7 @@ async function searchSongInternal(query, user) {
         };
     } 
     
-    // Handle YouTube Playlists (existing logic)
+   
     else if (playlistPattern.test(query)) {
         try {
             const info = await youtubedl(query, {
@@ -883,7 +840,7 @@ async function searchSongInternal(query, user) {
             
             const videos = info.entries || [];
             
-            // Check if this is actually a Mix playlist that slipped through
+           
             if (videos.length === 0 && (query.includes('RD') || query.includes('RDMM') || query.includes('RDAMPL'))) {
                 throw new Error('❌ **YouTube Mix playlists are not supported**\n\n' +
                     '🔒 Mix playlists are personalized and user-specific - they cannot be accessed by bots.\n\n' +
@@ -913,12 +870,12 @@ async function searchSongInternal(query, user) {
                 }))
             };
         } catch (error) {
-            // Check if this is a Mix playlist error
+           
             if (error.message.includes('Mix playlists are not supported')) {
-                throw error; // Re-throw our custom error
+                throw error;
             }
             
-            // Check for common Mix playlist error patterns from yt-dlp
+           
             if (error.message.includes('Unable to extract') || 
                 error.message.includes('playlist does not exist') ||
                 error.message.includes('Private playlist') ||
@@ -935,9 +892,9 @@ async function searchSongInternal(query, user) {
         }
     } 
     
-    // Handle search queries (existing logic with Spotify search option)
+   
     else {
-        // If Spotify is available, try Spotify search first for better results
+       
         if (spotifyAPI && !query.startsWith('youtube:') && !query.startsWith('yt:')) {
             try {
                 const spotifyResults = await spotifyAPI.searchTracks(query, 3);
@@ -972,11 +929,11 @@ async function searchSongInternal(query, user) {
                     }
                 }
             } catch (error) {
-                // Silent Spotify search failure, fallback to YouTube
+               
             }
         }
         
-        // Fallback to YouTube search (existing logic)
+       
         const result = await youtube.searchOne(query);
         if (!result) return null;
         
@@ -1028,7 +985,7 @@ async function processSpotifyPlaylistBackground(queue, remainingTracks, textChan
                     formattedDuration: formatDuration(youtubeVideo.duration || 0),
                     thumbnail: track.album?.images?.[0]?.url || youtubeVideo.thumbnail,
                     author: track.artists.map(a => a.name).join(', '),
-                    user: queue.songs[0]?.user, // Use same user as first song
+                    user: queue.songs[0]?.user,
                     spotifyData: {
                         originalUrl: track.external_urls?.spotify,
                         trackId: track.id,
@@ -1039,7 +996,7 @@ async function processSpotifyPlaylistBackground(queue, remainingTracks, textChan
                 await queue.addSong(song);
                 convertedCount++;
                 
-                // Send progress update every 10 conversions
+               
                 if (convertedCount % 10 === 0) {
                     textChannel.send(`🎵 **Spotify Converter**: Added ${convertedCount}/${remainingTracks.length} tracks to queue`).catch(console.error);
                 }
@@ -1050,10 +1007,10 @@ async function processSpotifyPlaylistBackground(queue, remainingTracks, textChan
             failedCount++;
         }
         
-        // Rate limiting delay
+       
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Check if queue still exists
+       
         if (!client.getQueue(queue.guildId)) {
             break;
         }
@@ -1098,6 +1055,11 @@ client.once(Events.ClientReady, async (readyClient) => {
     }
     
     client.user.setActivity('🎵 /play to start', { type: ActivityType.Listening });
+    
+    setInterval(() => {
+        const status = `✅ Bot alive | ${client.guilds.cache.size} servers | ${client.queues.size} active queues`;
+        console.log(status);
+    }, 30000);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -1110,12 +1072,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } catch (error) {
             console.error(`Error executing ${interaction.commandName}:`, error);
             
-            // Handle specific Discord API errors
+           
             const errorMessage = { content: '❌ There was an error executing this command!', flags: 64 };
             
             try {
                 if (error.code === 10062) {
-                    // Unknown interaction - interaction expired
+                   
                     console.log('Interaction expired - cannot respond');
                     return;
                 }
@@ -1143,7 +1105,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
  * @param {Client} client - Discord client instance
  */
 async function handleButtonInteraction(interaction, client) {
-    // Use deferUpdate for button interactions to avoid "thinking" state
+   
     try {
         await interaction.deferUpdate();
     } catch (error) {
@@ -1160,7 +1122,7 @@ async function handleButtonInteraction(interaction, client) {
     const member = interaction.member;
     const voiceChannel = member.voice.channel;
 
-    // Verify user is in the same voice channel as bot
+   
     if (!voiceChannel || voiceChannel.id !== queue.voiceChannel.id) {
         return interaction.followUp({ content: '❌ You need to be in the same voice channel.', ephemeral: true });
     }
@@ -1233,7 +1195,7 @@ async function handleButtonInteraction(interaction, client) {
                 await interaction.followUp({ content: '❓ Unknown button action.', ephemeral: true });
         }
         
-        // Update the music controller after any action (with error handling)
+       
         await updateMusicController(interaction, queue);
     } catch (error) {
         console.error('Button interaction error:', error);
@@ -1250,7 +1212,7 @@ async function handleButtonInteraction(interaction, client) {
  */
 async function updateMusicController(interaction, queue) {
     try {
-        // Check if the original message still exists
+       
         if (!interaction.message || !interaction.message.id) {
             console.log('No message to update - interaction message not found');
             return;
@@ -1260,17 +1222,17 @@ async function updateMusicController(interaction, queue) {
         const controller = createCompleteMusicController(queue);
         
         if (controller && interaction.message) {
-            // Update the original message with new controller state
+           
             await interaction.message.edit({
                 embeds: controller.embeds,
                 components: controller.components
             });
         }
     } catch (error) {
-        // Handle specific Discord API errors
+       
         if (error.code === 10008) {
             console.log('Message was deleted - cannot update music controller');
-            // Clean up the music panel reference
+           
             const panelData = client.musicPanels.get(queue.guildId);
             if (panelData && panelData.message && panelData.message.id === interaction.message.id) {
                 client.musicPanels.delete(queue.guildId);
@@ -1287,7 +1249,7 @@ async function updateMusicPanel(guildId, client) {
     const queue = client.getQueue(guildId);
     if (!queue) return;
     
-    // Use the queue's built-in update method for real-time updates
+   
     await queue.updateMusicPanel();
 }
 

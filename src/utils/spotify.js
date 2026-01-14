@@ -19,7 +19,7 @@ class SpotifyAPI {
      */
     async authenticate() {
         if (this.isAuthenticating) {
-            // Wait for ongoing authentication
+           
             while (this.isAuthenticating) {
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
@@ -41,7 +41,7 @@ class SpotifyAPI {
             });
 
             this.accessToken = response.data.access_token;
-            this.tokenExpiry = Date.now() + (response.data.expires_in * 1000) - 60000; // 1min buffer
+            this.tokenExpiry = Date.now() + (response.data.expires_in * 1000) - 60000;
         } catch (error) {
             throw new Error('Failed to authenticate with Spotify API');
         } finally {
@@ -113,7 +113,7 @@ class SpotifyAPI {
                     timeout: 15000
                 });
 
-                // Get playlist info on first request
+               
                 if (offset === 0) {
                     const playlistResponse = await axios.get(
                         `https://api.spotify.com/v1/playlists/${playlistId}`, {
@@ -153,10 +153,10 @@ class SpotifyAPI {
                 tracks.push(...validTracks);
                 offset += limit;
 
-                // Break if no more tracks or reasonable limit reached
+               
                 if (!response.data.next || tracks.length >= 500) break;
 
-                // Rate limiting delay
+               
                 await new Promise(resolve => setTimeout(resolve, 100));
 
             } while (true);

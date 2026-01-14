@@ -16,10 +16,10 @@ class YouTubeSearchEngine {
         const primaryArtist = artists[0]?.name || '';
         const durationSeconds = Math.floor(duration_ms / 1000);
 
-        // Clean track title for better matching
+       
         const cleanTitle = this.cleanTrackTitle(title);
 
-        // Progressive search strategies - from most specific to general
+       
         const searchQueries = [
             `${cleanTitle} ${primaryArtist} official audio`,
             `${cleanTitle} ${primaryArtist} official video`,
@@ -29,10 +29,10 @@ class YouTubeSearchEngine {
             `${title} ${artistNames}`,
             `${title} ${primaryArtist}`,
             `${cleanTitle} ${primaryArtist}`,
-            // More relaxed searches
-            `${title.split(' ')[0]} ${primaryArtist}`, // First word of title
-            `${primaryArtist} ${title}`, // Artist first
-            // Very broad fallback
+           
+            `${title.split(' ')[0]} ${primaryArtist}`,
+            `${primaryArtist} ${title}`,
+           
             `${title}`,
             `${primaryArtist}`
         ];
@@ -55,14 +55,14 @@ class YouTubeSearchEngine {
                     continue;
                 }
 
-                // Find best match using similarity scoring
+               
                 const bestMatch = this.selectBestMatch(results, title, artistNames, durationSeconds);
                 
                 if (bestMatch) {
                     return bestMatch;
                 }
                 
-                // Rate limiting delay
+               
                 await new Promise(resolve => setTimeout(resolve, 100));
                 
             } catch (error) {
@@ -94,32 +94,32 @@ class YouTubeSearchEngine {
                 continue;
             }
 
-            // Fix duration - youtube-sr sometimes returns milliseconds instead of seconds
+           
             let duration = video.duration;
-            if (duration > 10000) { // If duration is suspiciously large, it's probably in milliseconds
+            if (duration > 10000) {
                 duration = Math.floor(duration / 1000);
             }
 
-            // More lenient duration filtering
+           
             if (duration < 10 || duration > 1200) {
                 continue;
             }
 
-            // Calculate individual similarity scores
+           
             const titleScore = this.calculateTitleSimilarity(video.title, originalTitle);
             const artistScore = this.calculateArtistSimilarity(video.title, artistNames);
             const durationScore = this.calculateDurationSimilarity(duration, targetDuration);
             const channelScore = this.calculateChannelScore(video.channel?.name || '');
             
-            // Even more lenient weighted scoring system
+           
             const totalScore = (titleScore * 0.50) + (artistScore * 0.35) + (durationScore * 0.10) + (channelScore * 0.05);
 
-            // Update best match if score is better - extremely low threshold for debugging
+           
             if (totalScore > bestScore && totalScore > 0.05) {
                 bestScore = totalScore;
                 bestMatch = video;
                 bestMatch.matchScore = totalScore;
-                // Store corrected duration
+               
                 bestMatch.correctedDuration = duration;
             }
         }
@@ -139,13 +139,13 @@ class YouTubeSearchEngine {
         const ytNorm = normalize(youtubeTitle);
         const spNorm = normalize(spotifyTitle);
 
-        // Exact substring match gets highest score
+       
         if (ytNorm.includes(spNorm) || spNorm.includes(ytNorm)) {
             return 1.0;
         }
         
-        // Calculate word overlap using Jaccard similarity
-        const ytWords = new Set(ytNorm.split(' ').filter(w => w.length > 0)); // Accept any length word
+       
+        const ytWords = new Set(ytNorm.split(' ').filter(w => w.length > 0));
         const spWords = new Set(spNorm.split(' ').filter(w => w.length > 0));
         
         const intersection = new Set([...ytWords].filter(x => spWords.has(x)));
@@ -153,7 +153,7 @@ class YouTubeSearchEngine {
         
         const jaccardScore = union.size > 0 ? intersection.size / union.size : 0;
         
-        // Also check for partial word matches - more lenient
+       
         let partialMatches = 0;
         for (const spWord of spWords) {
             for (const ytWord of ytWords) {
@@ -169,7 +169,7 @@ class YouTubeSearchEngine {
         
         const partialScore = spWords.size > 0 ? partialMatches / spWords.size : 0;
         
-        // Combine Jaccard and partial matching - give more weight to partial matches
+       
         return Math.max(jaccardScore, partialScore * 0.9);
     }
 
@@ -178,17 +178,17 @@ class YouTubeSearchEngine {
      */
     static calculateArtistSimilarity(youtubeTitle, artistNames) {
         const ytTitle = youtubeTitle.toLowerCase();
-        const artists = artistNames.toLowerCase().split(/[,&\s]+/).filter(a => a.length > 0); // Accept any length
+        const artists = artistNames.toLowerCase().split(/[,&\s]+/).filter(a => a.length > 0);
         
         let matchScore = 0;
         let totalArtists = artists.length;
         
         for (const artist of artists) {
-            // Check for exact match
+           
             if (ytTitle.includes(artist)) {
-                matchScore += artist === artists[0] ? 1.0 : 0.8; // Primary artist gets more weight
+                matchScore += artist === artists[0] ? 1.0 : 0.8;
             }
-            // Check for partial match (for artists with multiple words)
+           
             else if (artist.length > 2) {
                 const artistWords = artist.split(' ');
                 let partialMatches = 0;
@@ -210,20 +210,20 @@ class YouTubeSearchEngine {
      * Calculate duration similarity with tolerance
      */
     static calculateDurationSimilarity(youtubeDuration, spotifyDuration) {
-        if (!youtubeDuration || !spotifyDuration) return 0.5; // Neutral score if no duration
+        if (!youtubeDuration || !spotifyDuration) return 0.5;
         
         const diff = Math.abs(youtubeDuration - spotifyDuration);
         const avgDuration = (youtubeDuration + spotifyDuration) / 2;
         
-        // More lenient duration matching - allow up to 30% difference
+       
         const tolerance = avgDuration * 0.30;
         
         if (diff === 0) return 1.0;
-        if (diff <= 10) return 0.9; // Very close (within 10 seconds)
-        if (diff <= 30) return 0.8; // Close (within 30 seconds)
+        if (diff <= 10) return 0.9;
+        if (diff <= 30) return 0.8;
         if (diff <= tolerance) return Math.max(0.5, 1 - (diff / tolerance) * 0.4);
         
-        return 0.3; // Still give some score for very different durations
+        return 0.3;
     }
 
     /**
@@ -235,24 +235,24 @@ class YouTubeSearchEngine {
         
         const channel = channelName.toLowerCase();
         
-        // Official indicators
+       
         if (channel.includes('official') || channel.includes('vevo') || 
             channel.includes('records') || channel.includes('music')) {
             return 1.0;
         }
         
-        // Topic channels (auto-generated by YouTube)
+       
         if (channel.includes(' - topic')) {
             return 0.9;
         }
         
-        // Known music distributors
+       
         const musicDistributors = ['warner', 'sony', 'universal', 'atlantic', 'columbia', 'emi'];
         if (musicDistributors.some(dist => channel.includes(dist))) {
             return 0.8;
         }
         
-        return 0.3; // Default score for unknown channels
+        return 0.3;
     }
 
     /**
@@ -260,10 +260,10 @@ class YouTubeSearchEngine {
      */
     static cleanTrackTitle(title) {
         return title
-            .replace(/\(.*?\)/g, '') // Remove parentheses content
-            .replace(/\[.*?\]/g, '') // Remove brackets content
-            .replace(/\s*-\s*remaster.*$/i, '') // Remove remaster info
-            .replace(/\s*-\s*\d{4}.*$/i, '') // Remove year info
+            .replace(/\(.*?\)/g, '')
+            .replace(/\[.*?\]/g, '')
+            .replace(/\s*-\s*remaster.*$/i, '')
+            .replace(/\s*-\s*\d{4}.*$/i, '')
             .trim();
     }
 }

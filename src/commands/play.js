@@ -56,17 +56,23 @@ module.exports = {
                 
                 const controller = createCompleteMusicController(queue);
                 
-                await interaction.deleteReply();
-                await interaction.channel.send({
-                    embeds: controller.embeds,
-                    components: controller.components
-                });
+                try {
+                    await interaction.editReply({
+                        content: null,
+                        embeds: controller.embeds,
+                        components: controller.components
+                    });
+                } catch (editError) {
+                    await interaction.channel.send({
+                        embeds: controller.embeds,
+                        components: controller.components
+                    });
+                }
                 
                 if (isNewQueue) {
                     await queue.play();
                 }
                 
-               
                 if (result.spotifyData?.remainingTracks && result.spotifyData.remainingTracks.length > 0) {
                     client.processSpotifyPlaylistBackground(queue, result.spotifyData.remainingTracks, interaction.channel);
                 }
@@ -74,11 +80,19 @@ module.exports = {
                 await queue.addSong(result);
                 
                 const controller = createCompleteMusicController(queue);
-                await interaction.deleteReply();
-                await interaction.channel.send({
-                    embeds: controller.embeds,
-                    components: controller.components
-                });
+                
+                try {
+                    await interaction.editReply({
+                        content: null,
+                        embeds: controller.embeds,
+                        components: controller.components
+                    });
+                } catch (editError) {
+                    await interaction.channel.send({
+                        embeds: controller.embeds,
+                        components: controller.components
+                    });
+                }
                 
                 if (isNewQueue) {
                     await queue.play();
@@ -87,7 +101,6 @@ module.exports = {
         } catch (error) {
             console.error('Play error:', error);
             
-           
             if (error.message.includes('Mix playlists are not supported')) {
                 const embed = new EmbedBuilder()
                     .setColor('#E74C3C')
@@ -108,17 +121,31 @@ module.exports = {
                     .setFooter({ text: 'Try using a regular playlist or search for songs individually' })
                     .setTimestamp();
                 
-                return interaction.editReply({ embeds: [embed] });
+                try {
+                    return await interaction.editReply({ content: null, embeds: [embed] });
+                } catch {
+                    return await interaction.channel.send({ embeds: [embed] });
+                }
             }
             
-           
             if (error.message.includes('timeout')) {
-                return interaction.editReply({ 
-                    embeds: [errorEmbed('⏱️ Search took too long. Please try a simpler query or check your internet connection.')] 
-                });
+                try {
+                    return await interaction.editReply({ 
+                        content: null,
+                        embeds: [errorEmbed('⏱️ Search took too long. Please try a simpler query or check your internet connection.')] 
+                    });
+                } catch {
+                    return await interaction.channel.send({
+                        embeds: [errorEmbed('⏱️ Search took too long. Please try a simpler query or check your internet connection.')]
+                    });
+                }
             }
             
-            await interaction.editReply({ embeds: [errorEmbed(`Could not play: ${error.message}`)] });
+            try {
+                await interaction.editReply({ content: null, embeds: [errorEmbed(`Could not play: ${error.message}`)] });
+            } catch {
+                await interaction.channel.send({ embeds: [errorEmbed(`Could not play: ${error.message}`)] });
+            }
         }
     },
 };

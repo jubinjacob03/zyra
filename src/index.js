@@ -111,7 +111,10 @@ class MusicQueue {
         this.paused = false;
         this.repeatMode = 0; 
         this.player = createAudioPlayer({
-            behaviors: { noSubscriber: NoSubscriberBehavior.Play }
+            behaviors: { 
+                noSubscriber: NoSubscriberBehavior.Play,
+                maxMissedFrames: Math.round(5000 / 20) // Allow up to 5 seconds of missed frames
+            }
         });
         this.currentResource = null;
         
@@ -175,7 +178,8 @@ class MusicQueue {
                 output: '-',
                 quiet: true,
                 noWarnings: true,
-                format: 'bestaudio/best',
+                // Optimized format for streaming - prefer opus audio for Discord
+                format: 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio',
                 noPlaylist: true,
                 geoBypass: true,
                 noCheckCertificates: true,
@@ -184,16 +188,20 @@ class MusicQueue {
                     'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 ],
                 extractorArgs: 'youtube:player_client=android',
+                // Add buffer size for smoother streaming
+                bufferSize: '16K',
+                httpChunkSize: '10M',
                 ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' })
             });
             
             // Suppress stderr to avoid broken pipe warnings
             ytdlpProcess.stderr?.on('data', () => {});
             
+            // Create audio resource with optimized buffering to reduce glitching
             this.currentResource = createAudioResource(ytdlpProcess.stdout, {
                 metadata: song,
-                inlineVolume: true,
-                inputType: StreamType.Arbitrary
+                inputType: StreamType.Arbitrary,
+                inlineVolume: true
             });
             
             this.currentResource.volume.setVolume(this.volume / 100);
@@ -1091,11 +1099,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
  * @param {Client} client - Discord client instance
  */
 async function handleButtonInteraction(interaction, client) {
-    // Use flags instead of ephemeral property - defer immediately for mobile
+    // Use deferUpdate for button interactions to avoid "thinking" state
     try {
-        await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag
+        await interaction.deferUpdate();
     } catch (error) {
-        // If defer fails, log and exit gracefully
         console.error('Failed to defer button interaction:', error.message);
         return;
     }
@@ -1103,7 +1110,7 @@ async function handleButtonInteraction(interaction, client) {
     const queue = client.getQueue(interaction.guildId);
     
     if (!queue) {
-        return interaction.editReply({ content: '\u274c Nothing is playing right now.' });
+        return interaction.followUp({ content: '\u274c Nothing is playing right now.', ephemeral: true });
     }
 
     const member = interaction.member;
@@ -1111,7 +1118,7 @@ async function handleButtonInteraction(interaction, client) {
 
     // Verify user is in the same voice channel as bot
     if (!voiceChannel || voiceChannel.id !== queue.voiceChannel.id) {
-        return interaction.editReply({ content: '❌ You need to be in the same voice channel.' });
+        return interaction.followUp({ content: '❌ You need to be in the same voice channel.', ephemeral: true });
     }
 
     try {
@@ -1175,11 +1182,11 @@ async function handleButtonInteraction(interaction, client) {
                 break;
 
             case 'music_refresh':
-                await interaction.editReply({ content: '🔄 Music controller refreshed!' });
+                await interaction.followUp({ content: '🔄 Music controller refreshed!', ephemeral: true });
                 break;
 
             default:
-                await interaction.editReply({ content: '❓ Unknown button action.' });
+                await interaction.followUp({ content: '❓ Unknown button action.', ephemeral: true });
         }
         
         // Update the music controller after any action (with error handling)
@@ -1187,11 +1194,7 @@ async function handleButtonInteraction(interaction, client) {
     } catch (error) {
         console.error('Button interaction error:', error);
         try {
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: '❌ An error occurred.', flags: 64 });
-            } else {
-                await interaction.editReply({ content: '❌ An error occurred.' });
-            }
+            await interaction.followUp({ content: '❌ An error occurred.', ephemeral: true });
         } catch (replyError) {
             console.error('Failed to send error message:', replyError);
         }

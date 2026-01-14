@@ -32,7 +32,7 @@ module.exports = {
         const subcommand = interaction.options.getSubcommand();
 
         if (subcommand === 'status') {
-            await interaction.deferReply({ flags: 64 });
+            await interaction.reply({ content: '🔍 Checking Spotify status...', ephemeral: true, fetchReply: true });
 
             try {
                 const spotifyAPI = new SpotifyAPI(process.env.SPOTIFY_CLIENT_ID, process.env.SPOTIFY_CLIENT_SECRET);
@@ -49,10 +49,11 @@ module.exports = {
                     .setFooter({ text: 'Spotify Web API • Client Credentials Flow' })
                     .setTimestamp();
 
-                await interaction.editReply({ embeds: [embed] });
+                await interaction.editReply({ content: null, embeds: [embed] });
             } catch (error) {
                 console.error('Spotify status check failed:', error);
                 await interaction.editReply({ 
+                    content: null,
                     embeds: [errorEmbed(`Spotify authentication failed: ${error.message}`)] 
                 });
             }
@@ -60,7 +61,7 @@ module.exports = {
 
         if (subcommand === 'search') {
             const query = interaction.options.getString('query');
-            await interaction.deferReply({ flags: 64 });
+            await interaction.reply({ content: '🔍 Searching Spotify...', ephemeral: true, fetchReply: true });
 
             try {
                 const spotifyAPI = new SpotifyAPI(process.env.SPOTIFY_CLIENT_ID, process.env.SPOTIFY_CLIENT_SECRET);
@@ -68,6 +69,7 @@ module.exports = {
 
                 if (!results || results.length === 0) {
                     return interaction.editReply({ 
+                        content: null,
                         embeds: [infoEmbed(`No Spotify results found for: **${query}**`)] 
                     });
                 }
@@ -82,10 +84,11 @@ module.exports = {
                     .setFooter({ text: `Found ${results.length} results` })
                     .setTimestamp();
 
-                await interaction.editReply({ embeds: [embed] });
+                await interaction.editReply({ content: null, embeds: [embed] });
             } catch (error) {
                 console.error('Spotify search failed:', error);
                 await interaction.editReply({ 
+                    content: null,
                     embeds: [errorEmbed(`Spotify search failed: ${error.message}`)] 
                 });
             }

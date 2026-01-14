@@ -20,7 +20,7 @@ module.exports = {
             return interaction.reply({ embeds: [errorEmbed('You need to be in a voice channel!')], flags: 64 });
         }
 
-        await interaction.deferReply();
+        await interaction.reply({ content: '🔍 Searching...', fetchReply: true });
 
         try {
             const results = await play.search(query, { limit: 10 });

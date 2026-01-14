@@ -12,35 +12,27 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction, client) {
-        const startTime = Date.now();
-        
-        // CRITICAL: Defer reply FIRST before any other operations (mobile optimization)
-        try {
-            await interaction.deferReply();
-            console.log(`✅ Deferred reply in ${Date.now() - startTime}ms`);
-        } catch (error) {
-            console.error('❌ Failed to defer interaction:', error);
-            return;
-        }
-
         const query = interaction.options.getString('query');
         const member = interaction.member;
         const voiceChannel = member.voice.channel;
 
         if (!voiceChannel) {
-            return interaction.editReply({ embeds: [errorEmbed('You need to be in a voice channel!')] });
+            return interaction.reply({ embeds: [errorEmbed('You need to be in a voice channel!')], ephemeral: true });
         }
 
         const permissions = voiceChannel.permissionsFor(interaction.client.user);
         if (!permissions.has('Connect') || !permissions.has('Speak')) {
-            return interaction.editReply({ embeds: [errorEmbed('I need permissions to join and speak in your voice channel!')] });
+            return interaction.reply({ embeds: [errorEmbed('I need permissions to join and speak in your voice channel!')], ephemeral: true });
         }
+
+        // Send immediate acknowledgment
+        await interaction.reply({ content: '🔍 Searching...', fetchReply: true });
 
         try {
             const searchStart = Date.now();
             console.log(`🔍 Starting search for: "${query}"`);
             
-            // Add timeout wrapper for the entire operation (increased for mobile)
+            // Add timeout wrapper for the entire operation
             const result = await Promise.race([
                 client.searchSong(query, member),
                 new Promise((_, reject) => 
@@ -67,7 +59,9 @@ module.exports = {
                 // Create clean music controller for playlist
                 const controller = createCompleteMusicController(queue);
                 
-                await interaction.editReply({
+                // Delete searching message and send controller
+                await interaction.deleteReply();
+                await interaction.channel.send({
                     embeds: controller.embeds,
                     components: controller.components
                 });
@@ -85,7 +79,10 @@ module.exports = {
                 
                 // Create and send controller immediately
                 const controller = createCompleteMusicController(queue);
-                await interaction.editReply({
+                
+                // Delete searching message and send controller
+                await interaction.deleteReply();
+                await interaction.channel.send({
                     embeds: controller.embeds,
                     components: controller.components
                 });

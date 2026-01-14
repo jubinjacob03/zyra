@@ -12,17 +12,17 @@ module.exports = {
                 .setDescription('Song name to search (optional)')),
 
     async execute(interaction, client) {
-        await interaction.deferReply();
-
         let searchQuery = interaction.options.getString('query');
 
         if (!searchQuery) {
             const queue = client.distube.getQueue(interaction.guildId);
             if (!queue || !queue.songs[0]) {
-                return interaction.editReply({ embeds: [errorEmbed('No song playing. Please provide a search query.')] });
+                return interaction.reply({ embeds: [errorEmbed('No song playing. Please provide a search query.')], ephemeral: true });
             }
             searchQuery = queue.songs[0].name;
         }
+
+        await interaction.reply({ content: '🔍 Searching for lyrics...', fetchReply: true });
 
         try {
             const searches = await genius.songs.search(searchQuery);

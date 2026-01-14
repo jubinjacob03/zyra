@@ -22,7 +22,7 @@ const YouTubeSearchEngine = require('./utils/youtubeSearch');
 
 // Cross-platform yt-dlp configuration
 // Windows: Use WinGet system installation (no spaces in path)
-// Linux/Mac: Use bundled binary from youtube-dl-exec
+// Linux/Mac: Use bundled binary from youtube-dl-exec or system yt-dlp
 let youtubedl;
 if (os.platform() === 'win32') {
     const systemYtdlp = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'WinGet', 'Packages', 'yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe', 'yt-dlp.exe');
@@ -34,9 +34,15 @@ if (os.platform() === 'win32') {
         console.log('⚠️ Using bundled yt-dlp');
     }
 } else {
-    // Linux/Mac: Use bundled binary
-    youtubedl = youtubedlExec;
-    console.log('✅ Using bundled yt-dlp (Linux/Mac)');
+    // Linux/Mac: Try system yt-dlp first (for Railway/production), then bundled
+    const systemYtdlp = '/root/.nix-profile/bin/yt-dlp';
+    if (fs.existsSync(systemYtdlp)) {
+        youtubedl = youtubedlExec.create(systemYtdlp);
+        console.log('✅ Using system yt-dlp (Nix)');
+    } else {
+        youtubedl = youtubedlExec;
+        console.log('✅ Using bundled yt-dlp (Linux/Mac)');
+    }
 }
 
 const ffmpegPath = require('ffmpeg-static');

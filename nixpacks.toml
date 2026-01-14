@@ -1,13 +1,10 @@
 # Railway Nixpacks configuration for Discord Music Bot
 
 [phases.setup]
-nixPkgs = ["nodejs", "python3", "python3Packages.pip", "ffmpeg"]
+nixPkgs = ["nodejs", "python3", "ffmpeg"]
 
 [phases.install]
 cmds = ["npm install"]
 
-[phases.build]
-cmds = ["python3 --version"]
-
 [start]
-cmd = "node src/index.js"
+cmd = "PYTHON=$(which python3) node src/index.js"

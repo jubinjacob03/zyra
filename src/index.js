@@ -117,6 +117,7 @@ class MusicQueue {
             }
         });
         this.currentResource = null;
+        this.streamStarted = false; // Track if audio stream has actually started
         
         this.connection.subscribe(this.player);
         this.setupPlayerEvents();
@@ -128,13 +129,13 @@ class MusicQueue {
      */
     setupPlayerEvents() {
         this.player.on(AudioPlayerStatus.Idle, () => {
-            console.log(`[DEBUG] Player went Idle. playing=${this.playing}, currentResource=${!!this.currentResource}`);
-            // Only process queue if we were actually playing something
-            if (this.playing && this.currentResource) {
-                console.log('[DEBUG] Processing queue from Idle event');
+            console.log(`[DEBUG] Player went Idle. playing=${this.playing}, currentResource=${!!this.currentResource}, streamStarted=${this.streamStarted}`);
+            // Only process queue if stream has actually started (song finished playing)
+            if (this.playing && this.currentResource && this.streamStarted) {
+                console.log('[DEBUG] Processing queue from Idle event - song finished');
                 this.processQueue();
             } else {
-                console.log('[DEBUG] Skipping processQueue - not ready yet');
+                console.log('[DEBUG] Skipping processQueue - stream never started or not ready');
             }
         });
 
@@ -189,6 +190,7 @@ class MusicQueue {
         console.log(`[DEBUG] Queue length: ${this.songs.length}`);
         this.playing = true;
         this.paused = false;
+        this.streamStarted = false; // Reset for new song
 
         try {
             console.log('[DEBUG] Executing yt-dlp...');
@@ -196,8 +198,7 @@ class MusicQueue {
                 output: '-',
                 quiet: true,
                 noWarnings: true,
-                // Optimized format for streaming - prefer opus audio for Discord
-                format: 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio',
+                format: 'bestaudio/best',
                 noPlaylist: true,
                 geoBypass: true,
                 noCheckCertificates: true,
@@ -206,19 +207,28 @@ class MusicQueue {
                     'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 ],
                 extractorArgs: 'youtube:player_client=android',
-                // Add buffer size for smoother streaming
-                bufferSize: '16K',
-                httpChunkSize: '10M',
                 ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' })
             });
             
             // Suppress stderr to avoid broken pipe warnings
             ytdlpProcess.stderr?.on('data', () => {});
             
-            // Log when audio stream starts
+            // Log when audio stream starts and mark it
+            let streamTimeout;
             ytdlpProcess.stdout?.once('data', () => {
                 console.log('[DEBUG] 🎶 Audio stream started - data flowing through pipe');
+                this.streamStarted = true;
+                if (streamTimeout) clearTimeout(streamTimeout);
             });
+            
+            // Add timeout to detect stream failures
+            streamTimeout = setTimeout(() => {
+                if (!this.streamStarted) {
+                    console.error('[ERROR] ❌ Audio stream failed to start within 10 seconds!');
+                    this.textChannel.send('❌ Failed to start audio stream. The video might be unavailable or region-locked.').catch(console.error);
+                    this.processQueue();
+                }
+            }, 10000);
             
             console.log('[DEBUG] Creating audio resource...');
             // Create audio resource with optimized buffering to reduce glitching

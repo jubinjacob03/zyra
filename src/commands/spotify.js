@@ -32,7 +32,7 @@ module.exports = {
         const subcommand = interaction.options.getSubcommand();
 
         if (subcommand === 'status') {
-            await interaction.reply({ content: '🔍 Checking Spotify status...', ephemeral: true, fetchReply: true });
+            await interaction.reply({ content: '🔍 Checking Spotify status...', ephemeral: true });
 
             try {
                 const spotifyAPI = new SpotifyAPI(process.env.SPOTIFY_CLIENT_ID, process.env.SPOTIFY_CLIENT_SECRET);
@@ -61,7 +61,7 @@ module.exports = {
 
         if (subcommand === 'search') {
             const query = interaction.options.getString('query');
-            await interaction.reply({ content: '🔍 Searching Spotify...', ephemeral: true, fetchReply: true });
+            await interaction.reply({ content: '🔍 Searching Spotify...', ephemeral: true });
 
             try {
                 const spotifyAPI = new SpotifyAPI(process.env.SPOTIFY_CLIENT_ID, process.env.SPOTIFY_CLIENT_SECRET);

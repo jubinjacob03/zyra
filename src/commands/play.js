@@ -26,7 +26,7 @@ module.exports = {
         }
 
         // Send immediate acknowledgment
-        await interaction.reply({ content: '🔍 Searching...', fetchReply: true });
+        await interaction.reply({ content: '🔍 Searching...' });
 
         try {
             const searchStart = Date.now();

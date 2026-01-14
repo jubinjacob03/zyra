@@ -22,7 +22,7 @@ module.exports = {
             searchQuery = queue.songs[0].name;
         }
 
-        await interaction.reply({ content: '🔍 Searching for lyrics...', fetchReply: true });
+        await interaction.reply({ content: '🔍 Searching for lyrics...' });
 
         try {
             const searches = await genius.songs.search(searchQuery);

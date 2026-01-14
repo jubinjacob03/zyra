@@ -506,11 +506,11 @@ client.getQueue = function(guildId) {
  * @returns {Promise<Object|null>} Song/playlist object or null
  */
 async function searchSong(query, user) {
-    // Add timeout to prevent hanging - increased to 45 seconds for complex operations
+    // Add timeout to prevent hanging - increased to 60 seconds for mobile devices
     return Promise.race([
         searchSongInternal(query, user),
         new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Search timeout - please try again')), 45000)
+            setTimeout(() => reject(new Error('Search timeout - please try again or use a direct YouTube link')), 60000)
         )
     ]);
 }
@@ -1085,12 +1085,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
  * @param {Client} client - Discord client instance
  */
 async function handleButtonInteraction(interaction, client) {
-    // Use flags instead of ephemeral property
+    // Use flags instead of ephemeral property - defer immediately for mobile
     try {
         await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag
     } catch (error) {
-        // If defer fails, try immediate reply
-        console.error('Failed to defer interaction:', error);
+        // If defer fails, log and exit gracefully
+        console.error('Failed to defer button interaction:', error.message);
         return;
     }
     

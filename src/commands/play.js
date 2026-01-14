@@ -12,30 +12,43 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction, client) {
+        const startTime = Date.now();
+        
+        // CRITICAL: Defer reply FIRST before any other operations (mobile optimization)
+        try {
+            await interaction.deferReply();
+            console.log(`✅ Deferred reply in ${Date.now() - startTime}ms`);
+        } catch (error) {
+            console.error('❌ Failed to defer interaction:', error);
+            return;
+        }
+
         const query = interaction.options.getString('query');
         const member = interaction.member;
         const voiceChannel = member.voice.channel;
 
         if (!voiceChannel) {
-            return interaction.reply({ embeds: [errorEmbed('You need to be in a voice channel!')], flags: 64 });
+            return interaction.editReply({ embeds: [errorEmbed('You need to be in a voice channel!')] });
         }
 
         const permissions = voiceChannel.permissionsFor(interaction.client.user);
         if (!permissions.has('Connect') || !permissions.has('Speak')) {
-            return interaction.reply({ embeds: [errorEmbed('I need permissions to join and speak in your voice channel!')], flags: 64 });
+            return interaction.editReply({ embeds: [errorEmbed('I need permissions to join and speak in your voice channel!')] });
         }
 
-        // Defer reply immediately to prevent timeout
-        await interaction.deferReply();
-
         try {
-            // Add timeout wrapper for the entire operation
+            const searchStart = Date.now();
+            console.log(`🔍 Starting search for: "${query}"`);
+            
+            // Add timeout wrapper for the entire operation (increased for mobile)
             const result = await Promise.race([
                 client.searchSong(query, member),
                 new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Operation timeout - please try a simpler query')), 25000)
+                    setTimeout(() => reject(new Error('Operation timeout - please try a simpler query or direct YouTube link')), 30000)
                 )
             ]);
+            
+            console.log(`✅ Search completed in ${Date.now() - searchStart}ms`);
             
             if (!result) {
                 return interaction.editReply({ embeds: [errorEmbed('No results found for your query.')] });

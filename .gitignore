@@ -34,6 +34,7 @@ desktop.ini
 tmp/
 temp/
 *.tmp
+windows**/
 
 # Audio cache (if any)
 cache/

@@ -1072,23 +1072,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } catch (error) {
             console.error(`Error executing ${interaction.commandName}:`, error);
             
-           
-            const errorMessage = { content: '❌ There was an error executing this command!', flags: 64 };
+            if (error.code === 10062 || error.code === 40060) {
+                console.log(`Interaction issue (${error.code}) - cannot respond`);
+                return;
+            }
+            
+            const errorMessage = { content: '❌ There was an error executing this command!', ephemeral: true };
             
             try {
-                if (error.code === 10062) {
-                   
-                    console.log('Interaction expired - cannot respond');
-                    return;
-                }
-                
-                if (interaction.replied || interaction.deferred) {
+                if (interaction.replied) {
                     await interaction.followUp(errorMessage);
+                } else if (interaction.deferred) {
+                    await interaction.editReply(errorMessage);
                 } else {
                     await interaction.reply(errorMessage);
                 }
             } catch (replyError) {
-                console.error('Failed to send error message:', replyError);
+                if (replyError.code !== 10062 && replyError.code !== 40060) {
+                    console.error('Failed to send error message:', replyError);
+                }
             }
         }
     }

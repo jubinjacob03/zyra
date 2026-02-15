@@ -25,7 +25,9 @@ module.exports = {
             return interaction.reply({ embeds: [errorEmbed('I need permissions to join and speak in your voice channel!')], ephemeral: true });
         }
 
-        await interaction.reply({ content: '🔍 Searching...' });
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.deferReply();
+        }
 
         try {
             const searchStart = Date.now();

@@ -19,6 +19,9 @@ done
 
 if [ "$READY" = "1" ]; then
     echo "Lavalink ready"
+    echo "Generating PoToken from datacenter IP..."
+    cd /app
+    node --max-old-space-size=512 potoken/generate.mjs || echo "PoToken generation failed (non-fatal)"
 else
     echo "Lavalink may still be starting (Shoukaku will retry)"
 fi

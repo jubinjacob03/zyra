@@ -1,22 +1,3 @@
-#!/bin/sh
-# Run this in Koyeb console to generate a PoToken from the datacenter IP
-# and inject it into the running Lavalink instance via REST API.
-#
-# Usage: sh /app/generate-potoken.sh
-
-echo "=== PoToken Generator for Koyeb ==="
-echo "Installing dependencies..."
-
-cd /tmp
-mkdir -p potoken-gen && cd potoken-gen
-
-cat > package.json << 'PKGJSON'
-{ "name": "potoken-gen", "type": "module", "dependencies": { "bgutils-js": "^3.2.0", "youtubei.js": "^13.0.0", "jsdom": "^25.0.0" } }
-PKGJSON
-
-npm install --no-audit --no-fund 2>&1 | tail -3
-
-cat > gen.mjs << 'SCRIPT'
 import { BG } from 'bgutils-js';
 import { Innertube } from 'youtubei.js';
 import { JSDOM } from 'jsdom';
@@ -53,12 +34,10 @@ const result = await BG.PoToken.generate({
   bgConfig
 });
 
-console.log('\n=== Generated Tokens ===');
 console.log('visitorData:', visitorData);
 console.log('poToken:', result.poToken);
 
-// Inject into running Lavalink via REST API
-console.log('\nInjecting into Lavalink...');
+console.log('Injecting into Lavalink...');
 const resp = await fetch('http://localhost:2333/youtube', {
   method: 'POST',
   headers: {
@@ -72,19 +51,10 @@ const resp = await fetch('http://localhost:2333/youtube', {
 });
 
 if (resp.status === 204) {
-  console.log('SUCCESS! PoToken injected into Lavalink.');
-  console.log('Try playing a song now with /play');
+  console.log('PoToken injected into Lavalink successfully');
 } else {
-  console.log('Failed to inject. Status:', resp.status);
+  console.error('Failed to inject PoToken. Status:', resp.status);
   const text = await resp.text();
-  console.log('Response:', text);
-  console.log('\nManual injection: paste these values into application.yml under plugins.youtube.pot:');
-  console.log('  token:', JSON.stringify(result.poToken));
-  console.log('  visitorData:', JSON.stringify(visitorData));
+  console.error('Response:', text);
+  process.exit(1);
 }
-
-process.exit(0);
-SCRIPT
-
-echo "Running PoToken generator (this may take 30-60 seconds)..."
-node --max-old-space-size=512 gen.mjs

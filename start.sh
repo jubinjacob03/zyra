@@ -2,6 +2,9 @@
 echo "Starting Lavalink..."
 cd /lavalink
 java -Xmx200m \
+  -XX:+UseG1GC \
+  -XX:MaxGCPauseMillis=50 \
+  -XX:G1HeapRegionSize=2m \
   -DYOUTUBE_OAUTH_REFRESH_TOKEN="$YOUTUBE_OAUTH_REFRESH_TOKEN" \
   -DSPOTIFY_CLIENT_ID="$SPOTIFY_CLIENT_ID" \
   -DSPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \

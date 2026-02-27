@@ -10,6 +10,11 @@ lavalink:
       snapshot: false
   server:
     password: "remani-lavalink"
+    frameBufferDurationMs: 15000
+    opusEncodingQuality: 8
+    resamplingQuality: MEDIUM
+    trackStuckThresholdMs: 15000
+    playerUpdateInterval: 3
     sources:
       youtube: false
       bandcamp: true

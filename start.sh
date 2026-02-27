@@ -1,4 +1,23 @@
 #!/bin/sh
+
+# Step 1: Generate PoToken BEFORE starting Lavalink
+echo "Generating PoToken from datacenter IP..."
+cd /app
+node --max-old-space-size=256 potoken/generate.mjs env 2>&1 || echo "PoToken generation failed (non-fatal)"
+
+# Load generated PoToken values into environment
+YOUTUBE_POTOKEN=""
+YOUTUBE_VISITOR_DATA=""
+if [ -f /tmp/potoken.env ]; then
+    . /tmp/potoken.env
+    export YOUTUBE_POTOKEN
+    export YOUTUBE_VISITOR_DATA
+    echo "PoToken loaded: ${#YOUTUBE_POTOKEN} chars"
+else
+    echo "No PoToken env file found, continuing without"
+fi
+
+# Step 2: Start Lavalink with PoToken baked into config
 echo "Starting Lavalink..."
 cd /lavalink
 java -Xmx200m \
@@ -8,6 +27,8 @@ java -Xmx200m \
   -DYOUTUBE_OAUTH_REFRESH_TOKEN="$YOUTUBE_OAUTH_REFRESH_TOKEN" \
   -DSPOTIFY_CLIENT_ID="$SPOTIFY_CLIENT_ID" \
   -DSPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \
+  -DYOUTUBE_POTOKEN="$YOUTUBE_POTOKEN" \
+  -DYOUTUBE_VISITOR_DATA="$YOUTUBE_VISITOR_DATA" \
   -jar Lavalink.jar &
 LAVALINK_PID=$!
 
@@ -22,13 +43,27 @@ done
 
 if [ "$READY" = "1" ]; then
     echo "Lavalink ready"
-    echo "Generating PoToken from datacenter IP..."
-    cd /app
-    node --max-old-space-size=512 potoken/generate.mjs || echo "PoToken generation failed (non-fatal)"
 else
     echo "Lavalink may still be starting (Shoukaku will retry)"
 fi
 
+# Step 3: Start bot as main process
 echo "Starting bot..."
 cd /app
-exec node src/index.js
+node src/index.js &
+BOT_PID=$!
+
+# Step 4: Background PoToken refresh loop (re-inject every 8 minutes)
+(
+    sleep 60  # initial delay after startup
+    while true; do
+        echo "[PoToken Refresh] Regenerating..."
+        cd /app
+        node --max-old-space-size=256 potoken/generate.mjs inject 2>&1 || echo "[PoToken Refresh] Failed (non-fatal)"
+        sleep 480  # every 8 minutes
+    done
+) &
+REFRESH_PID=$!
+
+# Wait for bot process (main)
+wait $BOT_PID

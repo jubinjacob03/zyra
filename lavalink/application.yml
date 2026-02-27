@@ -53,6 +53,9 @@ plugins:
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"
+    pot:
+      token: "${YOUTUBE_POTOKEN:}"
+      visitorData: "${YOUTUBE_VISITOR_DATA:}"
     oauth:
       enabled: true
       refreshToken: "${YOUTUBE_OAUTH_REFRESH_TOKEN:}"

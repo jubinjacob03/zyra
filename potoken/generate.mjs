@@ -1,7 +1,11 @@
 import { BG } from 'bgutils-js';
 import { Innertube } from 'youtubei.js';
 import { JSDOM } from 'jsdom';
+import { writeFileSync } from 'fs';
 
+const LAVALINK_URL = process.env.LAVALINK_URL || 'http://localhost:2333';
+const LAVALINK_PASS = process.env.LAVALINK_PASSWORD || 'remani-lavalink';
+const mode = process.argv[2] || 'env'; // 'env' = write env file, 'inject' = POST to Lavalink
 const requestKey = 'O43z0dpjhgX20SCx4KAo';
 
 console.log('Creating Innertube session...');
@@ -37,24 +41,32 @@ const result = await BG.PoToken.generate({
 console.log('visitorData:', visitorData);
 console.log('poToken:', result.poToken);
 
-console.log('Injecting into Lavalink...');
-const resp = await fetch('http://localhost:2333/youtube', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'remani-lavalink'
-  },
-  body: JSON.stringify({
-    poToken: result.poToken,
-    visitorData: visitorData
-  })
-});
+if (mode === 'env') {
+  // Write env file for start.sh to source before starting Lavalink
+  const envContent = `YOUTUBE_POTOKEN=${result.poToken}\nYOUTUBE_VISITOR_DATA=${visitorData}\n`;
+  writeFileSync('/tmp/potoken.env', envContent);
+  console.log('PoToken written to /tmp/potoken.env');
+} else if (mode === 'inject') {
+  // POST to running Lavalink (for periodic refresh)
+  console.log('Injecting into Lavalink...');
+  const resp = await fetch(`${LAVALINK_URL}/youtube`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': LAVALINK_PASS
+    },
+    body: JSON.stringify({
+      poToken: result.poToken,
+      visitorData: visitorData
+    })
+  });
 
-if (resp.status === 204) {
-  console.log('PoToken injected into Lavalink successfully');
-} else {
-  console.error('Failed to inject PoToken. Status:', resp.status);
-  const text = await resp.text();
-  console.error('Response:', text);
-  process.exit(1);
+  if (resp.status === 204) {
+    console.log('PoToken injected into Lavalink successfully');
+  } else {
+    console.error('Failed to inject PoToken. Status:', resp.status);
+    const text = await resp.text();
+    console.error('Response:', text);
+    process.exit(1);
+  }
 }

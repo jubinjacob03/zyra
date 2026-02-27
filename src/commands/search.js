@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const { errorEmbed } = require('../utils/embed');
-const play = require('play-dl');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -23,16 +22,23 @@ module.exports = {
         await interaction.reply({ content: '🔍 Searching...' });
 
         try {
-            const results = await play.search(query, { limit: 10 });
+            const node = client.shoukaku.options.nodeResolver(client.shoukaku.nodes);
+            if (!node) {
+                return interaction.editReply({ embeds: [errorEmbed('Audio server not available. Try again in a moment.')] });
+            }
 
-            if (!results.length) {
+            const result = await node.rest.resolve(`ytmsearch:${query}`);
+
+            if (result.loadType !== 'search' || !result.data?.length) {
                 return interaction.editReply({ embeds: [errorEmbed('No results found.')] });
             }
+
+            const results = result.data.slice(0, 10);
 
             const embed = new EmbedBuilder()
                 .setColor('#9B59B6')
                 .setTitle('🔍 Search Results')
-                .setDescription(results.map((r, i) => `**${i + 1}.** [${r.title}](${r.url}) - \`${client.formatDuration(r.durationInSec)}\``).join('\n'))
+                .setDescription(results.map((r, i) => `**${i + 1}.** [${r.info.title}](${r.info.uri}) - \`${client.formatDuration(Math.floor(r.info.length / 1000))}\``).join('\n'))
                 .setFooter({ text: 'Select a song from the dropdown below' })
                 .setTimestamp();
 
@@ -40,9 +46,9 @@ module.exports = {
                 .setCustomId('search_select')
                 .setPlaceholder('Select a song to play')
                 .addOptions(results.map((r, i) => ({
-                    label: r.title.slice(0, 100),
-                    description: `${client.formatDuration(r.durationInSec)} • ${r.channel?.name || 'Unknown'}`.slice(0, 100),
-                    value: r.url,
+                    label: (r.info.title || 'Unknown').slice(0, 100),
+                    description: `${client.formatDuration(Math.floor(r.info.length / 1000))} • ${r.info.author || 'Unknown'}`.slice(0, 100),
+                    value: r.info.uri || `search_${i}`,
                 })));
 
             const row = new ActionRowBuilder().addComponents(selectMenu);

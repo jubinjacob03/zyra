@@ -29,10 +29,16 @@ module.exports = {
             seconds = parseInt(timeStr) || 0;
         }
 
-        if (seconds < 0 || seconds > queue.songs[0].duration) {
+        if (seconds < 0 || seconds > (queue.songs[0]?.duration || 0)) {
             return interaction.reply({ embeds: [errorEmbed('Invalid seek position.')], flags: 64 });
         }
 
-        await interaction.reply({ embeds: [errorEmbed('Seeking is not currently supported.')] });
+        if (!queue.songs[0]?.isSeekable) {
+            return interaction.reply({ embeds: [errorEmbed('This track cannot be seeked.')], flags: 64 });
+        }
+
+        queue.seek(seconds);
+        const { formatDuration } = require('../utils/embed');
+        await interaction.reply({ embeds: [successEmbed(`⏩ Seeked to **${formatDuration(seconds)}**`)] });
     },
 };

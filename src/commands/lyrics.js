@@ -15,7 +15,7 @@ module.exports = {
         let searchQuery = interaction.options.getString('query');
 
         if (!searchQuery) {
-            const queue = client.distube.getQueue(interaction.guildId);
+            const queue = client.getQueue(interaction.guildId);
             if (!queue || !queue.songs[0]) {
                 return interaction.reply({ embeds: [errorEmbed('No song playing. Please provide a search query.')], ephemeral: true });
             }

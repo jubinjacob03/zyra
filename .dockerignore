@@ -1,17 +1,11 @@
 node_modules
-npm_debug.log
 .env
 .env.*
 .git
 .gitignore
 *.md
-README.md
-DEPLOY.md
-ANDROID_DEPLOYMENT.md
 logs/*.log
 .vscode
 .DS_Store
-# cookies.txt - Uncomment to exclude cookies from Docker image (recommended for security)
-# If deploying to Koyeb, keep cookies.txt included for YouTube bot detection evasion
-pm2-manager.bat
-src/windows-subprocess/
+lavalink/plugins/
+lavalink/*.jar

@@ -1,22 +1,17 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { successEmbed, errorEmbed } = require('../utils/embed');
 
+// Lavalink-supported audio filters
 const filters = {
+    'off': 'off',
     '3d': '3d',
     'bassboost': 'bassboost',
-    'echo': 'echo',
-    'flanger': 'flanger',
-    'gate': 'gate',
-    'haas': 'haas',
     'karaoke': 'karaoke',
     'nightcore': 'nightcore',
-    'reverse': 'reverse',
     'vaporwave': 'vaporwave',
-    'mcompand': 'mcompand',
     'phaser': 'phaser',
     'tremolo': 'tremolo',
     'surround': 'surround',
-    'earwax': 'earwax',
 };
 
 module.exports = {
@@ -31,8 +26,6 @@ module.exports = {
                     { name: 'Off', value: 'off' },
                     { name: '3D', value: '3d' },
                     { name: 'Bass Boost', value: 'bassboost' },
-                    { name: 'Echo', value: 'echo' },
-                    { name: 'Flanger', value: 'flanger' },
                     { name: 'Karaoke', value: 'karaoke' },
                     { name: 'Nightcore', value: 'nightcore' },
                     { name: 'Vaporwave', value: 'vaporwave' },
@@ -48,6 +41,15 @@ module.exports = {
             return interaction.reply({ embeds: [errorEmbed('Nothing is playing right now.')], flags: 64 });
         }
 
-        await interaction.reply({ embeds: [errorEmbed('Audio filters are not currently supported.')] });
+        const filter = interaction.options.getString('filter');
+        await queue.setFilter(filter);
+
+        const filterNames = {
+            'off': 'Off', '3d': '3D', 'bassboost': 'Bass Boost',
+            'karaoke': 'Karaoke', 'nightcore': 'Nightcore', 'vaporwave': 'Vaporwave',
+            'phaser': 'Phaser', 'tremolo': 'Tremolo', 'surround': 'Surround'
+        };
+
+        await interaction.reply({ embeds: [successEmbed(`🎛️ Audio filter set to **${filterNames[filter] || filter}**`)] });
     },
 };

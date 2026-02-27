@@ -9,30 +9,27 @@ services:
       - .env
     volumes:
       - ./logs:/app/logs
-      # Optional: Mount cookies for yt-dlp
-      # - ./cookies.txt:/app/cookies.txt:ro
     environment:
       - NODE_ENV=production
       - TZ=UTC
-    # Resource limits (adjust based on your needs)
+      - LAVALINK_URL=localhost:2333
+      - LAVALINK_PASSWORD=remani-lavalink
+      - YOUTUBE_OAUTH_REFRESH_TOKEN=${YOUTUBE_OAUTH_REFRESH_TOKEN}
+      - JAVA_TOOL_OPTIONS=-Xmx200m
     deploy:
       resources:
         limits:
           cpus: '1'
-          memory: 512M
+          memory: 768M
         reservations:
           cpus: '0.5'
-          memory: 256M
-    # Health check
+          memory: 384M
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'node src/index.js' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-    # Network mode (optional, for better connectivity)
-    network_mode: bridge
-    # Logging
+      start_period: 40s
     logging:
       driver: "json-file"
       options:

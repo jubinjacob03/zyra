@@ -1274,4 +1274,7 @@ if (!process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
     process.exit(1);
 }
 
+// Attach the lightweight Music HTTP API (used by Shantha web bridge)
+require('./api')(client);
+
 client.login(process.env.DISCORD_TOKEN);

@@ -8,8 +8,8 @@ RUN apk add --no-cache \
     git \
     curl
 
-# Install yt-dlp
-RUN pip3 install --no-cache-dir yt-dlp
+# Install yt-dlp (latest version for better bot detection evasion)
+RUN pip3 install --no-cache-dir --upgrade yt-dlp
 
 # Create app directory
 WORKDIR /app
@@ -23,6 +23,10 @@ RUN npm ci --only=production
 # Copy app source
 COPY . .
 
+# Copy cookies.txt if it exists (for YouTube bot detection evasion)
+# Make sure cookies.txt is NOT in .dockerignore if you want to use it
+COPY cookies.txt* ./
+
 # Create logs directory
 RUN mkdir -p /app/logs
 
@@ -34,7 +38,3 @@ ENV NODE_ENV=production
 
 # Run the bot
 CMD ["node", "src/index.js"]
-
-# Health check (optional - requires implementing HTTP endpoint)
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-#   CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"

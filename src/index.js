@@ -553,8 +553,21 @@ async function searchSongInternal(query, user) {
             '• Create a custom playlist with your favorite tracks');
     }
     
-   
+    // Anti-bot detection configuration for yt-dlp
     const cookieOpts = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
+    
+    // Enhanced anti-detection options
+    const antiDetectionOpts = {
+        ...cookieOpts,
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        referer: 'https://www.youtube.com/',
+        addHeader: [
+            'Accept-Language:en-US,en;q=0.9',
+            'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Sec-Fetch-Mode:navigate',
+            'Sec-Fetch-Dest:document'
+        ]
+    };
     
    
     if (spotifyTrackPattern.test(query) && spotifyAPI) {
@@ -578,7 +591,7 @@ async function searchSongInternal(query, user) {
                             noWarnings: true,
                             noCheckCertificates: true,
                             skipDownload: true,
-                            ...cookieOpts
+                            ...antiDetectionOpts
                         });
                         
                         return {
@@ -611,7 +624,7 @@ async function searchSongInternal(query, user) {
                 noWarnings: true,
                 noCheckCertificates: true,
                 skipDownload: true,
-                ...cookieOpts
+                ...antiDetectionOpts
             });
             
             return {
@@ -644,7 +657,7 @@ async function searchSongInternal(query, user) {
                             noWarnings: true,
                             noCheckCertificates: true,
                             skipDownload: true,
-                            ...cookieOpts
+                            ...antiDetectionOpts
                         });
                         
                         return {
@@ -813,7 +826,7 @@ async function searchSongInternal(query, user) {
             noWarnings: true,
             noCheckCertificates: true,
             skipDownload: true,
-            ...cookieOpts
+            ...antiDetectionOpts
         });
         
         return {
@@ -836,7 +849,7 @@ async function searchSongInternal(query, user) {
                 flatPlaylist: true,
                 noWarnings: true,
                 skipDownload: true,
-                ...cookieOpts
+                ...antiDetectionOpts
             });
             
             const videos = info.entries || [];
@@ -908,7 +921,7 @@ async function searchSongInternal(query, user) {
                             dumpSingleJson: true,
                             noWarnings: true,
                             skipDownload: true,
-                            ...cookieOpts
+                            ...antiDetectionOpts
                         });
                         
                         return {
@@ -943,7 +956,7 @@ async function searchSongInternal(query, user) {
             dumpSingleJson: true,
             noWarnings: true,
             skipDownload: true,
-            ...cookieOpts
+            ...antiDetectionOpts
         });
         
         return {

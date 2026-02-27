@@ -9,7 +9,8 @@ RUN apk add --no-cache \
     curl
 
 # Install yt-dlp (latest version for better bot detection evasion)
-RUN pip3 install --no-cache-dir --upgrade yt-dlp
+# Using --break-system-packages is safe in Docker containers
+RUN pip3 install --no-cache-dir --upgrade --break-system-packages yt-dlp
 
 # Create app directory
 WORKDIR /app

@@ -38,6 +38,8 @@ plugins:
     allowDirectPlaylistIds: true
     clients:
       - MUSIC
+      - ANDROID
+      - MEDIA_CONNECT
       - TV
       - IOS
       - TVHTML5_SIMPLY

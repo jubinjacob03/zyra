@@ -205,7 +205,8 @@ class MusicQueue {
             this.currentResource = createAudioResource(ytdlpProcess.stdout, {
                 metadata: song,
                 inputType: StreamType.Arbitrary,
-                inlineVolume: true
+                inlineVolume: true,
+                highWaterMark: 1 << 25
             });
             
             this.currentResource.volume.setVolume(this.volume / 100);
@@ -1070,12 +1071,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         try {
             await command.execute(interaction, client);
         } catch (error) {
-            console.error(`Error executing ${interaction.commandName}:`, error);
-            
+            // Silently ignore expired/unknown interactions (10062) - they don't break anything
             if (error.code === 10062 || error.code === 40060) {
-                console.log(`Interaction issue (${error.code}) - cannot respond`);
                 return;
             }
+            
+            console.error(`Error executing ${interaction.commandName}:`, error);
             
             const errorMessage = { content: '❌ There was an error executing this command!', ephemeral: true };
             

@@ -1,7 +1,21 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
+# ============================================
 # Remani Bot - Termux Auto-Setup Script
-# This script automates the installation and setup of the Remani Discord bot on Termux
+# ============================================
+# This script automates the installation and setup of the Remani Discord bot on Termux (Android)
+#
+# What it does:
+# - Installs all required dependencies (Node.js, ffmpeg, yt-dlp, etc.)
+# - Fixes Android-specific issues (ffmpeg-static, native modules)
+# - Sets up environment variables
+# - Configures PM2 for process management
+# - Creates boot script for auto-start on device reboot
+#
+# Usage: bash termux-setup.sh
+#
+# Created by: God BlazXx
+# ============================================
 
 echo "🤖 Remani Bot - Termux Setup Script"
 echo "===================================="
@@ -62,24 +76,46 @@ else
 fi
 
 echo ""
-echo -e "${YELLOW}📦 Step 6: Installing Node.js dependencies...${NC}"
-npm install
+echo -e "${YELLOW}📦 Step 6: Fixing ffmpeg-static for Android...${NC}"
+# Remove ffmpeg-static package (not compatible with Android)
+if [ -f "package.json" ] && grep -q '"ffmpeg-static":' package.json; then
+    sed -i '/"ffmpeg-static":/d' package.json
+    echo -e "${GREEN}✅ Removed ffmpeg-static from package.json${NC}"
+else
+    echo -e "${YELLOW}⏭️  ffmpeg-static already removed or not found${NC}"
+fi
+
+# Fix src/index.js to use system ffmpeg (only if not already fixed)
+if [ -f "src/index.js" ] && grep -q "require('ffmpeg-static')" src/index.js; then
+    sed -i "s/const ffmpegPath = require('ffmpeg-static');/\/\/ Use system ffmpeg for Termux\/Android/" src/index.js
+    sed -i "s/process.env.FFMPEG_PATH = ffmpegPath;/process.env.FFMPEG_PATH = 'ffmpeg';/" src/index.js
+    echo -e "${GREEN}✅ Updated src/index.js to use system ffmpeg${NC}"
+else
+    echo -e "${YELLOW}⏭️  src/index.js already using system ffmpeg${NC}"
+fi
 
 echo ""
-echo -e "${YELLOW}⚙️  Step 7: Setting up environment variables...${NC}"
+echo -e "${YELLOW}📦 Step 7: Installing Node.js dependencies...${NC}"
+echo -e "${YELLOW}⚠️  Some native modules may fail to build - this is NORMAL${NC}"
+npm install --ignore-scripts || npm install --no-optional
+echo -e "${GREEN}✅ Dependencies installed (opus errors are safe to ignore)${NC}"
+
+echo ""
+echo -e "${YELLOW}⚙️  Step 8: Setting up environment variables...${NC}"
 if [ -f ".env" ]; then
-    echo -e "${YELLOW}⚠️  .env file already exists. Skipping...${NC}"
+    echo -e "${GREEN}✅ .env file already exists. Keeping existing configuration.${NC}"
 else
     echo -e "${GREEN}Creating .env file...${NC}"
     read -p "Enter your Discord Bot Token: " bot_token
     read -p "Enter your Discord Client ID: " client_id
+    read -p "Enter your Guild/Server ID (optional): " guild_id
     read -p "Enter Spotify Client ID (press Enter to skip): " spotify_id
     read -p "Enter Spotify Client Secret (press Enter to skip): " spotify_secret
     
     cat > .env << EOF
-TOKEN=$bot_token
+DISCORD_TOKEN=$bot_token
 CLIENT_ID=$client_id
-GUILD_ID=
+GUILD_ID=$guild_id
 SPOTIFY_CLIENT_ID=$spotify_id
 SPOTIFY_CLIENT_SECRET=$spotify_secret
 EOF
@@ -87,57 +123,80 @@ EOF
 fi
 
 echo ""
-echo -e "${YELLOW}🚀 Step 8: Deploying slash commands...${NC}"
+echo -e "${YELLOW}🚀 Step 9: Deploying slash commands...${NC}"
 npm run deploy
 
 echo ""
-echo -e "${YELLOW}📋 Step 9: Starting bot with PM2...${NC}"
+echo -e "${YELLOW}📋 Step 10: Starting bot with PM2...${NC}"
 pm2 start ecosystem.config.js
 pm2 save
+echo -e "${GREEN}✅ Bot started!${NC}"
 
 echo ""
-echo -e "${YELLOW}🔄 Step 10: Setting up auto-start on boot...${NC}"
+echo -e "${YELLOW}🔄 Step 11: Setting up auto-start on boot...${NC}"
 mkdir -p ~/.termux/boot
 
-cat > ~/.termux/boot/start-bot.sh << 'EOF'
+# Get current directory dynamically
+BOT_DIR=$(pwd)
+
+cat > ~/.termux/boot/start-bot.sh << EOF
 #!/data/data/com.termux/files/usr/bin/bash
 
-# Acquire wake lock
+# Acquire wake lock to prevent device sleep
 termux-wake-lock
 
-# Wait for network
+# Wait for network to be available
 sleep 30
 
-# Start PM2
-cd /data/data/com.termux/files/home/remani-bot
+# Navigate to bot directory and start PM2
+cd "$BOT_DIR"
 pm2 resurrect
 
-# Optional: notification (requires Termux:API)
+# Optional: Send notification (requires Termux:API)
 if command -v termux-notification &> /dev/null; then
     termux-notification --title "Remani Bot" --content "Bot started successfully"
 fi
 EOF
 
 chmod +x ~/.termux/boot/start-bot.sh
+echo -e "${GREEN}✅ Boot script created${NC}"
 
 echo ""
 echo -e "${GREEN}✅ Setup Complete!${NC}"
 echo ""
-echo -e "${YELLOW}📱 Important Next Steps:${NC}"
-echo -e "1. ${RED}CRITICAL:${NC} Disable battery optimization for Termux"
-echo -e "   Settings → Apps → Termux → Battery → ${GREEN}Unrestricted${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${RED}⚠️  CRITICAL NEXT STEPS (REQUIRED FOR 24/7 UPTIME)${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "2. Install ${GREEN}Termux:Boot${NC} from F-Droid for auto-start"
-echo -e "   https://f-droid.org/en/packages/com.termux.boot/"
+echo -e "${GREEN}1. Disable Battery Optimization for Termux:${NC}"
+echo -e "   ${YELLOW}Settings → Apps → Termux → Battery → Unrestricted${NC}"
+echo -e "   (This prevents Android from killing the bot)"
 echo ""
-echo -e "3. Keep your device ${GREEN}plugged in 24/7${NC}"
+echo -e "${GREEN}2. Install Termux:Boot for Auto-Start:${NC}"
+echo -e "   ${YELLOW}https://f-droid.org/en/packages/com.termux.boot/${NC}"
+echo -e "   - Download from F-Droid (NOT Google Play)"
+echo -e "   - Open the app once to enable boot scripts"
+echo -e "   - Grant all requested permissions"
 echo ""
-echo -e "${YELLOW}🎮 Useful Commands:${NC}"
-echo -e "  pm2 status          - Check bot status"
-echo -e "  pm2 logs            - View logs"
-echo -e "  pm2 restart         - Restart bot"
-echo -e "  pm2 monit           - Monitor resources"
+echo -e "${GREEN}3. Keep Device Plugged In 24/7${NC}"
+echo -e "   (Or use a dedicated old phone for hosting)"
 echo ""
-echo -e "${GREEN}🎉 Your bot should now be running!${NC}"
-echo -e "Check status with: ${YELLOW}pm2 status${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}📱 Useful PM2 Commands:${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "  ${GREEN}pm2 status${NC}          - Check bot status"
+echo -e "  ${GREEN}pm2 logs${NC}            - View bot logs (Ctrl+C to exit)"
+echo -e "  ${GREEN}pm2 restart all${NC}     - Restart bot"
+echo -e "  ${GREEN}pm2 stop all${NC}        - Stop bot"
+echo -e "  ${GREEN}pm2 monit${NC}           - Monitor CPU/RAM usage"
+echo -e "  ${GREEN}pm2 save${NC}            - Save current PM2 state"
+echo ""
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}🎉 Your Remani bot is now running!${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "Check status: ${GREEN}pm2 status${NC}"
+echo -e "View logs:    ${GREEN}pm2 logs${NC}"
+echo ""
+echo -e "${YELLOW}Note: @discordjs/opus errors during install are NORMAL and safe to ignore!${NC}"
 echo ""

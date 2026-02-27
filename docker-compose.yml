@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  remani-bot:
+    build: .
+    container_name: remani-discord-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      # Optional: Mount cookies for yt-dlp
+      # - ./cookies.txt:/app/cookies.txt:ro
+    environment:
+      - NODE_ENV=production
+      - TZ=UTC
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'node src/index.js' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Network mode (optional, for better connectivity)
+    network_mode: bridge
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

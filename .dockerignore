@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.env
+.env.*
+.git
+.gitignore
+*.md
+README.md
+DEPLOY.md
+ANDROID_DEPLOYMENT.md
+logs/*.log
+.vscode
+.DS_Store
+cookies.txt
+pm2-manager.bat
+src/windows-subprocess/

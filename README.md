@@ -17,6 +17,79 @@ A premium Discord music bot with YouTube and Spotify support using yt-dlp for re
 - 🎨 Beautiful interactive music panels
 - 🔍 Smart search functionality
 - 💾 20 slash commands
+- 🐳 Docker support for easy deployment
+- 📱 Can run on Android devices (see deployment guides)
+
+## 🚀 Quick Deploy
+
+Choose your deployment method:
+
+| Method | Difficulty | Time | 24/7 | Link |
+|--------|-----------|------|------|------|
+| **Railway.app** ⭐ | Very Easy | 5 min | ✅ Yes | [Guide](QUICK_DEPLOY.md#1️⃣-railwayapp---recommended-️) |
+| **Render.com** | Easy | 10 min | ✅ Yes | [Guide](QUICK_DEPLOY.md#2️⃣-rendercom---super-simple) |
+| **Fly.io** | Medium | 10 min | ✅ Yes | [Guide](QUICK_DEPLOY.md#3️⃣-flyio---generous-free-tier) |
+| **Docker (PC/Server)** | Medium | 15 min | ✅ Yes | [See below](#-docker-deployment) |
+| **Android (Termux)** | Hard | 20 min | ⚠️ Phone on | [Android Guide](ANDROID_DEPLOYMENT.md) |
+| **Traditional Setup** | Medium | 20 min | Manual | [See below](#-setup) |
+
+**Recommended:** Use Railway.app for easiest deployment! See [QUICK_DEPLOY.md](QUICK_DEPLOY.md) for detailed instructions.
+
+---
+
+## � Android Deployment
+
+Run your bot 24/7 on an old Android device using **Termux**!
+
+```bash
+# Quick Install (Termux from F-Droid)
+pkg update && pkg install -y curl
+bash <(curl -sSL [YOUR_SCRIPT_URL]/termux-setup.sh)
+```
+
+**What you need:**
+- Old Android phone (Android 7+)
+- Termux app from F-Droid (NOT Play Store!)
+- Device plugged in 24/7
+
+**Guides:**
+- 📖 **Full Guide:** [ANDROID_DEPLOYMENT.md](ANDROID_DEPLOYMENT.md) (Step-by-step instructions)
+- ⚡ **Quick Reference:** [ANDROID_QUICK_REFERENCE.md](ANDROID_QUICK_REFERENCE.md) (Commands & tips)
+- 📦 **Auto-Setup:** [termux-setup.sh](termux-setup.sh) (One-command installation)
+
+**Expected Performance:**
+- RAM: 150-300 MB
+- Uptime: 30+ days
+- Requires battery optimization disabled
+
+---
+
+## �🐳 Docker Deployment
+
+Run the bot with Docker (easiest for servers):
+
+```bash
+# 1. Clone repository
+git clone <your-repo-url>
+cd remani
+
+# 2. Create .env file with your credentials
+cp .env.example .env
+nano .env
+
+# 3. Build and run with Docker Compose
+docker-compose up -d
+
+# 4. Deploy slash commands (first time only)
+docker exec -it remani-music-bot node src/deploy-commands.js
+
+# 5. View logs
+docker-compose logs -f
+```
+
+**For Android deployment with GUI:** See [ANDROID_DEPLOYMENT.md](ANDROID_DEPLOYMENT.md) for Portainer setup.
+
+---
 
 ## Commands 📝
 

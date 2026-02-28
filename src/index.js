@@ -49,10 +49,13 @@ shoukaku.on('error', (name, error) => console.error(`❌ Lavalink "${name}" erro
 shoukaku.on('close', (name, code, reason) => console.warn(`⚠️ Lavalink "${name}" closed [${code}]: ${reason}`));
 shoukaku.on('disconnect', (name, players, moved) => {
     if (!moved) {
-        console.warn(`⚠️ Lavalink "${name}" disconnected. Cleaning up ${players.size} players.`);
-        for (const [guildId] of players) {
-            const queue = client.queues.get(guildId);
-            if (queue) queue.stop();
+        const count = players?.size ?? 0;
+        console.warn(`⚠️ Lavalink "${name}" disconnected. Cleaning up ${count} players.`);
+        if (players) {
+            for (const [guildId] of players) {
+                const queue = client.queues.get(guildId);
+                if (queue) queue.stop();
+            }
         }
     }
 });

@@ -3,7 +3,7 @@
 # Step 1: Generate PoToken BEFORE starting Lavalink
 echo "Generating PoToken from datacenter IP..."
 cd /app
-node --max-old-space-size=256 potoken/generate.mjs env 2>&1 || echo "PoToken generation failed (non-fatal)"
+node --max-old-space-size=128 potoken/generate.mjs env 2>&1 || echo "PoToken generation failed (non-fatal)"
 
 # Load generated PoToken values into environment
 YOUTUBE_POTOKEN=""
@@ -20,14 +20,12 @@ fi
 # Step 2: Start Lavalink with PoToken baked into config
 echo "Starting Lavalink..."
 cd /lavalink
-java -Xms300m -Xmx300m \
+java -Xmx256m \
   -XX:+UseG1GC \
   -XX:MaxGCPauseMillis=10 \
   -XX:G1HeapRegionSize=4m \
   -XX:+UseStringDeduplication \
   -XX:+ParallelRefProcEnabled \
-  -XX:+AlwaysPreTouch \
-  -XX:InitiatingHeapOccupancyPercent=30 \
   -DYOUTUBE_OAUTH_REFRESH_TOKEN="$YOUTUBE_OAUTH_REFRESH_TOKEN" \
   -DSPOTIFY_CLIENT_ID="$SPOTIFY_CLIENT_ID" \
   -DSPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \
@@ -63,7 +61,7 @@ BOT_PID=$!
     while true; do
         echo "[PoToken Refresh] Regenerating..."
         cd /app
-        node --max-old-space-size=256 potoken/generate.mjs inject 2>&1 || echo "[PoToken Refresh] Failed (non-fatal)"
+        node --max-old-space-size=128 potoken/generate.mjs inject 2>&1 || echo "[PoToken Refresh] Failed (non-fatal)"
         sleep 480  # every 8 minutes
     done
 ) &

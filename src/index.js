@@ -29,7 +29,7 @@ client.commands = new Collection();
 client.queues = new Map();
 client.musicPanels = new Map();
 
-// Lavalink connection
+// Lavalink
 const lavalinkNodes = [{
     name: 'main',
     url: process.env.LAVALINK_URL || 'localhost:2333',
@@ -86,9 +86,9 @@ class MusicQueue {
         this.volume = 100;
         this.playing = false;
         this.paused = false;
-        this.repeatMode = 0; // 0: Off, 1: Song, 2: Queue
+        this.repeatMode = 0;
         this.progressInterval = null;
-        this.position = 0; // Current position in seconds (from Lavalink updates)
+        this.position = 0;
         this.currentFilter = 'off';
 
         this.setupPlayerEvents();
@@ -192,8 +192,13 @@ class MusicQueue {
 
             if (this.songs.length === 0) {
                 console.log('🎵 Queue finished');
+                this.playing = false;
                 this.textChannel.send('🎵 Queue finished. Add more songs to keep the party going!').catch(console.error);
-                this.stop();
+                setTimeout(() => {
+                    if (this.songs.length === 0) {
+                        this.stop();
+                    }
+                }, 1500);
             } else {
                 this.play();
             }
@@ -486,9 +491,6 @@ async function searchSongInternal(query, user) {
 client.searchSong = searchSong;
 client.formatDuration = formatDuration;
 
-/**
- * Background Spotify playlist converter (fallback for edge cases)
- */
 async function processSpotifyPlaylistBackground(queue, remainingTracks, textChannel) {
     if (!remainingTracks || remainingTracks.length === 0) return;
 

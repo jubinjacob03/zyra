@@ -10,24 +10,21 @@ lavalink:
       snapshot: false
   server:
     password: "remani-lavalink"
-    # === BUFFER SETTINGS (anti-stutter) ===
-    bufferDurationMs: 5000           # NAS native UDP buffer: 5s (default 400ms). Survives GC pauses.
-    frameBufferDurationMs: 30000     # 30s of decoded opus frames pre-buffered (default 5000ms)
-    nonAllocatingFrameBuffer: true   # Reduce GC pressure from frame allocations
-    # === CPU REDUCTION ===
-    opusEncodingQuality: 0           # Lowest CPU for encoding (only matters during filter/transcode, not passthrough)
-    resamplingQuality: LOW           # Minimum CPU resampling
-    # === TOLERANCE ===
-    trackStuckThresholdMs: 30000     # 30s before declaring track stuck
-    useSeekGhosting: false           # Don't drain buffer on seek (cleaner, less CPU)
-    playerUpdateInterval: 10         # Position updates every 10s
-    gc-warnings: false               # Disable GC monitoring overhead
+    bufferDurationMs: 5000
+    frameBufferDurationMs: 30000
+    nonAllocatingFrameBuffer: true
+    opusEncodingQuality: 0
+    resamplingQuality: LOW
+    trackStuckThresholdMs: 30000
+    useSeekGhosting: false
+    playerUpdateInterval: 10
+    gc-warnings: false
     sources:
       youtube: false
       bandcamp: true
       soundcloud: true
-      twitch: false                  # Disabled: not used, saves memory
-      vimeo: false                   # Disabled: not used, saves memory
+      twitch: false
+      vimeo: false
       http: true
       local: false
     filters:
@@ -37,11 +34,10 @@ lavalink:
       timescale: true
       tremolo: true
       vibrato: true
-      distortion: false              # Disabled: not used by /filter command
+      distortion: false
       rotation: true
       channelMix: true
-      lowPass: false                 # Disabled: not used by /filter command
-    # === HTTP TIMEOUTS (faster retries on stalled YouTube requests) ===
+      lowPass: false
     timeouts:
       connectTimeoutMs: 5000
       connectionRequestTimeoutMs: 3000
@@ -53,10 +49,6 @@ plugins:
     allowSearch: true
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
-    # Client order optimized: MUSIC (search), then lightest playback clients first
-    # TVHTML5_SIMPLY: no PoToken/OAuth needed, returns native Opus, lowest overhead
-    # WEB: fallback, needs PoToken for some videos
-    # TV removed: requires OAuth sign-in overhead, unnecessary with TVHTML5_SIMPLY
     clients:
       - MUSIC
       - TVHTML5_SIMPLY
@@ -91,5 +83,5 @@ plugins:
 
 logging:
   level:
-    root: WARN                       # Reduce logging I/O
+    root: WARN
     lavalink: INFO

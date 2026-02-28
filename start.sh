@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Step 1: Generate PoToken BEFORE starting Lavalink
+# Generate PoToken BEFORE starting Lavalink
 echo "Generating PoToken from datacenter IP..."
 cd /app
 node --max-old-space-size=128 potoken/generate.mjs env 2>&1 || echo "PoToken generation failed (non-fatal)"
@@ -17,7 +17,7 @@ else
     echo "No PoToken env file found, continuing without"
 fi
 
-# Step 2: Start Lavalink with PoToken baked into config
+# Start Lavalink with PoToken baked into config
 echo "Starting Lavalink..."
 cd /lavalink
 java -Xmx256m \
@@ -50,20 +50,20 @@ else
     echo "Lavalink may still be starting (Shoukaku will retry)"
 fi
 
-# Step 3: Start bot as main process
+# Start bot
 echo "Starting bot..."
 cd /app
 node src/index.js &
 BOT_PID=$!
 
-# Step 4: Background PoToken refresh loop (re-inject every 20 minutes)
+# Background PoToken refresh loop
 (
-    sleep 60  # initial delay after startup
+    sleep 60
     while true; do
         echo "[PoToken Refresh] Regenerating..."
         cd /app
         node --max-old-space-size=128 potoken/generate.mjs inject 2>&1 || echo "[PoToken Refresh] Failed (non-fatal)"
-        sleep 1200  # every 20 minutes
+        sleep 1200
     done
 ) &
 REFRESH_PID=$!

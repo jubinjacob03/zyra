@@ -124,11 +124,7 @@ module.exports = function attachMusicApi(client) {
         if (!queue || !queue.songs.length)
           return send(res, 200, { playing: false, paused: false, song: null, queue: [], queueLength: 0 });
 
-        const panelData = client.musicPanels.get(guildId);
-        const elapsed   =
-          queue.playing && !queue.paused && panelData?.startTime
-            ? Math.floor((Date.now() - panelData.startTime) / 1000)
-            : 0;
+        const elapsed = queue.position ?? 0;
 
         return send(res, 200, {
           playing:    queue.playing && !queue.paused,

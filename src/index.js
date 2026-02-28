@@ -80,7 +80,7 @@ class MusicQueue {
         this.voiceChannel = voiceChannel;
         this.player = player;
         this.songs = [];
-        this.volume = 50;
+        this.volume = 100;
         this.playing = false;
         this.paused = false;
         this.repeatMode = 0; // 0: Off, 1: Song, 2: Queue

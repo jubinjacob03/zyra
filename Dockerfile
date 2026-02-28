@@ -1,4 +1,4 @@
-FROM eclipse-temurin:17-jre-alpine
+FROM azul/zulu-openjdk-alpine:17-jre
 
 RUN apk add --no-cache nodejs npm curl wget
 

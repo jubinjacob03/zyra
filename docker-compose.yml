@@ -15,7 +15,7 @@ services:
       - LAVALINK_URL=localhost:2333
       - LAVALINK_PASSWORD=remani-lavalink
       - YOUTUBE_OAUTH_REFRESH_TOKEN=${YOUTUBE_OAUTH_REFRESH_TOKEN}
-      - JAVA_TOOL_OPTIONS=-Xmx200m
+      - JAVA_TOOL_OPTIONS=-Xmx300m
     deploy:
       resources:
         limits:

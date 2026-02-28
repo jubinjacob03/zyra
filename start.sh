@@ -26,6 +26,7 @@ java -Xmx256m \
   -XX:G1HeapRegionSize=4m \
   -XX:+UseStringDeduplication \
   -XX:+ParallelRefProcEnabled \
+  -XX:+DisableExplicitGC \
   -DYOUTUBE_OAUTH_REFRESH_TOKEN="$YOUTUBE_OAUTH_REFRESH_TOKEN" \
   -DSPOTIFY_CLIENT_ID="$SPOTIFY_CLIENT_ID" \
   -DSPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \
@@ -55,14 +56,14 @@ cd /app
 node src/index.js &
 BOT_PID=$!
 
-# Step 4: Background PoToken refresh loop (re-inject every 8 minutes)
+# Step 4: Background PoToken refresh loop (re-inject every 20 minutes)
 (
     sleep 60  # initial delay after startup
     while true; do
         echo "[PoToken Refresh] Regenerating..."
         cd /app
         node --max-old-space-size=128 potoken/generate.mjs inject 2>&1 || echo "[PoToken Refresh] Failed (non-fatal)"
-        sleep 480  # every 8 minutes
+        sleep 1200  # every 20 minutes
     done
 ) &
 REFRESH_PID=$!

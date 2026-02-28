@@ -155,7 +155,7 @@ class MusicQueue {
 
         try {
             this.player.playTrack({ track: { encoded: song.encoded } });
-            this.player.setGlobalVolume(this.volume);
+            if (this.volume !== 100) this.player.setGlobalVolume(this.volume);
 
             const { createCompleteMusicController } = require('./utils/componentsV2');
             const controller = createCompleteMusicController(this);
@@ -301,7 +301,7 @@ class MusicQueue {
                 clearInterval(this.progressInterval);
                 this.progressInterval = null;
             }
-        }, 5000);
+        }, 15000);
     }
 
     async updateMusicPanel() {

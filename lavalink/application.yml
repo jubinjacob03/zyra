@@ -10,14 +10,14 @@ lavalink:
       snapshot: false
   server:
     password: "remani-lavalink"
-    bufferDurationMs: 2000
-    frameBufferDurationMs: 10000
+    bufferDurationMs: 5000
+    frameBufferDurationMs: 20000
     nonAllocatingFrameBuffer: true
     opusEncodingQuality: 10
     resamplingQuality: LOW
-    trackStuckThresholdMs: 15000
+    trackStuckThresholdMs: 30000
     useSeekGhosting: true
-    playerUpdateInterval: 5
+    playerUpdateInterval: 10
     gc-warnings: true
     sources:
       youtube: false

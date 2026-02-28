@@ -20,12 +20,14 @@ fi
 # Step 2: Start Lavalink with PoToken baked into config
 echo "Starting Lavalink..."
 cd /lavalink
-java -Xmx300m \
+java -Xms300m -Xmx300m \
   -XX:+UseG1GC \
-  -XX:MaxGCPauseMillis=20 \
+  -XX:MaxGCPauseMillis=10 \
   -XX:G1HeapRegionSize=4m \
   -XX:+UseStringDeduplication \
   -XX:+ParallelRefProcEnabled \
+  -XX:+AlwaysPreTouch \
+  -XX:InitiatingHeapOccupancyPercent=30 \
   -DYOUTUBE_OAUTH_REFRESH_TOKEN="$YOUTUBE_OAUTH_REFRESH_TOKEN" \
   -DSPOTIFY_CLIENT_ID="$SPOTIFY_CLIENT_ID" \
   -DSPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \

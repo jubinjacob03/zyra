@@ -202,7 +202,8 @@ module.exports = function attachMusicApi(client) {
         if (!queue || !queue.songs.length)
           return send(res, 200, { playing: false, paused: false, song: null, queue: [], queueLength: 0 });
 
-        const elapsed = queue.position ?? 0;
+        // queue.position is raw Lavalink ms — divide to match web's seconds-based elapsed
+        const elapsed = Math.floor((queue.position ?? 0) / 1000);
 
         return send(res, 200, {
           playing:    queue.playing && !queue.paused,

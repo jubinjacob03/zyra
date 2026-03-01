@@ -103,12 +103,11 @@ module.exports = function attachMusicApi(client) {
         });
       }
 
+      // ── Legacy generic control (kept for backward compat) ────────────────
       if (req.method === 'POST' && path === '/control') {
         const { guildId, action, value } = await parseBody(req);
-
         const queue = client.getQueue(guildId);
         if (!queue) return send(res, 404, { error: 'Nothing is playing' });
-
         switch (action) {
           case 'pause':   queue.pause();   break;
           case 'resume':  queue.resume();  break;
@@ -127,8 +126,73 @@ module.exports = function attachMusicApi(client) {
           case 'filter':  await queue.setFilter(value || 'off'); break;
           default:        return send(res, 400, { error: `Unknown action: ${action}` });
         }
-
         return send(res, 200, { success: true, action });
+      }
+
+      // ── Direct per-action endpoints (zero-overhead, no switch dispatch) ──
+      if (req.method === 'POST') {
+        // All these share the same queue-lookup + minimal body parse
+        const directActions = ['/skip', '/pause', '/resume', '/toggle', '/stop',
+                               '/shuffle', '/loop', '/volume', '/seek', '/remove', '/filter'];
+        if (directActions.includes(path)) {
+          const body  = await parseBody(req);
+          const guildId = body.guildId;
+          const queue = client.getQueue(guildId);
+          if (!queue) return send(res, 404, { error: 'Nothing is playing' });
+
+          switch (path) {
+            case '/skip':    queue.skip();   break;
+            case '/pause':   queue.pause();  break;
+            case '/resume':  queue.resume(); break;
+            case '/toggle':  queue.paused ? queue.resume() : queue.pause(); break;
+            case '/stop':    queue.stop();   break;
+            case '/shuffle': queue.shuffle(); break;
+            case '/loop': {
+              const mode = body.value !== undefined
+                ? Number(body.value)
+                : (queue.repeatMode + 1) % 3;
+              queue.setRepeatMode(mode);
+              break;
+            }
+            case '/volume': {
+              const vol = Math.max(0, Math.min(100, Number(body.value) || 50));
+              queue.setVolume(vol);
+              return send(res, 200, { success: true, volume: vol });
+            }
+            case '/seek': {
+              queue.seek(Number(body.value) || 0);
+              break;
+            }
+            case '/remove': {
+              const removed = queue.remove(Number(body.value) || 0);
+              if (!removed) return send(res, 400, { error: 'Invalid queue position' });
+              return send(res, 200, { success: true, removed: removed.name });
+            }
+            case '/filter': {
+              await queue.setFilter(body.value || 'off');
+              return send(res, 200, { success: true, filter: body.value || 'off' });
+            }
+          }
+          return send(res, 200, { success: true });
+        }
+      }
+
+      // ── Queue details endpoint ────────────────────────────────────────────
+      if (req.method === 'GET' && path === '/queue') {
+        const guildId = url.searchParams.get('guildId');
+        const queue   = client.getQueue(guildId);
+        if (!queue) return send(res, 200, { queue: [], queueLength: 0 });
+        return send(res, 200, {
+          queue: queue.songs.map((s, i) => ({
+            index: i,
+            name: s.name,
+            url: s.url,
+            thumbnail: s.thumbnail,
+            formattedDuration: s.formattedDuration,
+            author: s.author,
+          })),
+          queueLength: queue.songs.length,
+        });
       }
 
       if (req.method === 'GET' && path === '/status') {

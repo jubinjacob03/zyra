@@ -57,6 +57,7 @@ module.exports = function attachMusicApi(client) {
         if (!voiceChannel) return send(res, 404, { error: 'Voice channel not found' });
 
         const textChannel =
+          guild.channels.cache.get('1473105751575760917') ||
           guild.systemChannel ||
           guild.channels.cache.find(
             (c) => c.type === 0 && c.permissionsFor(guild.members.me)?.has('SendMessages'),

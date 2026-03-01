@@ -3,7 +3,8 @@ const { Client, GatewayIntentBits, Collection, Events, ActivityType, EmbedBuilde
 const { Shoukaku, Connectors } = require('shoukaku');
 const fs = require('fs');
 const path = require('path');
-const { createMusicPanel, createNowPlayingEmbed, createProgressBar, formatDuration } = require('./utils/embed');
+const { formatDuration } = require('./utils/embed');
+const { initEmojis } = require('./utils/customEmoji');
 const SpotifyAPI = require('./utils/spotify');
 
 process.on('unhandledRejection', (reason) => {
@@ -159,11 +160,21 @@ class MusicQueue {
 
             const { createCompleteMusicController } = require('./utils/componentsV2');
             const controller = createCompleteMusicController(this);
-            const message = await this.textChannel.send(controller);
 
-            const oldPanel = client.musicPanels.get(this.guildId);
-            if (oldPanel?.message) {
-                try { await oldPanel.message.delete(); } catch {}
+            // Edit existing panel if available, otherwise send new message
+            const existingPanel = client.musicPanels.get(this.guildId);
+            let message;
+
+            if (existingPanel?.message) {
+                try {
+                    await existingPanel.message.edit(controller);
+                    message = existingPanel.message;
+                } catch {
+                    // Edit failed (message deleted, etc.) — send new
+                    message = await this.textChannel.send(controller);
+                }
+            } else {
+                message = await this.textChannel.send(controller);
             }
 
             client.musicPanels.set(this.guildId, { message, song, startTime: Date.now() });
@@ -315,23 +326,11 @@ class MusicQueue {
 
         try {
             await panelData.message.fetch();
-            const { embed, components } = createMusicPanel(this);
-
-            const elapsed = this.position;
-            const song = this.songs[0];
-            const progressBar = createProgressBar(elapsed, song.duration || 100, 15);
-
-            const volumeIcon = this.volume > 66 ? '🔊' : this.volume > 33 ? '🔉' : '🔈';
-            const loopModes = ['Off', '🔂 Song', '🔁 Queue'];
-
-            embed.setDescription(
-                `**${song.author || 'Unknown Artist'}**\n\n` +
-                `⏱️ \`${formatDuration(elapsed)} ${progressBar} ${song.formattedDuration}\`\n` +
-                `👤 ${song.user?.displayName || song.user?.username || 'Unknown'}\n` +
-                `${volumeIcon} \`${this.volume}%\` • ${loopModes[this.repeatMode]} • \`${this.songs.length} songs\``
-            );
-
-            await panelData.message.edit({ embeds: [embed], components });
+            const { createCompleteMusicController } = require('./utils/componentsV2');
+            const controller = createCompleteMusicController(this);
+            if (controller) {
+                await panelData.message.edit(controller);
+            }
         } catch (error) {
             if (error.code === 10008 || error.code === 10003) {
                 client.musicPanels.delete(this.guildId);
@@ -548,6 +547,8 @@ for (const file of commandFiles) {
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
+    initEmojis(readyClient);
+
     console.log(`\n🎵 Remani Music Bot is online!`);
     console.log(`📡 Logged in as ${readyClient.user.tag}`);
     console.log(`🌐 Serving ${readyClient.guilds.cache.size} servers`);
@@ -652,10 +653,11 @@ async function handleButtonInteraction(interaction, client) {
                 const queueList = songs.map((song, i) =>
                     `${i === 0 ? '**▶️ Now:**' : `**${i}.**`} [${song.name}](${song.url}) - \`${song.formattedDuration}\``
                 ).join('\n');
-                await interaction.editReply({
-                    content: `📋 **Queue** (${queue.songs.length} songs)\n\n${queueList}`
+                await interaction.followUp({
+                    content: `📋 **Queue** (${queue.songs.length} songs)\n\n${queueList}`,
+                    ephemeral: true
                 });
-                break;
+                return; // Don't update the panel for queue display
             }
 
             case 'music_voldown': {

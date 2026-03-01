@@ -5,7 +5,10 @@ module.exports = function attachMusicApi(client) {
   const apiKey = process.env.MUSIC_API_KEY;
 
   const send = (res, status, data) => {
-    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.writeHead(status, {
+      'Content-Type': 'application/json',
+      'Connection': 'keep-alive',
+    });
     res.end(JSON.stringify(data));
   };
 
@@ -24,7 +27,7 @@ module.exports = function attachMusicApi(client) {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-    if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
     if (apiKey) {
       const auth = req.headers.authorization;
@@ -37,6 +40,10 @@ module.exports = function attachMusicApi(client) {
     const path = url.pathname;
 
     try {
+      if (req.method === 'GET' && path === '/health') {
+        return send(res, 200, { ok: true, uptime: Math.floor(process.uptime()) });
+      }
+
       if (req.method === 'POST' && path === '/play') {
         const { guildId, voiceChannelId, query, userId, username } = await parseBody(req);
 
@@ -58,9 +65,9 @@ module.exports = function attachMusicApi(client) {
           return send(res, 500, { error: 'No accessible text channel in guild' });
 
         const fakeUser = {
-          id: userId || 'web',
-          displayName: username || 'Web Player',
-          username: username || 'web',
+          id: userId || 'api',
+          displayName: username || 'API Player',
+          username: username || 'api',
         };
 
         const result = await client.searchSong(query, fakeUser);
@@ -111,6 +118,13 @@ module.exports = function attachMusicApi(client) {
           case 'shuffle': queue.shuffle(); break;
           case 'loop':    queue.setRepeatMode(value ?? (queue.repeatMode + 1) % 3); break;
           case 'volume':  queue.setVolume(Math.max(0, Math.min(100, Number(value) || 50))); break;
+          case 'seek':    queue.seek(Number(value) || 0); break;
+          case 'remove': {
+            const removed = queue.remove(Number(value) || 0);
+            if (!removed) return send(res, 400, { error: 'Invalid queue position' });
+            return send(res, 200, { success: true, action, removed: removed.name });
+          }
+          case 'filter':  await queue.setFilter(value || 'off'); break;
           default:        return send(res, 400, { error: `Unknown action: ${action}` });
         }
 
@@ -132,6 +146,7 @@ module.exports = function attachMusicApi(client) {
           repeatMode: queue.repeatMode,
           volume:     queue.volume,
           elapsed,
+          currentFilter: queue.currentFilter || 'off',
           song: {
             name:             queue.songs[0].name,
             url:              queue.songs[0].url,
@@ -140,7 +155,7 @@ module.exports = function attachMusicApi(client) {
             formattedDuration: queue.songs[0].formattedDuration,
             author:           queue.songs[0].author || 'Unknown Artist',
           },
-          queue: queue.songs.slice(1, 8).map((s, i) => ({
+          queue: queue.songs.slice(1, 10).map((s, i) => ({
             index:            i + 1,
             name:             s.name,
             thumbnail:        s.thumbnail,
@@ -151,6 +166,30 @@ module.exports = function attachMusicApi(client) {
         });
       }
 
+      if (req.method === 'POST' && path === '/search') {
+        const { query, limit } = await parseBody(req);
+        if (!query) return send(res, 400, { error: 'query is required' });
+
+        const node = client.shoukaku.options.nodeResolver(client.shoukaku.nodes);
+        if (!node) return send(res, 503, { error: 'No Lavalink nodes available' });
+
+        const result = await node.rest.resolve(`ytmsearch:${query}`);
+        if (!result || result.loadType !== 'search' || !result.data?.length)
+          return send(res, 200, { results: [] });
+
+        const max = Math.min(Number(limit) || 10, 25);
+        const results = result.data.slice(0, max).map(t => ({
+          title: t.info?.title,
+          author: t.info?.author,
+          duration: Math.floor((t.info?.length || 0) / 1000),
+          url: t.info?.uri,
+          thumbnail: t.info?.artworkUrl,
+          encoded: t.encoded,
+        }));
+
+        return send(res, 200, { results });
+      }
+
       return send(res, 404, { error: 'Not found' });
     } catch (err) {
       console.error('[MusicAPI Error]', err.message);
@@ -158,7 +197,10 @@ module.exports = function attachMusicApi(client) {
     }
   });
 
-  server.listen(port, () => {
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+
+  server.listen(port, '0.0.0.0', () => {
     console.log(`🎵 Remani Music API listening on port ${port}`);
   });
 

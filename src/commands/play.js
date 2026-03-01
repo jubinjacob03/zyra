@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { errorEmbed, playlistEmbed, COLORS, ICONS } = require('../utils/embed');
+const { errorEmbed, COLORS } = require('../utils/embed');
 const { createCompleteMusicController } = require('../utils/componentsV2');
 
 module.exports = {
@@ -55,49 +55,72 @@ module.exports = {
 
             if (result.type === 'playlist') {
                 await queue.addSongs(result.songs);
-                
-                const controller = createCompleteMusicController(queue);
-                
-                try {
-                    await interaction.editReply({
-                        content: null,
-                        embeds: controller.embeds,
-                        components: controller.components
-                    });
-                } catch (editError) {
-                    await interaction.channel.send({
-                        embeds: controller.embeds,
-                        components: controller.components
-                    });
-                }
-                
+
                 if (isNewQueue) {
+                    // Send controller as the /play reply and pre-register it as the music panel
+                    const controller = createCompleteMusicController(queue);
+                    let msg;
+                    try {
+                        msg = await interaction.editReply({
+                            content: null,
+                            embeds: controller.embeds,
+                            components: controller.components
+                        });
+                    } catch (editError) {
+                        msg = await interaction.channel.send({
+                            embeds: controller.embeds,
+                            components: controller.components
+                        });
+                    }
+                    // Pre-register so queue.play() edits this message instead of creating a new one
+                    client.musicPanels.set(interaction.guildId, { message: msg, song: queue.songs[0], startTime: Date.now() });
                     await queue.play();
+                } else {
+                    const addedEmbed = new EmbedBuilder()
+                        .setColor(0x0e0e12)
+                        .setDescription(`🎵 **${result.songs.length} songs** from playlist added to queue`);
+                    try {
+                        await interaction.editReply({ content: null, embeds: [addedEmbed] });
+                    } catch {
+                        await interaction.channel.send({ embeds: [addedEmbed] });
+                    }
                 }
-                
+
                 if (result.spotifyData?.remainingTracks && result.spotifyData.remainingTracks.length > 0) {
                     client.processSpotifyPlaylistBackground(queue, result.spotifyData.remainingTracks, interaction.channel);
                 }
             } else {
                 await queue.addSong(result);
-                
-                const controller = createCompleteMusicController(queue);
-                
-                try {
-                    await interaction.editReply({
-                        content: null,
-                        embeds: controller.embeds,
-                        components: controller.components
-                    });
-                } catch (editError) {
-                    await interaction.channel.send({
-                        embeds: controller.embeds,
-                        components: controller.components
-                    });
-                }
-                
+
                 if (isNewQueue) {
+                    // Send controller as the /play reply and pre-register it as the music panel
+                    const controller = createCompleteMusicController(queue);
+                    let msg;
+                    try {
+                        msg = await interaction.editReply({
+                            content: null,
+                            embeds: controller.embeds,
+                            components: controller.components
+                        });
+                    } catch (editError) {
+                        msg = await interaction.channel.send({
+                            embeds: controller.embeds,
+                            components: controller.components
+                        });
+                    }
+                    // Pre-register so queue.play() edits this message instead of creating a new one
+                    client.musicPanels.set(interaction.guildId, { message: msg, song: result, startTime: Date.now() });
                     await queue.play();
+                } else {
+                    const position = queue.songs.length;
+                    const addedEmbed = new EmbedBuilder()
+                        .setColor(0x0e0e12)
+                        .setDescription(`🎵 **${result.name}** added to queue at position **${position}**`);
+                    try {
+                        await interaction.editReply({ content: null, embeds: [addedEmbed] });
+                    } catch {
+                        await interaction.channel.send({ embeds: [addedEmbed] });
+                    }
                 }
             }
         } catch (error) {

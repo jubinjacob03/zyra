@@ -15,15 +15,15 @@ services:
       - LAVALINK_URL=localhost:2333
       - LAVALINK_PASSWORD=remani-lavalink
       - YOUTUBE_OAUTH_REFRESH_TOKEN=${YOUTUBE_OAUTH_REFRESH_TOKEN}
-      - JAVA_TOOL_OPTIONS=-Xmx256m
+      - JAVA_TOOL_OPTIONS=-Xms450m -Xmx450m
     deploy:
       resources:
         limits:
           cpus: '1'
-          memory: 768M
+          memory: 1024M
         reservations:
           cpus: '0.5'
-          memory: 384M
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'node src/index.js' || exit 1"]
       interval: 30s

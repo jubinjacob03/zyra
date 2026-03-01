@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { createMusicPanel } = require('../utils/embed');
+const { createCompleteMusicController } = require('../utils/componentsV2');
 const { errorEmbed } = require('../utils/embed');
 
 module.exports = {
@@ -14,7 +14,7 @@ module.exports = {
             return interaction.reply({ embeds: [errorEmbed('Nothing is playing right now.')], flags: 64 });
         }
 
-        const { embed, components } = createMusicPanel(queue);
-        await interaction.reply({ embeds: [embed], components });
+        const controller = createCompleteMusicController(queue);
+        await interaction.reply({ embeds: controller.embeds, components: controller.components });
     },
 };

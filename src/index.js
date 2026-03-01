@@ -97,7 +97,7 @@ class MusicQueue {
 
     setupPlayerEvents() {
         this.player.on('end', (data) => {
-            if (data.reason === 'finished') {
+            if (data.reason === 'finished' || data.reason === 'stopped') {
                 this.processQueue();
             } else if (data.reason === 'loadFailed') {
                 this.textChannel.send('❌ Failed to load track. Skipping...').catch(console.error);

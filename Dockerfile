@@ -17,5 +17,5 @@ COPY start.sh /start.sh
 RUN chmod +x /start.sh && sed -i 's/\r$//' /start.sh
 
 ENV NODE_ENV=production
-EXPOSE 3000
+EXPOSE 2333
 CMD ["/start.sh"]

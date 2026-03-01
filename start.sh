@@ -24,6 +24,7 @@ java -Xms450m -Xmx450m \
   -XX:+UseG1GC \
   -XX:MaxGCPauseMillis=50 \
   -XX:G1HeapRegionSize=2m \
+  -XX:+UnlockExperimentalVMOptions \
   -XX:G1NewSizePercent=20 \
   -XX:G1MaxNewSizePercent=35 \
   -XX:+UseStringDeduplication \

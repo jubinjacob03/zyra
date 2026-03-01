@@ -10,15 +10,18 @@ lavalink:
       snapshot: false
   server:
     password: "remani-lavalink"
-    bufferDurationMs: 2000
-    frameBufferDurationMs: 5000
+    # Ultra-stability buffer config for low-resource servers
+    bufferDurationMs: 8000
+    frameBufferDurationMs: 10000
     nonAllocatingFrameBuffer: true
-    opusEncodingQuality: 7
-    resamplingQuality: MEDIUM
-    trackStuckThresholdMs: 10000
-    useSeekGhosting: true
-    playerUpdateInterval: 5
-    gc-warnings: true
+    # Lowest quality = lowest CPU = most stable streaming
+    opusEncodingQuality: 0
+    resamplingQuality: LOW
+    trackStuckThresholdMs: 30000
+    useSeekGhosting: false
+    playerUpdateInterval: 10
+    gc-warnings: false
+    youtubePlaylistLoadLimit: 30
     sources:
       youtube: false
       bandcamp: true
@@ -39,9 +42,9 @@ lavalink:
       channelMix: true
       lowPass: false
     timeouts:
-      connectTimeoutMs: 5000
-      connectionRequestTimeoutMs: 3000
-      socketTimeoutMs: 5000
+      connectTimeoutMs: 10000
+      connectionRequestTimeoutMs: 5000
+      socketTimeoutMs: 10000
 
 plugins:
   youtube:
@@ -51,9 +54,9 @@ plugins:
     allowDirectPlaylistIds: true
     clients:
       - MUSIC
-      - TV
-      - TVHTML5_SIMPLY
+      - ANDROID_MUSIC
       - WEB
+      - TVHTML5_SIMPLY
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"

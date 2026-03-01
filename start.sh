@@ -43,9 +43,11 @@ java -Xms450m -Xmx450m \
   -jar Lavalink.jar &
 LAVALINK_PID=$!
 
+# Wait until Lavalink is FULLY ready (accepts connections), up to 120s
+echo "Waiting for Lavalink to be fully ready..."
 READY=0
-for i in $(seq 1 30); do
-    if wget -q --spider --header="Authorization: remani-lavalink" http://localhost:2333/v4/info 2>/dev/null; then
+for i in $(seq 1 120); do
+    if wget -q -O /dev/null --header="Authorization: remani-lavalink" http://localhost:2333/v4/info 2>/dev/null; then
         READY=1
         break
     fi
@@ -53,20 +55,20 @@ for i in $(seq 1 30); do
 done
 
 if [ "$READY" = "1" ]; then
-    echo "Lavalink ready"
+    echo "Lavalink is ready and accepting connections"
 else
-    echo "Lavalink may still be starting (Shoukaku will retry)"
+    echo "WARNING: Lavalink not ready after 120s, starting bot anyway (Shoukaku will retry)"
 fi
 
-# Start bot
+# Start bot ONLY after Lavalink is confirmed ready
 echo "Starting bot..."
 cd /app
 node src/index.js &
 BOT_PID=$!
 
-# Background PoToken refresh loop
+# Background PoToken refresh loop (start after 10 min, repeat every 20 min)
 (
-    sleep 60
+    sleep 600
     while true; do
         echo "[PoToken Refresh] Regenerating..."
         cd /app

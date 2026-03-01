@@ -67,7 +67,7 @@ function createControlButtons(queue) {
         new ButtonBuilder()
             .setCustomId('music_pause')
             .setEmoji(queue?.paused ? btn('PLAY') : btn('PAUSE'))
-            .setStyle(queue?.paused ? ButtonStyle.Success : ButtonStyle.Primary)
+            .setStyle(ButtonStyle.Secondary)
             .setLabel(queue?.paused ? 'Play' : 'Pause'),
         new ButtonBuilder()
             .setCustomId('music_skip')
@@ -76,7 +76,7 @@ function createControlButtons(queue) {
         new ButtonBuilder()
             .setCustomId('music_stop')
             .setEmoji(btn('STOP'))
-            .setStyle(ButtonStyle.Danger),
+            .setStyle(ButtonStyle.Secondary),
     );
 
     const loopEmoji = queue?.repeatMode === 1 ? btn('LOOP_ONE') : btn('LOOP');
@@ -94,7 +94,7 @@ function createControlButtons(queue) {
         new ButtonBuilder()
             .setCustomId('music_loop')
             .setEmoji(loopEmoji)
-            .setStyle(queue?.repeatMode > 0 ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setStyle(ButtonStyle.Secondary)
             .setLabel('Loop'),
         new ButtonBuilder()
             .setCustomId('music_queue')

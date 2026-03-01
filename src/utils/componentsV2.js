@@ -38,12 +38,10 @@ function createNowPlayingEmbed(queue) {
     const authorIcon = e('AUTHOR') || '🎤';
     const titleIcon = e('PLAYLIST') || '🎵';
 
-    const description = `by **${song.author || 'Unknown Artist'}**\n${platformIcon} ${platformName} • ${duration} • ${authorIcon} @${requester}`;
+    const description = `${titleIcon} **${song.name}**\nby **${song.author || 'Unknown Artist'}**\n\n${platformIcon} ${platformName} • ${duration} • ${authorIcon} @${requester}`;
 
     const embed = new EmbedBuilder()
         .setColor(color)
-        .setTitle(`${titleIcon} ${song.name}`)
-        .setURL(song.url || null)
         .setDescription(description);
 
     if (song.thumbnail && typeof song.thumbnail === 'string') {

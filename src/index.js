@@ -96,52 +96,24 @@ class MusicQueue {
     }
 
     setupPlayerEvents() {
-        this._retryCount = 0;
-
         this.player.on('end', (data) => {
             if (data.reason === 'finished') {
-                this._retryCount = 0;
                 this.processQueue();
             } else if (data.reason === 'loadFailed') {
-                // Auto-retry once on loadFailed (common on first play before PoToken propagates)
-                if (this._retryCount < 1 && this.songs[0]) {
-                    this._retryCount++;
-                    console.warn(`⚠️ Track load failed, retrying (attempt ${this._retryCount})...`);
-                    setTimeout(() => this.play(), 2000);
-                } else {
-                    this._retryCount = 0;
-                    this.textChannel.send('❌ Failed to load track. Skipping...').catch(console.error);
-                    this.processQueue();
-                }
+                this.textChannel.send('❌ Failed to load track. Skipping...').catch(console.error);
+                this.processQueue();
             }
         });
 
+        // Exception fires BEFORE end/loadFailed — just log, don't processQueue (end handles it)
         this.player.on('exception', (data) => {
-            const msg = data?.exception?.message || data?.message || '';
-            // Auto-retry once on AllClientsFailedException (PoToken not yet propagated)
-            if (this._retryCount < 1 && (msg.includes('All clients failed') || msg.includes('requires login') || msg.includes('not a bot'))) {
-                this._retryCount++;
-                console.warn(`⚠️ Player exception (retryable), retrying in 3s (attempt ${this._retryCount})...`);
-                setTimeout(() => this.play(), 3000);
-            } else {
-                this._retryCount = 0;
-                console.error('Player exception:', data);
-                this.textChannel.send(`❌ Player error: ${data.message || 'Unknown error'}`).catch(console.error);
-                this.processQueue();
-            }
+            console.error('Player exception:', data?.exception?.message || data?.message || 'Unknown');
         });
 
         this.player.on('stuck', () => {
-            console.warn('Player stuck, retrying track...');
-            // Retry stuck tracks instead of skipping
-            if (this._retryCount < 1 && this.songs[0]) {
-                this._retryCount++;
-                setTimeout(() => this.play(), 2000);
-            } else {
-                this._retryCount = 0;
-                this.textChannel.send('⚠️ Track got stuck, skipping...').catch(console.error);
-                this.processQueue();
-            }
+            console.warn('Player stuck, skipping...');
+            this.textChannel.send('⚠️ Track got stuck, skipping...').catch(console.error);
+            this.processQueue();
         });
 
         this.player.on('closed', (data) => {

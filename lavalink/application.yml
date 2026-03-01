@@ -54,7 +54,7 @@ plugins:
     allowDirectPlaylistIds: true
     clients:
       - MUSIC
-      - ANDROID_MUSIC
+      - TV
       - WEB
       - TVHTML5_SIMPLY
     remoteCipher:

@@ -1,4 +1,4 @@
-const http = require('http');
+const http = require("http");
 
 module.exports = function attachMusicApi(client) {
   const port = parseInt(process.env.MUSIC_API_PORT) || 3002;
@@ -6,8 +6,8 @@ module.exports = function attachMusicApi(client) {
 
   const send = (res, status, data) => {
     res.writeHead(status, {
-      'Content-Type': 'application/json',
-      'Connection': 'keep-alive',
+      "Content-Type": "application/json",
+      Connection: "keep-alive",
     });
     res.end(JSON.stringify(data));
   };
@@ -15,71 +15,95 @@ module.exports = function attachMusicApi(client) {
   const parseBody = (req) =>
     new Promise((resolve) => {
       const chunks = [];
-      req.on('data', (c) => chunks.push(c));
-      req.on('end', () => {
-        try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
-        catch { resolve({}); }
+      req.on("data", (c) => chunks.push(c));
+      req.on("end", () => {
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString()));
+        } catch {
+          resolve({});
+        }
       });
     });
 
   const server = http.createServer(async (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization",
+    );
 
-    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
 
     if (apiKey) {
       const auth = req.headers.authorization;
       if (!auth || auth !== `Bearer ${apiKey}`) {
-        return send(res, 401, { error: 'Unauthorized' });
+        return send(res, 401, { error: "Unauthorized" });
       }
     }
 
-    const url  = new URL(req.url, `http://localhost:${port}`);
+    const url = new URL(req.url, `http://localhost:${port}`);
     const path = url.pathname;
 
     try {
-      if (req.method === 'GET' && path === '/health') {
-        return send(res, 200, { ok: true, uptime: Math.floor(process.uptime()) });
+      if (req.method === "GET" && path === "/health") {
+        return send(res, 200, {
+          ok: true,
+          uptime: Math.floor(process.uptime()),
+        });
       }
 
-      if (req.method === 'POST' && path === '/play') {
-        const { guildId, voiceChannelId, query, userId, username } = await parseBody(req);
+      if (req.method === "POST" && path === "/play") {
+        const { guildId, voiceChannelId, query, userId, username } =
+          await parseBody(req);
 
         if (!guildId || !voiceChannelId || !query)
-          return send(res, 400, { error: 'guildId, voiceChannelId, query are required' });
+          return send(res, 400, {
+            error: "guildId, voiceChannelId, query are required",
+          });
 
         const guild = client.guilds.cache.get(guildId);
-        if (!guild) return send(res, 404, { error: 'Bot is not in this guild' });
+        if (!guild)
+          return send(res, 404, { error: "Bot is not in this guild" });
 
         const voiceChannel = guild.channels.cache.get(voiceChannelId);
-        if (!voiceChannel) return send(res, 404, { error: 'Voice channel not found' });
+        if (!voiceChannel)
+          return send(res, 404, { error: "Voice channel not found" });
 
         const textChannel =
-          guild.channels.cache.get('1473105751575760917') ||
+          guild.channels.cache.get("1473105751575760917") ||
           guild.systemChannel ||
           guild.channels.cache.find(
-            (c) => c.type === 0 && c.permissionsFor(guild.members.me)?.has('SendMessages'),
+            (c) =>
+              c.type === 0 &&
+              c.permissionsFor(guild.members.me)?.has("SendMessages"),
           );
         if (!textChannel)
-          return send(res, 500, { error: 'No accessible text channel in guild' });
+          return send(res, 500, {
+            error: "No accessible text channel in guild",
+          });
 
         const fakeUser = {
-          id: userId || 'api',
-          displayName: username || 'API Player',
-          username: username || 'api',
+          id: userId || "api",
+          displayName: username || "API Player",
+          username: username || "api",
         };
 
         const result = await client.searchSong(query, fakeUser);
-        if (!result) return send(res, 404, { error: 'No results found for query' });
+        if (!result)
+          return send(res, 404, { error: "No results found for query" });
 
-        let queue      = client.getQueue(guildId);
+        let queue = client.getQueue(guildId);
         const isNewQueue = !queue;
 
-        if (!queue) queue = await client.createQueue(guildId, textChannel, voiceChannel);
+        if (!queue)
+          queue = await client.createQueue(guildId, textChannel, voiceChannel);
 
-        if (result.type === 'playlist') {
+        if (result.type === "playlist") {
           await queue.addSongs(result.songs);
         } else {
           await queue.addSong(result);
@@ -90,9 +114,9 @@ module.exports = function attachMusicApi(client) {
         return send(res, 200, {
           success: true,
           isNewQueue,
-          added: result.type === 'playlist' ? result.songs.length : 1,
+          added: result.type === "playlist" ? result.songs.length : 1,
           song:
-            result.type !== 'playlist'
+            result.type !== "playlist"
               ? {
                   name: result.name,
                   url: result.url,
@@ -105,73 +129,127 @@ module.exports = function attachMusicApi(client) {
       }
 
       // ── Legacy generic control (kept for backward compat) ────────────────
-      if (req.method === 'POST' && path === '/control') {
+      if (req.method === "POST" && path === "/control") {
         const { guildId, action, value } = await parseBody(req);
         const queue = client.getQueue(guildId);
-        if (!queue) return send(res, 404, { error: 'Nothing is playing' });
+        if (!queue) return send(res, 404, { error: "Nothing is playing" });
         switch (action) {
-          case 'pause':   queue.pause();   break;
-          case 'resume':  queue.resume();  break;
-          case 'toggle':  queue.paused ? queue.resume() : queue.pause(); break;
-          case 'skip':    queue.skip();    break;
-          case 'stop':    queue.stop();    break;
-          case 'shuffle': queue.shuffle(); break;
-          case 'loop':    queue.setRepeatMode(value ?? (queue.repeatMode + 1) % 3); break;
-          case 'volume':  queue.setVolume(Math.max(0, Math.min(100, Number(value) || 50))); break;
-          case 'seek':    queue.seek(Number(value) || 0); break;
-          case 'remove': {
+          case "pause":
+            queue.pause();
+            break;
+          case "resume":
+            queue.resume();
+            break;
+          case "toggle":
+            queue.paused ? queue.resume() : queue.pause();
+            break;
+          case "skip":
+            queue.skip();
+            break;
+          case "stop":
+            queue.stop();
+            break;
+          case "shuffle":
+            queue.shuffle();
+            break;
+          case "loop":
+            queue.setRepeatMode(value ?? (queue.repeatMode + 1) % 3);
+            break;
+          case "volume":
+            queue.setVolume(Math.max(0, Math.min(100, Number(value) || 50)));
+            break;
+          case "seek":
+            queue.seek(Number(value) || 0);
+            break;
+          case "remove": {
             const removed = queue.remove(Number(value) || 0);
-            if (!removed) return send(res, 400, { error: 'Invalid queue position' });
-            return send(res, 200, { success: true, action, removed: removed.name });
+            if (!removed)
+              return send(res, 400, { error: "Invalid queue position" });
+            return send(res, 200, {
+              success: true,
+              action,
+              removed: removed.name,
+            });
           }
-          case 'filter':  await queue.setFilter(value || 'off'); break;
-          default:        return send(res, 400, { error: `Unknown action: ${action}` });
+          case "filter":
+            await queue.setFilter(value || "off");
+            break;
+          default:
+            return send(res, 400, { error: `Unknown action: ${action}` });
         }
         return send(res, 200, { success: true, action });
       }
 
       // ── Direct per-action endpoints (zero-overhead, no switch dispatch) ──
-      if (req.method === 'POST') {
+      if (req.method === "POST") {
         // All these share the same queue-lookup + minimal body parse
-        const directActions = ['/skip', '/pause', '/resume', '/toggle', '/stop',
-                               '/shuffle', '/loop', '/volume', '/seek', '/remove', '/filter'];
+        const directActions = [
+          "/skip",
+          "/pause",
+          "/resume",
+          "/toggle",
+          "/stop",
+          "/shuffle",
+          "/loop",
+          "/volume",
+          "/seek",
+          "/remove",
+          "/filter",
+        ];
         if (directActions.includes(path)) {
-          const body  = await parseBody(req);
+          const body = await parseBody(req);
           const guildId = body.guildId;
           const queue = client.getQueue(guildId);
-          if (!queue) return send(res, 404, { error: 'Nothing is playing' });
+          if (!queue) return send(res, 404, { error: "Nothing is playing" });
 
           switch (path) {
-            case '/skip':    queue.skip();   break;
-            case '/pause':   queue.pause();  break;
-            case '/resume':  queue.resume(); break;
-            case '/toggle':  queue.paused ? queue.resume() : queue.pause(); break;
-            case '/stop':    queue.stop();   break;
-            case '/shuffle': queue.shuffle(); break;
-            case '/loop': {
-              const mode = body.value !== undefined
-                ? Number(body.value)
-                : (queue.repeatMode + 1) % 3;
+            case "/skip":
+              queue.skip();
+              break;
+            case "/pause":
+              queue.pause();
+              break;
+            case "/resume":
+              queue.resume();
+              break;
+            case "/toggle":
+              queue.paused ? queue.resume() : queue.pause();
+              break;
+            case "/stop":
+              queue.stop();
+              break;
+            case "/shuffle":
+              queue.shuffle();
+              break;
+            case "/loop": {
+              const mode =
+                body.value !== undefined
+                  ? Number(body.value)
+                  : (queue.repeatMode + 1) % 3;
               queue.setRepeatMode(mode);
               break;
             }
-            case '/volume': {
+            case "/volume": {
               const vol = Math.max(0, Math.min(100, Number(body.value) || 50));
               queue.setVolume(vol);
               return send(res, 200, { success: true, volume: vol });
             }
-            case '/seek': {
+            case "/seek": {
               queue.seek(Number(body.value) || 0);
               break;
             }
-            case '/remove': {
+            case "/remove": {
               const removed = queue.remove(Number(body.value) || 0);
-              if (!removed) return send(res, 400, { error: 'Invalid queue position' });
+              if (!removed)
+                return send(res, 400, { error: "Invalid queue position" });
               return send(res, 200, { success: true, removed: removed.name });
             }
-            case '/filter': {
-              await queue.setFilter(body.value || 'off');
-              return send(res, 200, { success: true, filter: body.value || 'off' });
+            case "/filter": {
+              await queue.setFilter(body.value || "off");
+              return send(res, 200, {
+                success: true,
+                filter: body.value || "off",
+              });
             }
           }
           return send(res, 200, { success: true });
@@ -179,9 +257,9 @@ module.exports = function attachMusicApi(client) {
       }
 
       // ── Queue details endpoint ────────────────────────────────────────────
-      if (req.method === 'GET' && path === '/queue') {
-        const guildId = url.searchParams.get('guildId');
-        const queue   = client.getQueue(guildId);
+      if (req.method === "GET" && path === "/queue") {
+        const guildId = url.searchParams.get("guildId");
+        const queue = client.getQueue(guildId);
         if (!queue) return send(res, 200, { queue: [], queueLength: 0 });
         return send(res, 200, {
           queue: queue.songs.map((s, i) => ({
@@ -196,55 +274,64 @@ module.exports = function attachMusicApi(client) {
         });
       }
 
-      if (req.method === 'GET' && path === '/status') {
-        const guildId = url.searchParams.get('guildId');
-        const queue   = client.getQueue(guildId);
+      if (req.method === "GET" && path === "/status") {
+        const guildId = url.searchParams.get("guildId");
+        const queue = client.getQueue(guildId);
 
         if (!queue || !queue.songs.length)
-          return send(res, 200, { playing: false, paused: false, song: null, queue: [], queueLength: 0 });
+          return send(res, 200, {
+            playing: false,
+            paused: false,
+            song: null,
+            queue: [],
+            queueLength: 0,
+          });
 
         // queue.position is raw Lavalink ms — divide to match web's seconds-based elapsed
         const elapsed = Math.floor((queue.position ?? 0) / 1000);
 
         return send(res, 200, {
-          playing:    queue.playing && !queue.paused,
-          paused:     queue.paused,
+          playing: queue.playing && !queue.paused,
+          paused: queue.paused,
           repeatMode: queue.repeatMode,
-          volume:     queue.volume,
+          volume: queue.volume,
           elapsed,
-          currentFilter: queue.currentFilter || 'off',
+          currentFilter: queue.currentFilter || "off",
           song: {
-            name:             queue.songs[0].name,
-            url:              queue.songs[0].url,
-            thumbnail:        queue.songs[0].thumbnail,
-            duration:         queue.songs[0].duration || 0,
+            name: queue.songs[0].name,
+            url: queue.songs[0].url,
+            thumbnail: queue.songs[0].thumbnail,
+            duration: queue.songs[0].duration || 0,
             formattedDuration: queue.songs[0].formattedDuration,
-            author:           queue.songs[0].author || 'Unknown Artist',
+            author: queue.songs[0].author || "Unknown Artist",
           },
           queue: queue.songs.slice(1, 10).map((s, i) => ({
-            index:            i + 1,
-            name:             s.name,
-            thumbnail:        s.thumbnail,
+            index: i + 1,
+            name: s.name,
+            thumbnail: s.thumbnail,
             formattedDuration: s.formattedDuration,
-            author:           s.author,
+            author: s.author,
           })),
           queueLength: queue.songs.length,
         });
       }
 
-      if (req.method === 'POST' && path === '/search') {
+      if (req.method === "POST" && path === "/search") {
         const { query, limit } = await parseBody(req);
-        if (!query) return send(res, 400, { error: 'query is required' });
+        if (!query) return send(res, 400, { error: "query is required" });
 
-        const node = client.shoukaku.options.nodeResolver(client.shoukaku.nodes);
-        if (!node) return send(res, 503, { error: 'No Lavalink nodes available' });
+        const node = client.shoukaku.options.nodeResolver(
+          client.shoukaku.nodes,
+        );
+        if (!node)
+          return send(res, 503, { error: "No Lavalink nodes available" });
 
         const result = await node.rest.resolve(`ytmsearch:${query}`);
-        if (!result || result.loadType !== 'search' || !result.data?.length)
+        if (!result || result.loadType !== "search" || !result.data?.length)
           return send(res, 200, { results: [] });
 
         const max = Math.min(Number(limit) || 10, 25);
-        const results = result.data.slice(0, max).map(t => ({
+        const results = result.data.slice(0, max).map((t) => ({
           title: t.info?.title,
           author: t.info?.author,
           duration: Math.floor((t.info?.length || 0) / 1000),
@@ -256,9 +343,9 @@ module.exports = function attachMusicApi(client) {
         return send(res, 200, { results });
       }
 
-      return send(res, 404, { error: 'Not found' });
+      return send(res, 404, { error: "Not found" });
     } catch (err) {
-      console.error('[MusicAPI Error]', err.message);
+      console.error("[MusicAPI Error]", err.message);
       return send(res, 500, { error: err.message });
     }
   });
@@ -266,7 +353,7 @@ module.exports = function attachMusicApi(client) {
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 66000;
 
-  server.listen(port, '0.0.0.0', () => {
+  server.listen(port, "0.0.0.0", () => {
     console.log(`🎵 Remani Music API listening on port ${port}`);
   });
 

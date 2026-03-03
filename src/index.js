@@ -96,7 +96,12 @@ class MusicQueue {
     }
 
     setupPlayerEvents() {
+        this.player.on('start', () => {
+            console.log('🔊 [DIAG] TrackStartEvent received — Lavalink confirmed track playing');
+        });
+
         this.player.on('end', (data) => {
+            console.log(`🔊 [DIAG] TrackEndEvent: reason=${data.reason}`);
             if (data.reason === 'finished' || data.reason === 'stopped') {
                 this.processQueue();
             } else if (data.reason === 'loadFailed') {
@@ -117,15 +122,25 @@ class MusicQueue {
         });
 
         this.player.on('closed', (data) => {
+            console.warn(`🔊 [DIAG] Voice WebSocket closed: code=${data.code} reason=${data.reason} byRemote=${data.byRemote}`);
             if (data.code === 4014) {
                 this.textChannel.send('📤 Disconnected from voice channel.').catch(console.error);
                 this.stop();
             }
         });
 
+        this._updateCount = 0;
         this.player.on('update', (data) => {
             if (data.state?.position != null) {
                 this.position = Math.floor(data.state.position / 1000);
+            }
+            // Log first 5 updates and then every 6th for diagnostics
+            this._updateCount++;
+            if (this._updateCount <= 5 || this._updateCount % 6 === 0) {
+                const pos = data.state?.position ?? '?';
+                const connected = data.state?.connected ?? '?';
+                const ping = data.state?.ping ?? '?';
+                console.log(`🔊 [DIAG] PlayerUpdate #${this._updateCount}: pos=${pos}ms connected=${connected} ping=${ping}ms`);
             }
         });
     }
@@ -365,11 +380,14 @@ class MusicQueue {
 // Queue management
 
 client.createQueue = async function(guildId, textChannel, voiceChannel) {
+    console.log(`🔊 [DIAG] Joining voice channel ${voiceChannel.id} in guild ${guildId}`);
     const player = await shoukaku.joinVoiceChannel({
         guildId: guildId,
         channelId: voiceChannel.id,
-        shardId: 0
+        shardId: 0,
+        deaf: true
     });
+    console.log(`🔊 [DIAG] Voice joined, player obtained. Node: ${player.node?.name}`);
 
     const queue = new MusicQueue(guildId, textChannel, voiceChannel, player);
     this.queues.set(guildId, queue);

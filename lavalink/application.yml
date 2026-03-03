@@ -53,10 +53,7 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
-      - MUSIC
       - TV
-      - WEB
-      - TVHTML5_SIMPLY
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"

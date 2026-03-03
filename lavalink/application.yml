@@ -10,11 +10,11 @@ lavalink:
       snapshot: false
   server:
     password: "remani-lavalink"
-    # Ultra-stability buffer config for low-resource servers
-    bufferDurationMs: 8000
-    frameBufferDurationMs: 10000
-    nonAllocatingFrameBuffer: true
-    # Lowest quality = lowest CPU = most stable streaming
+    # Buffer config for low-resource servers
+    bufferDurationMs: 4000
+    frameBufferDurationMs: 5000
+    # nonAllocatingFrameBuffer DISABLED — it silently drops audio frames on low-resource containers
+    nonAllocatingFrameBuffer: false
     opusEncodingQuality: 0
     resamplingQuality: LOW
     trackStuckThresholdMs: 30000
@@ -89,3 +89,5 @@ logging:
     root: WARN
     lavalink: INFO
     dev.lavalink.youtube: DEBUG
+    moe.kyokobot.koe: DEBUG
+    lavalink.server.io: DEBUG

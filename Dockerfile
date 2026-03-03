@@ -4,7 +4,7 @@ RUN apk add --no-cache nodejs npm curl wget
 
 WORKDIR /lavalink
 RUN wget -q -O Lavalink.jar \
-    "https://github.com/lavalink-devs/Lavalink/releases/download/4.0.8/Lavalink.jar"
+    "https://github.com/lavalink-devs/Lavalink/releases/download/4.2.1/Lavalink-musl.jar"
 COPY lavalink/application.yml /lavalink/application.yml
 
 WORKDIR /app

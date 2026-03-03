@@ -42,9 +42,9 @@ lavalink:
       channelMix: true
       lowPass: false
     timeouts:
-      connectTimeoutMs: 10000
-      connectionRequestTimeoutMs: 5000
-      socketTimeoutMs: 10000
+      connectTimeoutMs: 15000
+      connectionRequestTimeoutMs: 10000
+      socketTimeoutMs: 15000
 
 plugins:
   youtube:
@@ -53,7 +53,9 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
+      - MUSIC
       - TV
+      - TVHTML5_SIMPLY
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"
@@ -86,3 +88,4 @@ logging:
   level:
     root: WARN
     lavalink: INFO
+    dev.lavalink.youtube: DEBUG

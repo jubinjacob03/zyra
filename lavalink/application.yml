@@ -88,6 +88,3 @@ logging:
   level:
     root: WARN
     lavalink: INFO
-    dev.lavalink.youtube: DEBUG
-    moe.kyokobot.koe: DEBUG
-    lavalink.server.io: DEBUG

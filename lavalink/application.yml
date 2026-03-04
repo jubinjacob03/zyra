@@ -55,6 +55,7 @@ plugins:
     clients:
       - MUSIC
       - WEB
+      - ANDROID_MUSIC
       - TV
       - TVHTML5_SIMPLY
     remoteCipher:
@@ -89,3 +90,4 @@ logging:
   level:
     root: WARN
     lavalink: INFO
+    dev.lavalink.youtube.http.YoutubeOauth2Handler: DEBUG

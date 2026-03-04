@@ -20,6 +20,27 @@ fi
 # Start Lavalink with PoToken baked into config
 echo "Starting Lavalink..."
 cd /lavalink
+
+# Build proxy JVM args if configured
+# Supports: PROXY_HOST + PROXY_PORT (HTTP/HTTPS proxy)
+#           SOCKS_PROXY_HOST + SOCKS_PROXY_PORT (SOCKS5 proxy — preferred)
+# httpConfig in application.yml does NOT proxy YouTube — only JVM-level args work
+PROXY_ARGS=""
+if [ -n "$SOCKS_PROXY_HOST" ]; then
+    PROXY_ARGS="$PROXY_ARGS -DsocksProxyHost=$SOCKS_PROXY_HOST"
+    PROXY_ARGS="$PROXY_ARGS -DsocksProxyPort=${SOCKS_PROXY_PORT:-1080}"
+    echo "SOCKS5 proxy configured: $SOCKS_PROXY_HOST:${SOCKS_PROXY_PORT:-1080}"
+elif [ -n "$PROXY_HOST" ]; then
+    PROXY_ARGS="$PROXY_ARGS -Dhttps.proxyHost=$PROXY_HOST"
+    PROXY_ARGS="$PROXY_ARGS -Dhttps.proxyPort=${PROXY_PORT:-8080}"
+    PROXY_ARGS="$PROXY_ARGS -Dhttp.proxyHost=$PROXY_HOST"
+    PROXY_ARGS="$PROXY_ARGS -Dhttp.proxyPort=${PROXY_PORT:-8080}"
+    PROXY_ARGS="$PROXY_ARGS -Dhttp.nonProxyHosts=localhost|127.0.0.1|[::1]"
+    echo "HTTP proxy configured: $PROXY_HOST:${PROXY_PORT:-8080}"
+else
+    echo "No proxy configured (set SOCKS_PROXY_HOST or PROXY_HOST env vars to route YouTube through a clean IP)"
+fi
+
 java -Xms450m -Xmx450m \
   -XX:+UseG1GC \
   -XX:MaxGCPauseMillis=50 \
@@ -35,6 +56,7 @@ java -Xms450m -Xmx450m \
   -XX:MaxMetaspaceSize=128m \
   -XX:+ExitOnOutOfMemoryError \
   -XX:+AlwaysActAsServerClassMachine \
+  $PROXY_ARGS \
   -DYOUTUBE_OAUTH_REFRESH_TOKEN="$YOUTUBE_OAUTH_REFRESH_TOKEN" \
   -DSPOTIFY_CLIENT_ID="$SPOTIFY_CLIENT_ID" \
   -DSPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \

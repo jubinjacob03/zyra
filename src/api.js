@@ -182,7 +182,6 @@ module.exports = function attachMusicApi(client) {
 
       // ── Direct per-action endpoints (zero-overhead, no switch dispatch) ──
       if (req.method === "POST") {
-        // All these share the same queue-lookup + minimal body parse
         const directActions = [
           "/skip",
           "/pause",
@@ -256,7 +255,6 @@ module.exports = function attachMusicApi(client) {
         }
       }
 
-      // ── Queue details endpoint ────────────────────────────────────────────
       if (req.method === "GET" && path === "/queue") {
         const guildId = url.searchParams.get("guildId");
         const queue = client.getQueue(guildId);

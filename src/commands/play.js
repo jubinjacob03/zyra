@@ -83,7 +83,6 @@ module.exports = {
         await queue.addSongs(result.songs);
 
         if (isNewQueue) {
-          // Send controller as the /play reply and pre-register it as the music panel
           const controller = createCompleteMusicController(queue);
           let msg;
           try {
@@ -98,7 +97,6 @@ module.exports = {
               components: controller.components,
             });
           }
-          // Pre-register so queue.play() edits this message instead of creating a new one
           client.musicPanels.set(interaction.guildId, {
             message: msg,
             song: queue.songs[0],
@@ -124,7 +122,6 @@ module.exports = {
         await queue.addSong(result);
 
         if (isNewQueue) {
-          // Send controller as the /play reply and pre-register it as the music panel
           const controller = createCompleteMusicController(queue);
           let msg;
           try {
@@ -139,7 +136,6 @@ module.exports = {
               components: controller.components,
             });
           }
-          // Pre-register so queue.play() edits this message instead of creating a new one
           client.musicPanels.set(interaction.guildId, {
             message: msg,
             song: result,

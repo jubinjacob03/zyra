@@ -37,7 +37,6 @@ client.commands = new Collection();
 client.queues = new Map();
 client.musicPanels = new Map();
 
-// Lavalink
 const lavalinkNodes = [
   {
     name: "main",
@@ -201,7 +200,6 @@ class MusicQueue {
       const { createCompleteMusicController } = require("./utils/componentsV2");
       const controller = createCompleteMusicController(this);
 
-      // Edit existing panel if available, otherwise send new message
       const existingPanel = client.musicPanels.get(this.guildId);
       let message;
 
@@ -210,7 +208,6 @@ class MusicQueue {
           await existingPanel.message.edit(controller);
           message = existingPanel.message;
         } catch {
-          // Edit failed (message deleted, etc.) — send new
           message = await this.textChannel.send(controller);
         }
       } else {
@@ -429,8 +426,6 @@ class MusicQueue {
   }
 }
 
-// Queue management
-
 client.createQueue = async function (guildId, textChannel, voiceChannel) {
   const player = await shoukaku.joinVoiceChannel({
     guildId: guildId,
@@ -447,8 +442,6 @@ client.createQueue = async function (guildId, textChannel, voiceChannel) {
 client.getQueue = function (guildId) {
   return this.queues.get(guildId);
 };
-
-// Track search
 
 function isAgeRestricted(track) {
   const info = track?.info;
@@ -605,7 +598,6 @@ async function searchSongInternal(query, user) {
 client.searchSong = searchSong;
 client.formatDuration = formatDuration;
 
-// Load slash commands
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs
   .readdirSync(commandsPath)
@@ -756,7 +748,7 @@ async function handleButtonInteraction(interaction, client) {
           content: `📋 **Queue** (${queue.songs.length} songs)\n\n${queueList}`,
           ephemeral: true,
         });
-        return; // Don't update the panel for queue display
+        return;
       }
 
       case "music_voldown": {

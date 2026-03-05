@@ -107,14 +107,12 @@ class MusicQueue {
             }
         });
 
-        // Exception fires BEFORE end/loadFailed — detect age-restricted and other failures
         this.player.on('exception', (data) => {
             const msg = data?.exception?.message || data?.message || 'Unknown';
             console.error('Player exception:', msg);
-
-            // Age-restricted detection
-            if (msg.includes('Sign in to confirm') || msg.includes('age') || msg.includes('login required')) {
-                this.textChannel.send('🔞 **Age-restricted content** — This video requires sign-in verification and cannot be played by the bot. Try a different version or an alternative link.').catch(console.error);
+            if (msg.includes('Sign in to confirm') || msg.includes('age') || msg.includes('login required') || msg.includes('This video is unavailable')) {
+                this.songs.shift();
+                this.processQueue();
             }
         });
 
@@ -394,6 +392,24 @@ client.getQueue = function(guildId) {
 
 // Track search
 
+function isAgeRestricted(track) {
+    const info = track?.info;
+    if (!info) return true;
+    
+    const title = info.title?.toLowerCase() || '';
+    const author = info.author?.toLowerCase() || '';
+    const uri = info.uri || '';
+    
+    if (!info.title || info.title === 'Unknown' || info.title === 'Deleted video') return true;
+    if (!info.author || info.author === 'Unknown') return true;
+    if (info.length === 0 || info.length == null) return true;
+    if (uri.includes('googleusercontent.com')) return true;
+    if (title.includes('age restricted') || author.includes('age restricted')) return true;
+    if (title.includes('[deleted video]') || title.includes('private video')) return true;
+    
+    return false;
+}
+
 function trackToSong(track, user) {
     const info = track.info || {};
     return {
@@ -408,7 +424,7 @@ function trackToSong(track, user) {
         encoded: track.encoded,
         isSeekable: info.isSeekable || false,
         sourceName: info.sourceName || 'unknown',
-        spotifyData: info.sourceName === 'spotify' ? {
+        spotifyData: (info.sourceName === 'spotify' || track.pluginInfo?.clientData?.isSpotify) ? {
             isSpotify: true,
             originalUrl: info.uri
         } : undefined
@@ -427,13 +443,11 @@ async function searchSong(query, user) {
 async function searchSongInternal(query, user) {
     const node = getNode();
 
-    // Pattern detection
     const youtubePattern = /^(https?:\/\/)?(www\.)?(m\.|music\.)?(youtube\.com|youtu\.?be)\/.+$/;
     const playlistPattern = /^.*(list=)([^#\&\?]*).*/;
     const spotifyPattern = /spotify\.com\/(track|playlist|album)\//;
     const mixPlaylistPattern = /[?&]list=(RD[A-Za-z0-9_-]+|RDMM[A-Za-z0-9_-]+|RDAMPL[A-Za-z0-9_-]+|RDCLAK[A-Za-z0-9_-]+)/;
 
-    // Block YouTube Mix playlists
     if (mixPlaylistPattern.test(query)) {
         throw new Error('❌ **YouTube Mix playlists are not supported**\n\n' +
             '🔒 Mix playlists are personalized and cannot be accessed by bots.\n\n' +
@@ -450,12 +464,14 @@ async function searchSongInternal(query, user) {
         identifier = `ytmsearch:${query}`;
     }
 
-    // Resolve through Lavalink
     const result = await node.rest.resolve(identifier);
     if (!result) return null;
 
     switch (result.loadType) {
         case 'track': {
+            if (isAgeRestricted(result.data)) {
+                throw new Error('This track is unavailable or age-restricted');
+            }
             return trackToSong(result.data, user);
         }
 
@@ -467,15 +483,21 @@ async function searchSongInternal(query, user) {
                 throw new Error('Playlist is empty or cannot be accessed');
             }
 
+            const validTracks = tracks.filter(t => !isAgeRestricted(t));
+            
+            if (validTracks.length === 0) {
+                throw new Error('No playable tracks found in playlist');
+            }
+
             return {
                 type: 'playlist',
                 name: playlist.info?.name || 'Playlist',
                 url: query,
-                thumbnail: tracks[0]?.info?.artworkUrl || null,
-                songs: tracks.slice(0, 200).map(t => trackToSong(t, user)),
+                thumbnail: validTracks[0]?.info?.artworkUrl || null,
+                songs: validTracks.map(t => trackToSong(t, user)),
                 spotifyData: spotifyPattern.test(query) ? {
                     isSpotify: true,
-                    totalTracks: tracks.length
+                    totalTracks: validTracks.length
                 } : undefined
             };
         }
@@ -483,7 +505,14 @@ async function searchSongInternal(query, user) {
         case 'search': {
             const tracks = result.data;
             if (!tracks || tracks.length === 0) return null;
-            return trackToSong(tracks[0], user);
+            
+            for (const track of tracks) {
+                if (!isAgeRestricted(track)) {
+                    return trackToSong(track, user);
+                }
+            }
+            
+            return null;
         }
 
         case 'empty':
@@ -497,51 +526,8 @@ async function searchSongInternal(query, user) {
     }
 }
 
-// Expose search function and utilities to commands and API
 client.searchSong = searchSong;
 client.formatDuration = formatDuration;
-
-async function processSpotifyPlaylistBackground(queue, remainingTracks, textChannel) {
-    if (!remainingTracks || remainingTracks.length === 0) return;
-
-    const node = getNode();
-    let convertedCount = 0;
-    let failedCount = 0;
-
-    for (const trackData of remainingTracks) {
-        const track = trackData.track || trackData;
-        const searchQuery = `${track.name} ${track.artists?.[0]?.name || ''}`.trim();
-
-        try {
-            const result = await node.rest.resolve(`ytmsearch:${searchQuery}`);
-            if (result.loadType === 'search' && result.data.length > 0) {
-                const song = trackToSong(result.data[0], queue.songs[0]?.user);
-                song.name = track.name;
-                song.author = track.artists?.map(a => a.name).join(', ') || song.author;
-                song.thumbnail = track.album?.images?.[0]?.url || song.thumbnail;
-                await queue.addSong(song);
-                convertedCount++;
-
-                if (convertedCount % 10 === 0) {
-                    textChannel.send(`🎵 **Converting**: ${convertedCount}/${remainingTracks.length} tracks`).catch(console.error);
-                }
-            } else {
-                failedCount++;
-            }
-        } catch {
-            failedCount++;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 300));
-        if (!client.getQueue(queue.guildId)) break;
-    }
-
-    if (convertedCount > 0) {
-        textChannel.send(`✅ **Complete**: Added ${convertedCount} tracks, ${failedCount} failed`).catch(console.error);
-    }
-}
-
-client.processSpotifyPlaylistBackground = processSpotifyPlaylistBackground;
 
 // Load slash commands
 const commandsPath = path.join(__dirname, 'commands');

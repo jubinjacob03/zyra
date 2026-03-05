@@ -85,10 +85,6 @@ module.exports = {
                         await interaction.channel.send({ embeds: [addedEmbed] });
                     }
                 }
-
-                if (result.spotifyData?.remainingTracks && result.spotifyData.remainingTracks.length > 0) {
-                    client.processSpotifyPlaylistBackground(queue, result.spotifyData.remainingTracks, interaction.channel);
-                }
             } else {
                 await queue.addSong(result);
 

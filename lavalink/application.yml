@@ -55,9 +55,15 @@ plugins:
     clients:
       - MUSIC
       - WEB
-      - ANDROID_MUSIC
-      - TV
       - TVHTML5_SIMPLY
+      - ANDROID_MUSIC
+      - ANDROID_VR
+    clientOptions:
+      WEB:
+        playback: false
+      MUSIC:
+        videoLoading: false
+        playlistLoading: false
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"
@@ -85,6 +91,7 @@ plugins:
       countryCode: "US"
       playlistLoadLimit: 6
       albumLoadLimit: 6
+      resolveArtistsInSearch: false
 
 logging:
   level:

@@ -13,7 +13,7 @@ RUN npm ci --only=production --ignore-scripts
 COPY . .
 
 WORKDIR /app/potoken
-RUN if [ -f package.json ]; then npm ci --only=production --ignore-scripts; fi
+RUN if [ -f package.json ]; then npm install --only=production --ignore-scripts; fi
 
 WORKDIR /app
 RUN mkdir -p /app/logs

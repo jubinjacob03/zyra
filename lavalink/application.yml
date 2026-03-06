@@ -53,17 +53,15 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
+      - TV
       - MUSIC
-      - WEB
+      - IOS
       - TVHTML5_SIMPLY
       - ANDROID_MUSIC
-      - ANDROID_VR
+      - WEB
     clientOptions:
       WEB:
         playback: false
-      MUSIC:
-        videoLoading: false
-        playlistLoading: false
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"

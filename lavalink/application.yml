@@ -10,16 +10,14 @@ lavalink:
       snapshot: false
   server:
     password: "remani-lavalink"
-    # Buffer config for low-resource servers
-    bufferDurationMs: 4000
+    bufferDurationMs: 400
     frameBufferDurationMs: 5000
-    # nonAllocatingFrameBuffer DISABLED — it silently drops audio frames on low-resource containers
     nonAllocatingFrameBuffer: false
-    opusEncodingQuality: 0
+    opusEncodingQuality: 5
     resamplingQuality: LOW
-    trackStuckThresholdMs: 30000
-    useSeekGhosting: false
-    playerUpdateInterval: 10
+    trackStuckThresholdMs: 10000
+    useSeekGhosting: true
+    playerUpdateInterval: 5
     gc-warnings: false
     youtubePlaylistLoadLimit: 30
     sources:
@@ -42,9 +40,9 @@ lavalink:
       channelMix: true
       lowPass: false
     timeouts:
-      connectTimeoutMs: 15000
+      connectTimeoutMs: 10000
       connectionRequestTimeoutMs: 10000
-      socketTimeoutMs: 15000
+      socketTimeoutMs: 10000
 
 plugins:
   youtube:

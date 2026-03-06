@@ -22,12 +22,12 @@ elif [ -n "$PROXY_HOST" ]; then
     PROXY_ARGS="$PROXY_ARGS -Dhttp.nonProxyHosts=localhost|127.0.0.1|[::1]"
     echo "HTTP proxy configured: $PROXY_HOST:${PROXY_PORT:-8080}"
 else
-    echo "No proxy configured (set SOCKS_PROXY_HOST or PROXY_HOST env vars to route YouTube through a clean IP)"
+    echo "No proxy configured"
 fi
 
 java -Xms450m -Xmx450m \
   -XX:+UseG1GC \
-  -XX:MaxGCPauseMillis=50 \
+  -XX:MaxGCPauseMillis=100 \
   -XX:G1HeapRegionSize=2m \
   -XX:+UnlockExperimentalVMOptions \
   -XX:G1NewSizePercent=20 \
@@ -40,6 +40,7 @@ java -Xms450m -Xmx450m \
   -XX:MaxMetaspaceSize=128m \
   -XX:+ExitOnOutOfMemoryError \
   -XX:+AlwaysActAsServerClassMachine \
+  -XX:GCTimeRatio=19 \
   $PROXY_ARGS \
   -DYOUTUBE_OAUTH_REFRESH_TOKEN="$YOUTUBE_OAUTH_REFRESH_TOKEN" \
   -DSPOTIFY_CLIENT_ID="$SPOTIFY_CLIENT_ID" \

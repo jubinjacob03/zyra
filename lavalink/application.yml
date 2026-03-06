@@ -10,14 +10,14 @@ lavalink:
       snapshot: false
   server:
     password: "remani-lavalink"
-    bufferDurationMs: 400
-    frameBufferDurationMs: 5000
+    bufferDurationMs: 1000
+    frameBufferDurationMs: 20000
     nonAllocatingFrameBuffer: false
-    opusEncodingQuality: 5
+    opusEncodingQuality: 3
     resamplingQuality: LOW
-    trackStuckThresholdMs: 10000
+    trackStuckThresholdMs: 15000
     useSeekGhosting: true
-    playerUpdateInterval: 5
+    playerUpdateInterval: 10
     gc-warnings: false
     youtubePlaylistLoadLimit: 30
     sources:
@@ -40,9 +40,9 @@ lavalink:
       channelMix: true
       lowPass: false
     timeouts:
-      connectTimeoutMs: 10000
-      connectionRequestTimeoutMs: 10000
-      socketTimeoutMs: 10000
+      connectTimeoutMs: 15000
+      connectionRequestTimeoutMs: 15000
+      socketTimeoutMs: 15000
 
 plugins:
   youtube:

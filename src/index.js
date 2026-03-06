@@ -50,9 +50,9 @@ const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), lavalinkNodes, {
   resume: true,
   resumeTimeout: 60,
   reconnectTries: 30,
-  reconnectInterval: 5,
-  restTimeout: 10,
-  voiceConnectionTimeout: 15,
+  reconnectInterval: 7,
+  restTimeout: 15,
+  voiceConnectionTimeout: 20,
 });
 
 shoukaku.on("ready", (name) =>

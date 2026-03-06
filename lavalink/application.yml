@@ -53,21 +53,40 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
-      - TV
       - MUSIC
-      - IOS
-      - TVHTML5_SIMPLY
       - ANDROID_MUSIC
+      - TVHTML5_SIMPLY
       - WEB
+      - TV
     clientOptions:
+      MUSIC:
+        playback: true
+        videoLoading: true
+        playlistLoading: false
+        searching: true
+      ANDROID_MUSIC:
+        playback: true
+        videoLoading: true
+        playlistLoading: false
+        searching: false
+      TVHTML5_SIMPLY:
+        playback: true
+        videoLoading: true
+        playlistLoading: true
+        searching: true
       WEB:
         playback: false
+        videoLoading: false
+        playlistLoading: true
+        searching: true
+      TV:
+        playback: true
+        videoLoading: true
+        playlistLoading: false
+        searching: false
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"
-    pot:
-      token: "${YOUTUBE_POTOKEN:}"
-      visitorData: "${YOUTUBE_VISITOR_DATA:}"
     oauth:
       enabled: true
       refreshToken: "${YOUTUBE_OAUTH_REFRESH_TOKEN:}"

@@ -11,6 +11,11 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production --ignore-scripts
 COPY . .
+
+WORKDIR /app/potoken
+RUN if [ -f package.json ]; then npm ci --only=production --ignore-scripts; fi
+
+WORKDIR /app
 RUN mkdir -p /app/logs
 
 COPY start.sh /start.sh

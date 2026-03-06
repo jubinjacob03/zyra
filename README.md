@@ -15,7 +15,7 @@ Discord music bot powered by Lavalink with YouTube and Spotify support.
 
 ## Stack
 
-- **Audio**: Lavalink 4.0.8 + youtube-plugin 1.18.0 + LavaSrc 4.3.0
+- **Audio**: Lavalink 4.2.1 + youtube-plugin 1.18.0 + LavaSrc 4.8.1
 - **Bot**: Discord.js 14 + Shoukaku 4.3.0
 - **Runtime**: Java 17 (Lavalink) + Node.js 18+ (bot)
 - **Anti-bot**: OAuth2 + remote cipher (cipher.kikkia.dev)

@@ -1,20 +1,5 @@
 #!/bin/sh
 
-echo "Using OAuth-only authentication"
-
-echo "Generating PoToken for YouTube bot detection bypass..."
-cd /app/potoken
-if node generate.mjs env 2>&1; then
-    if [ -f /tmp/potoken.env ]; then
-        . /tmp/potoken.env
-        echo "PoToken loaded successfully"
-    else
-        echo "WARNING: PoToken generation succeeded but file not found"
-    fi
-else
-    echo "WARNING: Failed to generate PoToken, YouTube playback may fail"
-fi
-
 echo "Starting Lavalink..."
 cd /lavalink
 
@@ -56,8 +41,6 @@ java -Xms450m -Xmx450m \
   -XX:GCTimeRatio=19 \
   $PROXY_ARGS \
   -DYOUTUBE_OAUTH_REFRESH_TOKEN="$YOUTUBE_OAUTH_REFRESH_TOKEN" \
-  -DYOUTUBE_POTOKEN="$YOUTUBE_POTOKEN" \
-  -DYOUTUBE_VISITOR_DATA="$YOUTUBE_VISITOR_DATA" \
   -DSPOTIFY_CLIENT_ID="$SPOTIFY_CLIENT_ID" \
   -DSPOTIFY_CLIENT_SECRET="$SPOTIFY_CLIENT_SECRET" \
   -jar Lavalink.jar &
@@ -76,6 +59,16 @@ done
 
 if [ "$READY" = "1" ]; then
     echo "Lavalink is ready and accepting connections"
+    
+    # Inject PoToken into running Lavalink for immediate use
+    echo "Injecting PoToken into Lavalink..."
+    cd /app/potoken
+    if node generate.mjs inject 2>&1; then
+        echo "PoToken injected successfully"
+    else
+        echo "WARNING: Failed to inject PoToken, YouTube playback may fail"
+    fi
+    cd /app
 else
     echo "WARNING: Lavalink not ready after 240s, starting bot anyway (Shoukaku will retry)"
 fi

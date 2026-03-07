@@ -88,8 +88,6 @@ plugins:
     oauth:
       enabled: true
       refreshToken: "${YOUTUBE_OAUTH_REFRESH_TOKEN:}"
-    poToken: "${YOUTUBE_POTOKEN:}"
-    visitorData: "${YOUTUBE_VISITOR_DATA:}"
 
   lavasrc:
     providers:

@@ -1,13 +1,12 @@
 FROM azul/zulu-openjdk-alpine:17-jre
 
-# Install system dependencies including Python and yt-dlp
 RUN apk add --no-cache nodejs npm curl wget python3 py3-pip && \
     pip3 install --no-cache-dir --break-system-packages yt-dlp && \
     yt-dlp --version
 
 WORKDIR /lavalink
 RUN wget -q -O Lavalink.jar \
-    "https://github.com/lavalink-devs/Lavalink/releases/download/4.2.1/Lavalink-musl.jar"
+    "https://github.com/lavalink-devs/Lavalink/releases/download/4.2.2/Lavalink-musl.jar"
 COPY lavalink/application.yml /lavalink/application.yml
 
 WORKDIR /app

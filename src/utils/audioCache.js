@@ -4,6 +4,11 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
+// Wrapper to force yt-dlp-exec to use system-installed binary
+const ytdlpExec = (url, options = {}) => {
+  return ytdlp(url, { ...options, binaryPath: "yt-dlp" });
+};
+
 let supabase = null;
 function initSupabase() {
   if (
@@ -84,7 +89,7 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
   console.log(`⬇️ Downloading: ${youtubeUrl}`);
 
   try {
-    await ytdlp(youtubeUrl, {
+    await ytdlpExec(youtubeUrl, {
       output: outputPath,
       format: "worstaudio[ext=webm]/worstaudio/worst",
       audioQuality: 8, // Lowest quality (0=best, 9=worst)

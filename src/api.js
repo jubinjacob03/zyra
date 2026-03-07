@@ -485,13 +485,20 @@ module.exports = function attachMusicApi(client) {
                   return;
                 }
 
-                res.writeHead(200, {
+                const headers = {
                   "Content-Type": "audio/webm",
                   "Cache-Control": "public, max-age=3600",
                   Connection: "keep-alive",
                   "Accept-Ranges": "bytes",
-                });
+                };
 
+                // Pass through Content-Length from Supabase response
+                if (supabaseRes.headers["content-length"]) {
+                  headers["Content-Length"] =
+                    supabaseRes.headers["content-length"];
+                }
+
+                res.writeHead(200, headers);
                 supabaseRes.pipe(res);
                 supabaseRes.on("end", resolve);
                 supabaseRes.on("error", reject);

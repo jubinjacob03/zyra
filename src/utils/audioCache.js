@@ -1,11 +1,9 @@
 const { createClient } = require("@supabase/supabase-js");
-const { execFile } = require("child_process");
-const { promisify } = require("util");
+const https = require("https");
+const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-
-const execFilePromise = promisify(execFile);
 
 let supabase = null;
 function initSupabase() {
@@ -71,7 +69,7 @@ async function checkCache(fileId, bucket) {
 }
 
 /**
- * Download audio from YouTube using yt-dlp
+ * Download audio from YouTube using Lavalink + direct stream download
  * @param {string} youtubeUrl - YouTube video URL
  * @param {string} fileId - Unique file identifier
  * @returns {Promise<string>} - Path to downloaded file
@@ -87,27 +85,70 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
   console.log(`⬇️ Downloading: ${youtubeUrl}`);
 
   try {
-    const args = [
-      youtubeUrl,
-      "--output",
-      outputPath,
-      "--format",
-      "worstaudio[ext=webm]/worstaudio/worst",
-      "--audio-quality",
-      "8",
-      "--extract-audio",
-      "--audio-format",
-      "opus",
-      "--postprocessor-args",
-      "-ar 48000 -ac 2 -b:a 64k",
-      "--quiet",
-      "--no-warnings",
-      "--geo-bypass",
-      "--no-playlist",
-      "--no-check-certificates",
-    ];
+    // Step 1: Use Lavalink to resolve YouTube URL (bypasses bot detection with OAuth2)
+    const lavalinkUrl = `http://localhost:2333/v4/loadtracks?identifier=${encodeURIComponent(youtubeUrl)}`;
+    const lavalinkAuth = process.env.LAVALINK_PASSWORD || "youshallnotpass";
 
-    await execFilePromise("yt-dlp", args);
+    const fetchWithRetry = (url, options, retries = 3) => {
+      return fetch(url, options).then((res) => {
+        if (!res.ok && retries > 0) {
+          console.log(`Lavalink request failed, retrying... (${retries} left)`);
+          return new Promise((resolve) => setTimeout(resolve, 1000)).then(() =>
+            fetchWithRetry(url, options, retries - 1),
+          );
+        }
+        return res;
+      });
+    };
+
+    const response = await fetchWithRetry(lavalinkUrl, {
+      headers: { Authorization: lavalinkAuth },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Lavalink returned ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.loadType !== "track" || !data.data?.info?.uri) {
+      throw new Error(`Could not resolve track: ${data.loadType}`);
+    }
+
+    const streamUrl = data.data.info.uri;
+    console.log(`🔗 Got stream URL from Lavalink`);
+
+    // Step 2: Download the stream URL directly
+    await new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(outputPath);
+      const protocol = streamUrl.startsWith("https") ? https : http;
+
+      protocol
+        .get(streamUrl, (streamResponse) => {
+          if (streamResponse.statusCode !== 200) {
+            reject(
+              new Error(`Stream download failed: ${streamResponse.statusCode}`),
+            );
+            return;
+          }
+
+          streamResponse.pipe(file);
+
+          file.on("finish", () => {
+            file.close();
+            resolve();
+          });
+        })
+        .on("error", (err) => {
+          fs.unlink(outputPath, () => {});
+          reject(err);
+        });
+
+      file.on("error", (err) => {
+        fs.unlink(outputPath, () => {});
+        reject(err);
+      });
+    });
 
     const stats = fs.statSync(outputPath);
     console.log(`✅ Downloaded: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);

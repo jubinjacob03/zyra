@@ -52,12 +52,12 @@ plugins:
     allowDirectPlaylistIds: true
     clients:
       - ANDROID_VR
-      - WEB  
-      - WEBEMBEDDED  
-      - IOS 
-      - ANDROID_MUSIC  
-      - TV 
-      - TVHTML5_SIMPLY  
+      - WEB
+      - WEBEMBEDDED
+      - IOS
+      - ANDROID_MUSIC
+      - TV
+      - TVHTML5_SIMPLY
       - MUSIC
     clientOptions:
       ANDROID_VR:
@@ -119,7 +119,17 @@ plugins:
       path: "yt-dlp"
       searchLimit: 10
       playlistLoadLimit: 1000
-      customPlaybackArgs: ["-q", "--no-warnings", "-f", "bestaudio[ext=webm]/bestaudio", "--no-playlist", "--geo-bypass", "--age-limit", "0"]
+      customPlaybackArgs:
+        [
+          "-q",
+          "--no-warnings",
+          "-f",
+          "bestaudio[ext=webm]/bestaudio",
+          "--no-playlist",
+          "--geo-bypass",
+          "--age-limit",
+          "0",
+        ]
     spotify:
       clientId: "${SPOTIFY_CLIENT_ID:}"
       clientSecret: "${SPOTIFY_CLIENT_SECRET:}"

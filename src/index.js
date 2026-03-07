@@ -150,7 +150,7 @@ class MusicQueue {
             `⚠️ **Song playback failed due to YouTube restrictions**\n` +
               `❌ Could not play: ${currentSong?.name || "Unknown track"}\n` +
               `📝 Reason: Age-restricted or region-locked content\n` +
-              `⏭️ Skipping to next song...`
+              `⏭️ Skipping to next song...`,
           )
           .catch(console.error);
         this.songs.shift();

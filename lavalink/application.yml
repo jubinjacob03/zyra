@@ -51,29 +51,47 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
-      - WEB
-      - WEBEMBEDDED
       - MUSIC
+      - ANDROID_TESTSUITE
+      - IOS
+      - WEB
       - ANDROID_MUSIC
+      - WEBEMBEDDED
+      - TVHTML5EMBEDDED
       - TV
       - TVHTML5_SIMPLY
     clientOptions:
-      WEB:
-        playback: true
-        videoLoading: true
-        playlistLoading: true
-        searching: true
-      WEBEMBEDDED:
-        playback: true
-        videoLoading: true
-        playlistLoading: false
-        searching: false
       MUSIC:
         playback: true
         videoLoading: true
         playlistLoading: false
         searching: true
+      ANDROID_TESTSUITE:
+        playback: true
+        videoLoading: true
+        playlistLoading: false
+        searching: false
+      IOS:
+        playback: true
+        videoLoading: true
+        playlistLoading: false
+        searching: false
+      WEB:
+        playback: true
+        videoLoading: true
+        playlistLoading: true
+        searching: true
       ANDROID_MUSIC:
+        playback: true
+        videoLoading: true
+        playlistLoading: false
+        searching: false
+      WEBEMBEDDED:
+        playback: true
+        videoLoading: true
+        playlistLoading: false
+        searching: false
+      TVHTML5EMBEDDED:
         playback: true
         videoLoading: true
         playlistLoading: false
@@ -91,12 +109,12 @@ plugins:
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"
-    # OAuth is deprecated by YouTube (see issue #78) and conflicts with remoteCipher
-    # Use EITHER OAuth OR remoteCipher (not both) - remoteCipher is more reliable
+    # Enabling OAuth to attempt bypassing age restrictions
+    # Works alongside remoteCipher - both are needed for different scenarios
     oauth:
-      enabled: false
+      enabled: true
       refreshToken: "${YOUTUBE_OAUTH_REFRESH_TOKEN:}"
-      skipInitialization: true
+      skipInitialization: false
 
   lavasrc:
     providers:

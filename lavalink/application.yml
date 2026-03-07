@@ -42,7 +42,7 @@ lavalink:
     timeouts:
       connectTimeoutMs: 15000
       connectionRequestTimeoutMs: 15000
-      socketTimeoutMs: 15000
+      socketTimeoutMs: 15000 # Increased for yt-cipher compatibility
 
 plugins:
   youtube:
@@ -52,7 +52,7 @@ plugins:
     allowDirectPlaylistIds: true
     clients:
       - WEB
-      - TVHTML5EMBEDDED
+      - WEBEMBEDDED
       - MUSIC
       - ANDROID_MUSIC
       - TV
@@ -63,7 +63,7 @@ plugins:
         videoLoading: true
         playlistLoading: true
         searching: true
-      TVHTML5EMBEDDED:
+      WEBEMBEDDED:
         playback: true
         videoLoading: true
         playlistLoading: false
@@ -91,9 +91,12 @@ plugins:
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"
+    # OAuth is deprecated by YouTube (see issue #78) and conflicts with remoteCipher
+    # Use EITHER OAuth OR remoteCipher (not both) - remoteCipher is more reliable
     oauth:
-      enabled: true
+      enabled: false
       refreshToken: "${YOUTUBE_OAUTH_REFRESH_TOKEN:}"
+      skipInitialization: true
 
   lavasrc:
     providers:

@@ -5,7 +5,7 @@
   "description": "YouTube PoToken generator for Lavalink",
   "dependencies": {
     "bgutils-js": "^3.2.0",
-    "youtubei.js": "^13.0.0",
-    "jsdom": "^25.0.0"
+    "youtubei.js": "^16.0.1",
+    "jsdom": "^28.1.0"
   }
 }

@@ -54,7 +54,7 @@ async function checkCache(fileId, bucket) {
     });
 
     if (files && files.length > 0) {
-      return `http://localhost:8000/stream/${fileId}?bucket=${bucket}`;
+      return `http://localhost:8000/stream/${fileId}.webm?bucket=${bucket}`;
     }
 
     return null;
@@ -187,7 +187,7 @@ async function uploadToSupabase(filePath, fileId, bucket) {
 
     console.log(`✅ Uploaded: ${fileName}`);
 
-    return `http://localhost:8000/stream/${fileId}?bucket=${bucket}`;
+    return `http://localhost:8000/stream/${fileId}.webm?bucket=${bucket}`;
   } catch (error) {
     console.error("❌ Upload failed:", error.message);
     throw new Error(`Failed to upload: ${error.message}`);

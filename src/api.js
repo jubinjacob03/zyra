@@ -440,7 +440,7 @@ module.exports = function attachMusicApi(client) {
       }
 
       if (req.method === "GET" && path.startsWith("/stream/")) {
-        const fileIdMatch = path.match(/^\/stream\/([a-f0-9]{16})$/);
+        const fileIdMatch = path.match(/^\/stream\/([a-f0-9]{16})(?:\.webm)?$/);
         if (!fileIdMatch) {
           return send(res, 400, { error: "Invalid file ID format" });
         }

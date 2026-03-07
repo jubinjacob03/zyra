@@ -439,6 +439,73 @@ module.exports = function attachMusicApi(client) {
         return send(res, 200, { results });
       }
 
+      if (req.method === "GET" && path.startsWith("/stream/")) {
+        const fileIdMatch = path.match(/^\/stream\/([a-f0-9]{16})$/);
+        if (!fileIdMatch) {
+          return send(res, 400, { error: "Invalid file ID format" });
+        }
+
+        const fileId = fileIdMatch[1];
+        const bucket = url.searchParams.get("bucket") || "playlist-songs";
+
+        try {
+          const { createClient } = require("@supabase/supabase-js");
+          const https = require("https");
+
+          if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+            return send(res, 503, { error: "Supabase not configured" });
+          }
+
+          const supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_KEY,
+            {
+              auth: {
+                autoRefreshToken: false,
+                persistSession: false,
+              },
+            },
+          );
+
+          const { data: urlData, error: urlError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(`songs/${fileId}.webm`, 3600);
+
+          if (urlError || !urlData?.signedUrl) {
+            return send(res, 404, { error: "Cached file not found" });
+          }
+
+          await new Promise((resolve, reject) => {
+            https
+              .get(urlData.signedUrl, (supabaseRes) => {
+                if (supabaseRes.statusCode !== 200) {
+                  reject(
+                    new Error(`Supabase returned ${supabaseRes.statusCode}`),
+                  );
+                  return;
+                }
+
+                res.writeHead(200, {
+                  "Content-Type": "audio/webm",
+                  "Cache-Control": "public, max-age=3600",
+                  Connection: "keep-alive",
+                  "Accept-Ranges": "bytes",
+                });
+
+                supabaseRes.pipe(res);
+                supabaseRes.on("end", resolve);
+                supabaseRes.on("error", reject);
+              })
+              .on("error", reject);
+          });
+
+          return;
+        } catch (error) {
+          console.error("[Stream Error]", error);
+          return send(res, 500, { error: `Stream failed: ${error.message}` });
+        }
+      }
+
       return send(res, 404, { error: "Not found" });
     } catch (err) {
       console.error("[MusicAPI Error]", err.message);

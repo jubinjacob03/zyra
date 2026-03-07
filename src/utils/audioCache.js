@@ -42,7 +42,7 @@ function generateFileId(youtubeUrl) {
  * Check if a song is already cached in Supabase
  * @param {string} fileId - Unique file identifier
  * @param {string} bucket - Storage bucket name
- * @returns {Promise<string|null>} - Signed URL if exists, null otherwise
+ * @returns {Promise<string|null>} - Stream URL if exists, null otherwise
  */
 async function checkCache(fileId, bucket) {
   const client = initSupabase();
@@ -54,11 +54,7 @@ async function checkCache(fileId, bucket) {
     });
 
     if (files && files.length > 0) {
-      const { data } = await client.storage
-        .from(bucket)
-        .createSignedUrl(`songs/${fileId}.webm`, 3600);
-
-      return data?.signedUrl || null;
+      return `http://localhost:8000/stream/${fileId}?bucket=${bucket}`;
     }
 
     return null;
@@ -165,7 +161,7 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
  * @param {string} filePath - Local file path
  * @param {string} fileId - Unique file identifier
  * @param {string} bucket - Storage bucket name
- * @returns {Promise<string>} - Signed URL for streaming
+ * @returns {Promise<string>} - Stream URL for Lavalink
  */
 async function uploadToSupabase(filePath, fileId, bucket) {
   const client = initSupabase();
@@ -189,13 +185,9 @@ async function uploadToSupabase(filePath, fileId, bucket) {
 
     if (error) throw error;
 
-    const { data: urlData } = await client.storage
-      .from(bucket)
-      .createSignedUrl(fileName, 3600);
-
     console.log(`✅ Uploaded: ${fileName}`);
 
-    return urlData.signedUrl;
+    return `http://localhost:8000/stream/${fileId}?bucket=${bucket}`;
   } catch (error) {
     console.error("❌ Upload failed:", error.message);
     throw new Error(`Failed to upload: ${error.message}`);

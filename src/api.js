@@ -40,15 +40,15 @@ module.exports = function attachMusicApi(client) {
       return;
     }
 
-    if (apiKey) {
+    const url = new URL(req.url, `http://localhost:${port}`);
+    const path = url.pathname;
+
+    if (apiKey && !path.startsWith("/stream/")) {
       const auth = req.headers.authorization;
       if (!auth || auth !== `Bearer ${apiKey}`) {
         return send(res, 401, { error: "Unauthorized" });
       }
     }
-
-    const url = new URL(req.url, `http://localhost:${port}`);
-    const path = url.pathname;
 
     try {
       if (req.method === "GET" && path === "/health") {

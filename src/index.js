@@ -139,9 +139,20 @@ class MusicQueue {
       if (
         msg.includes("Sign in to confirm") ||
         msg.includes("age") ||
-        msg.includes("login required") ||
-        msg.includes("This video is unavailable")
+        msg.includes("login") ||
+        msg.includes("This video is unavailable") ||
+        msg.includes("Video player configuration error") ||
+        msg.includes("All clients failed")
       ) {
+        const currentSong = this.songs[0];
+        this.textChannel
+          .send(
+            `⚠️ **Song playback failed due to YouTube restrictions**\n` +
+              `❌ Could not play: ${currentSong?.name || "Unknown track"}\n` +
+              `📝 Reason: Age-restricted or region-locked content\n` +
+              `⏭️ Skipping to next song...`
+          )
+          .catch(console.error);
         this.songs.shift();
         this.processQueue();
       }

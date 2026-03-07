@@ -4,8 +4,6 @@ server:
 
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.0"
-      snapshot: false
     - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.1"
       snapshot: false
   server:
@@ -42,22 +40,23 @@ lavalink:
     timeouts:
       connectTimeoutMs: 15000
       connectionRequestTimeoutMs: 15000
-      socketTimeoutMs: 15000 # Increased for yt-cipher compatibility
+      socketTimeoutMs: 15000
 
 plugins:
   youtube:
-    enabled: true
+    enabled: false
     allowSearch: true
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
-      - ANDROID_VR        # High reliability, good for age-restricted content
-      - WEB               # PoToken supported
-      - WEBEMBEDDED       # Embedded player fallback
-      - IOS               # Different restriction policies
-      - ANDROID_MUSIC     # Android music client
-      - TVHTML5_SIMPLY    # New stable TV client (v1.18.0)
-      - MUSIC             # Search-only client
+      - ANDROID_VR
+      - WEB  
+      - WEBEMBEDDED  
+      - IOS 
+      - ANDROID_MUSIC  
+      - TV 
+      - TVHTML5_SIMPLY  
+      - MUSIC
     clientOptions:
       ANDROID_VR:
         playback: true
@@ -104,9 +103,8 @@ plugins:
 
   lavasrc:
     providers:
-      - 'ytmsearch:"%ISRC%"'
-      - "ytmsearch:%QUERY%"
-      - "ytsearch:%QUERY%"  # Added yt-dlp fallback
+      - 'ytsearch:"%ISRC%"'
+      - "ytsearch:%QUERY%"
     sources:
       spotify: true
       applemusic: false
@@ -114,13 +112,12 @@ plugins:
       yandexmusic: false
       flowerytts: false
       youtube: true
-      ytdlp: true  # Enable yt-dlp for age-restricted content
     ytdlp:
       enabled: true
       path: "yt-dlp"
       searchLimit: 10
       playlistLoadLimit: 1000
-      customPlaybackArgs: ["-q", "--no-warnings", "-f", "bestaudio[ext=webm]/bestaudio", "--no-playlist", "--geo-bypass"]
+      customPlaybackArgs: ["-q", "--no-warnings", "-f", "bestaudio[ext=webm]/bestaudio", "--no-playlist", "--geo-bypass", "--age-limit", "0"]
     spotify:
       clientId: "${SPOTIFY_CLIENT_ID:}"
       clientSecret: "${SPOTIFY_CLIENT_SECRET:}"

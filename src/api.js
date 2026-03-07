@@ -440,12 +440,15 @@ module.exports = function attachMusicApi(client) {
       }
 
       if (req.method === "GET" && path.startsWith("/stream/")) {
-        const fileIdMatch = path.match(/^\/stream\/([a-f0-9]{16})(?:\.webm)?$/);
+        const fileIdMatch = path.match(
+          /^\/stream\/([a-f0-9]{16})(?:\.(ogg|webm))?$/,
+        );
         if (!fileIdMatch) {
           return send(res, 400, { error: "Invalid file ID format" });
         }
 
         const fileId = fileIdMatch[1];
+        const requestedExt = fileIdMatch[2] || null;
         const bucket = url.searchParams.get("bucket") || "playlist-songs";
 
         try {
@@ -467,13 +470,29 @@ module.exports = function attachMusicApi(client) {
             },
           );
 
-          const { data: urlData, error: urlError } = await supabase.storage
-            .from(bucket)
-            .createSignedUrl(`songs/${fileId}.webm`, 3600);
+          // Try OGG first (preferred format), then WebM fallback
+          const extsToTry = requestedExt
+            ? [requestedExt]
+            : ["ogg", "webm"];
+          let fileExt = null;
+          let urlData = null;
 
-          if (urlError || !urlData?.signedUrl) {
+          for (const ext of extsToTry) {
+            const result = await supabase.storage
+              .from(bucket)
+              .createSignedUrl(`songs/${fileId}.${ext}`, 3600);
+            if (!result.error && result.data?.signedUrl) {
+              fileExt = ext;
+              urlData = result.data;
+              break;
+            }
+          }
+
+          if (!urlData || !fileExt) {
             return send(res, 404, { error: "Cached file not found" });
           }
+
+          const contentType = fileExt === "ogg" ? "audio/ogg" : "audio/webm";
 
           await new Promise((resolve, reject) => {
             https
@@ -486,7 +505,7 @@ module.exports = function attachMusicApi(client) {
                 }
 
                 const headers = {
-                  "Content-Type": "audio/webm",
+                  "Content-Type": contentType,
                   "Cache-Control": "public, max-age=3600",
                   Connection: "keep-alive",
                   "Accept-Ranges": "bytes",

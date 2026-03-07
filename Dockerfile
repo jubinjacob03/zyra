@@ -1,8 +1,9 @@
 FROM azul/zulu-openjdk-alpine:17-jre
 
-RUN apk add --no-cache nodejs npm curl wget python3 py3-pip && \
+RUN apk add --no-cache nodejs npm curl wget python3 py3-pip ffmpeg && \
     pip3 install --no-cache-dir --break-system-packages yt-dlp && \
-    yt-dlp --version
+    yt-dlp --version && \
+    ffmpeg -version
 
 WORKDIR /lavalink
 RUN wget -q -O Lavalink.jar \

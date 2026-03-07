@@ -4,6 +4,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { execSync } = require("child_process");
 
 let supabase = null;
 function initSupabase() {
@@ -50,11 +51,11 @@ async function checkCache(fileId, bucket) {
 
   try {
     const { data: files } = await client.storage.from(bucket).list("songs", {
-      search: `${fileId}.webm`,
+      search: `${fileId}.ogg`,
     });
 
     if (files && files.length > 0) {
-      return `http://localhost:8000/stream/${fileId}.webm?bucket=${bucket}`;
+      return `http://localhost:8000/stream/${fileId}.ogg?bucket=${bucket}`;
     }
 
     return null;
@@ -76,7 +77,8 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
     fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  const outputPath = path.join(tmpDir, `${fileId}.webm`);
+  const webmPath = path.join(tmpDir, `${fileId}.webm`);
+  const oggPath = path.join(tmpDir, `${fileId}.ogg`);
 
   console.log(`⬇️ Downloading: ${youtubeUrl}`);
 
@@ -116,7 +118,7 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
 
     // Step 2: Download the stream URL directly
     await new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(outputPath);
+      const file = fs.createWriteStream(webmPath);
       const protocol = streamUrl.startsWith("https") ? https : http;
 
       protocol
@@ -136,20 +138,40 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
           });
         })
         .on("error", (err) => {
-          fs.unlink(outputPath, () => {});
+          fs.unlink(webmPath, () => {});
           reject(err);
         });
 
       file.on("error", (err) => {
-        fs.unlink(outputPath, () => {});
+        fs.unlink(webmPath, () => {});
         reject(err);
       });
     });
 
-    const stats = fs.statSync(outputPath);
+    const stats = fs.statSync(webmPath);
     console.log(`✅ Downloaded: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
 
-    return outputPath;
+    // Step 3: Convert WebM to OGG/Opus for Lavaplayer compatibility
+    console.log(`🔄 Converting to OGG/Opus format...`);
+    try {
+      execSync(
+        `ffmpeg -i "${webmPath}" -c:a libopus -b:a 128k "${oggPath}" -y`,
+        { stdio: "pipe" },
+      );
+      const oggStats = fs.statSync(oggPath);
+      console.log(
+        `✅ Converted: ${(oggStats.size / 1024 / 1024).toFixed(2)} MB`,
+      );
+
+      // Clean up WebM file
+      fs.unlinkSync(webmPath);
+      return oggPath;
+    } catch (conversionError) {
+      console.error(`❌ FFmpeg conversion failed:`, conversionError.message);
+      // Fall back to WebM if conversion fails
+      console.log(`⚠️ Using original WebM file`);
+      return webmPath;
+    }
   } catch (error) {
     console.error("❌ Download failed:", error.message);
     throw new Error(`Failed to download: ${error.message}`);
@@ -173,12 +195,14 @@ async function uploadToSupabase(filePath, fileId, bucket) {
 
   try {
     const fileBuffer = fs.readFileSync(filePath);
-    const fileName = `songs/${fileId}.webm`;
+    const fileExt = filePath.endsWith(".ogg") ? ".ogg" : ".webm";
+    const fileName = `songs/${fileId}${fileExt}`;
 
-    const { data, error } = await client.storage
+    const contentType = fileExt === ".ogg" ? "audio/ogg" : "audio/webm";
+    const { error } = await client.storage
       .from(bucket)
       .upload(fileName, fileBuffer, {
-        contentType: "audio/webm",
+        contentType: contentType,
         cacheControl: "3600",
         upsert: true,
       });
@@ -187,7 +211,7 @@ async function uploadToSupabase(filePath, fileId, bucket) {
 
     console.log(`✅ Uploaded: ${fileName}`);
 
-    return `http://localhost:8000/stream/${fileId}.webm?bucket=${bucket}`;
+    return `http://localhost:8000/stream/${fileId}${fileExt}?bucket=${bucket}`;
   } catch (error) {
     console.error("❌ Upload failed:", error.message);
     throw new Error(`Failed to upload: ${error.message}`);

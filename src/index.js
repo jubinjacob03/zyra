@@ -147,10 +147,7 @@ class MusicQueue {
         const currentSong = this.songs[0];
         this.textChannel
           .send(
-            `⚠️ **Song playback failed due to YouTube restrictions**\n` +
-              `❌ Could not play: ${currentSong?.name || "Unknown track"}\n` +
-              `📝 Reason: Age-restricted or region-locked content\n` +
-              `⏭️ Skipping to next song...`,
+            `⚠️ **YouTube has rate-limited us. Skipping track, please try again in a bit.**`,
           )
           .catch(console.error);
         this.songs.shift();

@@ -1,4 +1,5 @@
-const http = require("http");
+const http = require("node:http");
+const { formatDuration } = require("./utils/embed");
 
 module.exports = function attachMusicApi(client) {
   const port = parseInt(process.env.MUSIC_API_PORT) || 3002;
@@ -58,8 +59,14 @@ module.exports = function attachMusicApi(client) {
       }
 
       if (req.method === "POST" && path === "/play") {
-        const { guildId, voiceChannelId, query, userId, username } =
-          await parseBody(req);
+        const {
+          guildId,
+          voiceChannelId,
+          query,
+          userId,
+          username,
+          fromPlaylist,
+        } = await parseBody(req);
 
         if (!guildId || !voiceChannelId || !query)
           return send(res, 400, {
@@ -93,7 +100,51 @@ module.exports = function attachMusicApi(client) {
           username: username || "api",
         };
 
-        const result = await client.searchSong(query, fakeUser);
+        let result;
+
+        if (fromPlaylist) {
+          try {
+            const {
+              generateFileId,
+              checkCache,
+            } = require("./utils/audioCache");
+            const fileId = generateFileId(query);
+            const cachedUrl = await checkCache(fileId, "playlist-songs");
+
+            if (cachedUrl) {
+              const node = client.shoukaku.options.nodeResolver(
+                client.shoukaku.nodes,
+              );
+              if (node) {
+                const trackData = await node.rest.resolve(cachedUrl);
+                if (trackData?.tracks?.length > 0) {
+                  const track = trackData.tracks[0];
+                  result = {
+                    type: "single",
+                    name: track.info.title,
+                    url: query,
+                    thumbnail: track.info.artworkUrl || "",
+                    duration: Math.floor(track.info.length / 1000),
+                    formattedDuration: formatDuration(
+                      Math.floor(track.info.length / 1000),
+                    ),
+                    author: track.info.author || "",
+                    encoded: track.encoded,
+                    fromPlaylist: true,
+                    cachedUrl: cachedUrl,
+                  };
+                }
+              }
+            }
+          } catch (error) {
+            console.error("[Playlist Cache Check]", error);
+          }
+        }
+
+        if (!result) {
+          result = await client.searchSong(query, fakeUser);
+        }
+
         if (!result)
           return send(res, 404, { error: "No results found for query" });
 
@@ -312,6 +363,53 @@ module.exports = function attachMusicApi(client) {
           })),
           queueLength: queue.songs.length,
         });
+      }
+
+      if (req.method === "POST" && path === "/cache-song") {
+        const { youtubeUrl } = await parseBody(req);
+        if (!youtubeUrl)
+          return send(res, 400, { error: "youtubeUrl is required" });
+
+        try {
+          const { getStreamableUrl } = require("./utils/audioCache");
+          const streamUrl = await getStreamableUrl(youtubeUrl, true);
+
+          return send(res, 200, {
+            success: true,
+            streamUrl,
+            message: "Song cached permanently",
+          });
+        } catch (error) {
+          console.error("[Cache Song Error]", error);
+          return send(res, 500, {
+            error: `Failed to cache song: ${error.message}`,
+          });
+        }
+      }
+
+      if (req.method === "DELETE" && path === "/delete-cache") {
+        const { youtubeUrl } = await parseBody(req);
+        if (!youtubeUrl)
+          return send(res, 400, { error: "youtubeUrl is required" });
+
+        try {
+          const {
+            generateFileId,
+            deleteFromSupabase,
+          } = require("./utils/audioCache");
+          const fileId = generateFileId(youtubeUrl);
+          await deleteFromSupabase(fileId, "playlist-songs");
+
+          return send(res, 200, {
+            success: true,
+            message: "Cached song deleted",
+          });
+        } catch (error) {
+          console.error("[Delete Cache Error]", error);
+          return send(res, 500, {
+            error: `Failed to delete cached song: ${error.message}`,
+          });
+        }
       }
 
       if (req.method === "POST" && path === "/search") {

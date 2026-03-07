@@ -133,7 +133,7 @@ class MusicQueue {
       }
     });
 
-    this.player.on("exception", (data) => {
+    this.player.on("exception", async (data) => {
       const msg = data?.exception?.message || data?.message || "Unknown";
       console.error("Player exception:", msg);
       if (
@@ -145,13 +145,50 @@ class MusicQueue {
         msg.includes("All clients failed")
       ) {
         const currentSong = this.songs[0];
+        if (!currentSong) {
+          this.processQueue();
+          return;
+        }
+
+        console.log(
+          `⚠️ Stream failed for ${currentSong.name}, trying fallback...`,
+        );
         this.textChannel
           .send(
-            `⚠️ **YouTube has rate-limited us. Skipping track, please try again in a bit.**`,
+            `⚠️ **YouTube restricted this track. Attempting download fallback...**`,
           )
           .catch(console.error);
-        this.songs.shift();
-        this.processQueue();
+
+        try {
+          const { getStreamableUrl } = require("./utils/audioCache");
+          const streamUrl = await getStreamableUrl(
+            currentSong.url,
+            currentSong.isPermanent || false,
+          );
+
+          const node = getNode();
+          const result = await node.rest.resolve(streamUrl);
+
+          if (!result?.tracks?.length) {
+            throw new Error("No tracks found from cached URL");
+          }
+
+          currentSong.encoded = result.tracks[0].encoded;
+          this.player.playTrack({ track: { encoded: currentSong.encoded } });
+
+          this.textChannel
+            .send(`✅ Successfully playing **${currentSong.name}** from cache!`)
+            .catch(console.error);
+        } catch (fallbackError) {
+          console.error("Fallback failed:", fallbackError);
+          this.textChannel
+            .send(
+              `❌ Unable to play **${currentSong.name}** even after download. Skipping...`,
+            )
+            .catch(console.error);
+          this.songs.shift();
+          this.processQueue();
+        }
       }
     });
 
@@ -202,7 +239,25 @@ class MusicQueue {
     this.playing = true;
     this.paused = false;
     this.position = 0;
+    if (song.fromPlaylist && song.cachedUrl) {
+      try {
+        console.log(`🎵 Streaming playlist song from cache: ${song.name}`);
+        const node = getNode();
+        const result = await node.rest.resolve(song.cachedUrl);
 
+        if (!result?.tracks?.length) {
+          throw new Error("Failed to resolve cached URL");
+        }
+
+        song.encoded = result.tracks[0].encoded;
+      } catch (error) {
+        console.error(
+          `❌ Failed to stream from cache, falling back: ${error.message}`,
+        );
+        song.fromPlaylist = false;
+        song.cachedUrl = null;
+      }
+    }
     try {
       this.player.playTrack({ track: { encoded: song.encoded } });
       if (this.volume !== 100) this.player.setGlobalVolume(this.volume);
@@ -234,8 +289,66 @@ class MusicQueue {
       this.startProgressUpdates();
     } catch (error) {
       console.error(`Error playing ${song.name}:`, error);
+      await this.tryFallbackPlay(song, error);
+    }
+  }
+
+  async tryFallbackPlay(song, originalError) {
+    try {
       this.textChannel
-        .send(`❌ Error playing **${song.name}**: ${error.message}`)
+        .send(`💾 Downloading **${song.name}** for playback...`)
+        .catch(console.error);
+
+      const { getStreamableUrl } = require("./utils/audioCache");
+      const streamUrl = await getStreamableUrl(
+        song.url,
+        song.isPermanent || false,
+      );
+
+      const node = getNode();
+      const result = await node.rest.resolve(streamUrl);
+
+      if (!result?.tracks?.length) {
+        throw new Error("No tracks found from cached URL");
+      }
+
+      song.encoded = result.tracks[0].encoded;
+      this.player.playTrack({ track: { encoded: song.encoded } });
+      if (this.volume !== 100) this.player.setGlobalVolume(this.volume);
+
+      const { createCompleteMusicController } = require("./utils/componentsV2");
+      const controller = createCompleteMusicController(this);
+
+      const existingPanel = client.musicPanels.get(this.guildId);
+      let message;
+
+      if (existingPanel?.message) {
+        try {
+          await existingPanel.message.edit(controller);
+          message = existingPanel.message;
+        } catch {
+          message = await this.textChannel.send(controller);
+        }
+      } else {
+        message = await this.textChannel.send(controller);
+      }
+
+      client.musicPanels.set(this.guildId, {
+        message,
+        song,
+        startTime: Date.now(),
+      });
+
+      console.log("✅ Fallback playback successful:", song.name);
+      this.textChannel
+        .send(`✅ Now playing **${song.name}** (from cache)`)
+        .catch(console.error);
+
+      this.startProgressUpdates();
+    } catch (fallbackError) {
+      console.error(`Fallback play failed for ${song.name}:`, fallbackError);
+      this.textChannel
+        .send(`❌ Unable to play **${song.name}** even after download attempt.`)
         .catch(console.error);
       this.songs.shift();
       this.processQueue();

@@ -51,32 +51,30 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
-      - MUSIC
-      - ANDROID_TESTSUITE
-      - IOS
-      - WEB
-      - ANDROID_MUSIC
-      - WEBEMBEDDED
-      - TVHTML5EMBEDDED
-      - TV
-      - TVHTML5_SIMPLY
+      - ANDROID_VR        # High reliability, good for age-restricted content
+      - WEB               # PoToken supported
+      - WEBEMBEDDED       # Embedded player fallback
+      - IOS               # Different restriction policies
+      - ANDROID_MUSIC     # Android music client
+      - TVHTML5_SIMPLY    # New stable TV client (v1.18.0)
+      - MUSIC             # Search-only client
     clientOptions:
-      MUSIC:
+      ANDROID_VR:
         playback: true
         videoLoading: true
-        playlistLoading: false
+        playlistLoading: true
         searching: true
-      ANDROID_TESTSUITE:
+      WEB:
+        playback: true
+        videoLoading: true
+        playlistLoading: true
+        searching: true
+      WEBEMBEDDED:
         playback: true
         videoLoading: true
         playlistLoading: false
         searching: false
       IOS:
-        playback: true
-        videoLoading: true
-        playlistLoading: false
-        searching: false
-      WEB:
         playback: true
         videoLoading: true
         playlistLoading: true
@@ -86,31 +84,19 @@ plugins:
         videoLoading: true
         playlistLoading: false
         searching: false
-      WEBEMBEDDED:
-        playback: true
-        videoLoading: true
-        playlistLoading: false
-        searching: false
-      TVHTML5EMBEDDED:
-        playback: true
-        videoLoading: true
-        playlistLoading: false
-        searching: false
-      TV:
-        playback: true
-        videoLoading: true
-        playlistLoading: false
-        searching: false
       TVHTML5_SIMPLY:
         playback: true
         videoLoading: true
         playlistLoading: true
         searching: true
+      MUSIC:
+        playback: false
+        videoLoading: true
+        playlistLoading: false
+        searching: true
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
       userAgent: "remani-bot"
-    # Enabling OAuth to attempt bypassing age restrictions
-    # Works alongside remoteCipher - both are needed for different scenarios
     oauth:
       enabled: true
       refreshToken: "${YOUTUBE_OAUTH_REFRESH_TOKEN:}"
@@ -120,6 +106,7 @@ plugins:
     providers:
       - 'ytmsearch:"%ISRC%"'
       - "ytmsearch:%QUERY%"
+      - "ytsearch:%QUERY%"  # Added yt-dlp fallback
     sources:
       spotify: true
       applemusic: false
@@ -127,6 +114,13 @@ plugins:
       yandexmusic: false
       flowerytts: false
       youtube: true
+      ytdlp: true  # Enable yt-dlp for age-restricted content
+    ytdlp:
+      enabled: true
+      path: "yt-dlp"
+      searchLimit: 10
+      playlistLoadLimit: 1000
+      customPlaybackArgs: ["-q", "--no-warnings", "-f", "bestaudio[ext=webm]/bestaudio", "--no-playlist", "--geo-bypass"]
     spotify:
       clientId: "${SPOTIFY_CLIENT_ID:}"
       clientSecret: "${SPOTIFY_CLIENT_SECRET:}"

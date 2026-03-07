@@ -1,13 +1,11 @@
 const { createClient } = require("@supabase/supabase-js");
-const ytdlp = require("yt-dlp-exec");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-// Wrapper to force yt-dlp-exec to use system-installed binary
-const ytdlpExec = (url, options = {}) => {
-  return ytdlp(url, { ...options, binaryPath: "yt-dlp" });
-};
+const execFilePromise = promisify(execFile);
 
 let supabase = null;
 function initSupabase() {
@@ -89,26 +87,27 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
   console.log(`⬇️ Downloading: ${youtubeUrl}`);
 
   try {
-    await ytdlpExec(youtubeUrl, {
-      output: outputPath,
-      format: "worstaudio[ext=webm]/worstaudio/worst",
-      audioQuality: 8, // Lowest quality (0=best, 9=worst)
-      extractAudio: true,
-      audioFormat: "opus",
-      postprocessorArgs: [
-        "-ar",
-        "48000", // Discord's sample rate
-        "-ac",
-        "2", // Stereo
-        "-b:a",
-        "64k", // Match Discord's bitrate
-      ],
-      quiet: true,
-      noWarnings: true,
-      geoBypass: true,
-      noPlaylist: true,
-      noCheckCertificates: true,
-    });
+    const args = [
+      youtubeUrl,
+      "--output",
+      outputPath,
+      "--format",
+      "worstaudio[ext=webm]/worstaudio/worst",
+      "--audio-quality",
+      "8",
+      "--extract-audio",
+      "--audio-format",
+      "opus",
+      "--postprocessor-args",
+      "-ar 48000 -ac 2 -b:a 64k",
+      "--quiet",
+      "--no-warnings",
+      "--geo-bypass",
+      "--no-playlist",
+      "--no-check-certificates",
+    ];
+
+    await execFilePromise("yt-dlp", args);
 
     const stats = fs.statSync(outputPath);
     console.log(`✅ Downloaded: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);

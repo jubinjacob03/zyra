@@ -224,22 +224,51 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
         if (infoResponse) {
           try {
             const info = JSON.parse(infoResponse);
+            console.log(
+              `🔍 Lavalink /v4/info response:`,
+              JSON.stringify(info, null, 2).substring(0, 500),
+            );
+
             if (info.plugins && Array.isArray(info.plugins)) {
               const youtubePlugin = info.plugins.find(
                 (p) => p.name === "youtube-plugin",
               );
+              console.log(
+                `🔍 YouTube plugin found:`,
+                youtubePlugin ? "YES" : "NO",
+              );
+              if (youtubePlugin) {
+                console.log(
+                  `🔍 YouTube plugin structure:`,
+                  JSON.stringify(youtubePlugin, null, 2).substring(0, 300),
+                );
+              }
+
               if (youtubePlugin?.status?.oauth?.accessToken) {
                 oauthToken = youtubePlugin.status.oauth.accessToken;
                 console.log(
                   `✅ Extracted OAuth token from Lavalink (expires in ${youtubePlugin.status.oauth.expiresIn}s)`,
                 );
+              } else {
+                console.log(
+                  `⚠️ OAuth path not found in plugin. Status:`,
+                  youtubePlugin?.status,
+                );
               }
+            } else {
+              console.log(`⚠️ No plugins array in response`);
             }
           } catch (parseError) {
             console.log(
               `⚠️ Could not parse Lavalink info: ${parseError.message}`,
             );
+            console.log(
+              `⚠️ Raw response (first 200 chars):`,
+              infoResponse?.substring(0, 200),
+            );
           }
+        } else {
+          console.log(`⚠️ infoResponse is null or empty`);
         }
 
         if (!oauthToken && process.env.YOUTUBE_OAUTH_TOKEN) {

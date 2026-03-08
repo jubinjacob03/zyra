@@ -1,5 +1,4 @@
 const { createClient } = require("@supabase/supabase-js");
-const { Innertube, Utils } = require("youtubei.js");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -111,6 +110,8 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
   console.log(`⬇️ Downloading via YouTube.js: ${youtubeUrl}`);
 
   try {
+    const { Innertube, Utils } = await import("youtubei.js");
+
     const yt = await Innertube.create({
       visitor_data: process.env.YOUTUBE_VISITOR_DATA,
       po_token: process.env.YOUTUBE_POTOKEN,

@@ -44,22 +44,22 @@ function generateFileId(youtubeUrl) {
  */
 function extractVideoId(url) {
   if (/^[\w-]{11}$/.test(url)) return url;
-  
-  if (url.includes('/shorts/')) {
-    throw new Error('YouTube Shorts are not supported');
+
+  if (url.includes("/shorts/")) {
+    throw new Error("YouTube Shorts are not supported");
   }
-  
+
   const patterns = [
     /[?&]v=([\w-]{11})/,
     /youtu\.be\/([\w-]{11})/,
     /embed\/([\w-]{11})/,
   ];
-  
+
   for (const pattern of patterns) {
     const match = url.match(pattern);
     if (match) return match[1];
   }
-  
+
   throw new Error(`Could not extract video ID from: ${url}`);
 }
 
@@ -159,7 +159,7 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
     }
 
     console.error("❌ YouTube.js download failed:", error.message);
-    
+
     if (error.message?.includes("LOGIN_REQUIRED")) {
       throw new Error("Age-restricted video - authentication required");
     }
@@ -169,7 +169,7 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
     if (error.message?.includes("Video not playable")) {
       throw error;
     }
-    
+
     throw new Error(`Failed to download: ${error.message}`);
   }
 }

@@ -51,7 +51,6 @@ async function checkCache(fileId, bucket) {
   if (!client) return null;
 
   try {
-    // Only check for OGG files since we always convert
     const { data: files } = await client.storage.from(bucket).list("songs", {
       search: `${fileId}.ogg`,
     });
@@ -84,18 +83,14 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
 
   console.log(`⬇️ Downloading: ${youtubeUrl}`);
 
-  // STRATEGY: Try Lavalink first (uses OAuth2/PoToken), fallback to yt-dlp if it fails
   let streamUrl = null;
   let downloadMethod = null;
 
   try {
-    // === METHOD 1: Try Lavalink's /youtube/stream endpoint ===
-    // Extract video ID
     const videoIdMatch = youtubeUrl.match(/(?:v=|\/)([\w-]{11})/);
     if (videoIdMatch) {
       const videoId = videoIdMatch[1];
 
-      // Get Lavalink connection details
       let lavalinkHost = process.env.LAVALINK_URL || "localhost:2333";
       if (!lavalinkHost.startsWith("http")) {
         lavalinkHost = `http://${lavalinkHost}`;
@@ -108,12 +103,10 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
         `🎵 Attempting Lavalink download (OAuth2/PoToken authenticated)...`,
       );
 
-      // Try Lavalink endpoint with timeout
       const lavalinkSuccess = await new Promise((resolve) => {
         const file = fs.createWriteStream(webmPath);
         const protocol = lavalinkHost.startsWith("https") ? https : http;
 
-        // Parse URL properly
         let parsedUrl;
         try {
           parsedUrl = new URL(lavalinkUrl);
@@ -129,11 +122,10 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
           path: parsedUrl.pathname + parsedUrl.search,
           method: "GET",
           headers: { Authorization: lavalinkPassword },
-          timeout: 10000, // 10 second timeout for Lavalink attempt
+          timeout: 10000,
         };
 
         const request = protocol.request(options, (response) => {
-          // Check status code
           if (response.statusCode !== 200) {
             console.log(
               `⚠️ Lavalink returned ${response.statusCode}: ${response.statusMessage}`,
@@ -144,7 +136,6 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
             return;
           }
 
-          // Success! Stream the data
           response.pipe(file);
 
           file.on("finish", () => {
@@ -180,9 +171,7 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
 
       if (lavalinkSuccess) {
         downloadMethod = "Lavalink (OAuth2)";
-        // File already downloaded via Lavalink
       } else {
-        // Lavalink failed, continuing to yt-dlp fallback
         console.log(`📋 Falling back to yt-dlp...`);
       }
     }
@@ -190,64 +179,175 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
     console.log(`⚠️ Lavalink attempt error: ${error.message}`);
   }
 
-  // === METHOD 2: yt-dlp fallback (if Lavalink didn't work) ===
   if (!downloadMethod) {
     try {
-      console.log(`🔍 Extracting stream URL with yt-dlp (Node.js runtime)...`);
+      console.log(`🍪 Generating YouTube OAuth2 cookies from Lavalink...`);
 
-      streamUrl = execSync(
-        `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --get-url --no-playlist --js-runtimes node "${youtubeUrl}"`,
-        { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-      ).trim();
+      let oauthToken = null;
+      try {
+        let lavalinkHost = process.env.LAVALINK_URL || "localhost:2333";
+        if (!lavalinkHost.startsWith("http")) {
+          lavalinkHost = `http://${lavalinkHost}`;
+        }
+        const lavalinkPassword =
+          process.env.LAVALINK_PASSWORD || "remani-lavalink";
 
-      if (!streamUrl || !streamUrl.startsWith("http")) {
-        throw new Error(`Invalid stream URL: ${streamUrl}`);
+        const infoUrl = `${lavalinkHost}/v4/info`;
+        const infoResponse = await new Promise((resolve) => {
+          const protocol = lavalinkHost.startsWith("https") ? https : http;
+          const url = new URL(infoUrl);
+
+          const options = {
+            hostname: url.hostname,
+            port: url.port || (protocol === https ? 443 : 80),
+            path: url.pathname,
+            method: "GET",
+            headers: { Authorization: lavalinkPassword },
+            timeout: 5000,
+          };
+
+          let data = "";
+          const request = protocol.request(options, (res) => {
+            res.on("data", (chunk) => (data += chunk));
+            res.on("end", () => resolve(data));
+          });
+
+          request.on("error", () => resolve(null));
+          request.on("timeout", () => {
+            request.destroy();
+            resolve(null);
+          });
+
+          request.end();
+        });
+
+        if (process.env.YOUTUBE_OAUTH_TOKEN) {
+          oauthToken = process.env.YOUTUBE_OAUTH_TOKEN;
+        }
+      } catch (e) {
+        console.log(`⚠️ Could not fetch OAuth token: ${e.message}`);
       }
 
-      console.log(`✅ Stream URL extracted via yt-dlp`);
-      console.log(`⬇️ Downloading stream...`);
+      const cookiesPath = path.join(tmpDir, `cookies_${fileId}.txt`);
 
-      await new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(webmPath);
-        const protocol = streamUrl.startsWith("https") ? https : http;
+      if (oauthToken) {
+        console.log(`✅ Using OAuth2 token for authentication`);
+        const cookiesContent = `# Netscape HTTP Cookie File
+# This file is generated by yt-dlp. Do not edit.
 
-        const request = protocol.get(streamUrl, (response) => {
-          if (response.statusCode !== 200) {
-            reject(
-              new Error(
-                `Download failed: ${response.statusCode} ${response.statusMessage}`,
-              ),
+.youtube.com	TRUE	/	TRUE	0	__Secure-1PSID	${oauthToken}
+.youtube.com	TRUE	/	FALSE	0	VISITOR_INFO1_LIVE	${oauthToken.substring(0, 20)}
+.youtube.com	TRUE	/	TRUE	2147483647	LOGIN_INFO	${oauthToken}
+`;
+        fs.writeFileSync(cookiesPath, cookiesContent);
+      } else {
+        console.log(
+          `⚠️ No OAuth token available, trying without authentication...`,
+        );
+      }
+
+      console.log(`🔍 Extracting stream URL with yt-dlp...`);
+
+      const ytdlpCommands = [
+        oauthToken
+          ? `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --get-url --no-playlist --cookies "${cookiesPath}" "${youtubeUrl}"`
+          : null,
+        `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --get-url --no-playlist --js-runtimes node --no-check-certificate "${youtubeUrl}"`,
+        `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --get-url --no-playlist --extractor-args "youtube:player_client=android" "${youtubeUrl}"`,
+        `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --get-url --no-playlist --extractor-args "youtube:player_client=web_embedded" "${youtubeUrl}"`,
+        null,
+      ].filter(Boolean);
+
+      let lastError = null;
+
+      for (let i = 0; i < ytdlpCommands.length; i++) {
+        try {
+          console.log(`🔄 yt-dlp attempt ${i + 1}/${ytdlpCommands.length}...`);
+
+          streamUrl = execSync(ytdlpCommands[i], {
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+          }).trim();
+
+          if (streamUrl && streamUrl.startsWith("http")) {
+            console.log(
+              `✅ Stream URL extracted via yt-dlp (attempt ${i + 1})`,
             );
-            return;
+            break;
           }
+        } catch (err) {
+          lastError = err;
+          console.log(
+            `⚠️ Attempt ${i + 1} failed: ${err.message.split("\n")[0]}`,
+          );
+        }
+      }
 
-          response.pipe(file);
-          file.on("finish", () => {
-            file.close();
-            resolve();
+      if (fs.existsSync(cookiesPath)) {
+        fs.unlinkSync(cookiesPath);
+      }
+
+      if (!streamUrl || !streamUrl.startsWith("http")) {
+        console.log(`🎯 Attempting direct download with yt-dlp...`);
+        const directDownloadCmd = oauthToken
+          ? `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --no-playlist --cookies "${cookiesPath}" -o "${webmPath}" "${youtubeUrl}"`
+          : `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --no-playlist --extractor-args "youtube:player_client=android" -o "${webmPath}" "${youtubeUrl}"`;
+
+        execSync(directDownloadCmd, { stdio: "inherit" });
+
+        if (fs.existsSync(webmPath) && fs.statSync(webmPath).size > 0) {
+          downloadMethod = "yt-dlp (direct)";
+          console.log(`✅ Direct download successful`);
+        } else {
+          throw new Error(
+            `All yt-dlp methods failed. Last error: ${lastError?.message || "Unknown"}`,
+          );
+        }
+      } else {
+        console.log(`⬇️ Downloading stream...`);
+
+        await new Promise((resolve, reject) => {
+          const file = fs.createWriteStream(webmPath);
+          const protocol = streamUrl.startsWith("https") ? https : http;
+
+          const request = protocol.get(streamUrl, (response) => {
+            if (response.statusCode !== 200) {
+              reject(
+                new Error(
+                  `Download failed: ${response.statusCode} ${response.statusMessage}`,
+                ),
+              );
+              return;
+            }
+
+            response.pipe(file);
+            file.on("finish", () => {
+              file.close();
+              resolve();
+            });
+          });
+
+          request.on("error", (err) => {
+            fs.unlink(webmPath, () => {});
+            reject(err);
+          });
+
+          file.on("error", (err) => {
+            fs.unlink(webmPath, () => {});
+            reject(err);
+          });
+
+          request.setTimeout(30000, () => {
+            request.destroy();
+            reject(new Error("Download timeout"));
           });
         });
 
-        request.on("error", (err) => {
-          fs.unlink(webmPath, () => {});
-          reject(err);
-        });
-
-        file.on("error", (err) => {
-          fs.unlink(webmPath, () => {});
-          reject(err);
-        });
-
-        request.setTimeout(30000, () => {
-          request.destroy();
-          reject(new Error("Download timeout"));
-        });
-      });
-
-      downloadMethod = "yt-dlp";
+        downloadMethod = "yt-dlp";
+      }
     } catch (ytdlpError) {
       throw new Error(
-        `Both methods failed. Lavalink: unavailable, yt-dlp: ${ytdlpError.message}`,
+        `Both methods failed. Lavalink: Spring incompatibility, yt-dlp: ${ytdlpError.message}`,
       );
     }
   }
@@ -258,21 +358,15 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
       `✅ Downloaded: ${(stats.size / 1024 / 1024).toFixed(2)} MB (via ${downloadMethod})`,
     );
 
-    // Step 3: Convert WebM to OGG/Opus for Lavaplayer compatibility
     console.log(`🔄 Converting to OGG/Opus format...`);
 
     let conversionSuccess = false;
     let lastError = null;
 
-    // Try conversion with multiple approaches
     const conversionAttempts = [
-      // Attempt 1: High quality Opus
       `ffmpeg -i "${webmPath}" -c:a libopus -b:a 128k -vbr on -compression_level 10 "${oggPath}" -y`,
-      // Attempt 2: Standard Opus
       `ffmpeg -i "${webmPath}" -c:a libopus -b:a 128k "${oggPath}" -y`,
-      // Attempt 3: Copy codec if already Opus
       `ffmpeg -i "${webmPath}" -c:a copy "${oggPath}" -y`,
-      // Attempt 4: Force format conversion
       `ffmpeg -i "${webmPath}" -acodec libopus -ar 48000 "${oggPath}" -y`,
     ];
 
@@ -283,7 +377,6 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
         );
         execSync(conversionAttempts[i], { stdio: "pipe" });
 
-        // Verify the output file exists and has content
         if (fs.existsSync(oggPath)) {
           const oggStats = fs.statSync(oggPath);
           if (oggStats.size > 0) {
@@ -297,14 +390,12 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
       } catch (err) {
         lastError = err;
         console.log(`⚠️ Attempt ${i + 1} failed: ${err.message}`);
-        // Clean up failed attempt
         if (fs.existsSync(oggPath)) {
           fs.unlinkSync(oggPath);
         }
       }
     }
 
-    // Always clean up the WebM file
     try {
       if (fs.existsSync(webmPath)) {
         fs.unlinkSync(webmPath);
@@ -315,7 +406,6 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
     }
 
     if (!conversionSuccess) {
-      // Clean up any partial files
       if (fs.existsSync(oggPath)) {
         fs.unlinkSync(oggPath);
       }
@@ -326,13 +416,10 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
 
     return oggPath;
   } catch (error) {
-    // Emergency cleanup - ensure no leftover files
     try {
       if (fs.existsSync(webmPath)) fs.unlinkSync(webmPath);
       if (fs.existsSync(oggPath)) fs.unlinkSync(oggPath);
-    } catch (cleanupError) {
-      // Ignore cleanup errors
-    }
+    } catch (cleanupError) {}
 
     console.error("❌ Download failed:", error.message);
     throw new Error(`Failed to download: ${error.message}`);
@@ -401,7 +488,6 @@ async function deleteFromSupabase(fileId, bucket) {
   if (!client) return;
 
   try {
-    // Delete .ogg file (and also .webm for legacy cleanup)
     await client.storage
       .from(bucket)
       .remove([`songs/${fileId}.ogg`, `songs/${fileId}.webm`]);
@@ -465,7 +551,7 @@ async function cleanupOldFiles() {
     const now = Date.now();
     const oldFiles = files.filter((file) => {
       const ageMs = now - new Date(file.created_at).getTime();
-      return ageMs > 3600000; // Older than 1 hour
+      return ageMs > 3600000;
     });
 
     if (oldFiles.length > 0) {

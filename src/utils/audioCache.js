@@ -221,9 +221,9 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
           request.end();
         });
 
-        if (lavalinkInfo) {
+        if (infoResponse) {
           try {
-            const info = JSON.parse(lavalinkInfo);
+            const info = JSON.parse(infoResponse);
             if (info.plugins && Array.isArray(info.plugins)) {
               const youtubePlugin = info.plugins.find(
                 (p) => p.name === "youtube-plugin",

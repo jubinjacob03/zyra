@@ -84,38 +84,19 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
   console.log(`⬇️ Downloading: ${youtubeUrl}`);
 
   try {
-    // Step 1: Use Lavalink to resolve YouTube URL (bypasses bot detection with OAuth2)
-    const lavalinkUrl = `http://localhost:2333/v4/loadtracks?identifier=${encodeURIComponent(youtubeUrl)}`;
-    const lavalinkAuth = process.env.LAVALINK_PASSWORD || "youshallnotpass";
+    // Step 1: Use yt-dlp to get the direct stream URL (handles bot detection and signatures)
+    console.log(`🔍 Getting direct stream URL with yt-dlp...`);
 
-    const fetchWithRetry = (url, options, retries = 3) => {
-      return fetch(url, options).then((res) => {
-        if (!res.ok && retries > 0) {
-          console.log(`Lavalink request failed, retrying... (${retries} left)`);
-          return new Promise((resolve) => setTimeout(resolve, 1000)).then(() =>
-            fetchWithRetry(url, options, retries - 1),
-          );
-        }
-        return res;
-      });
-    };
+    const streamUrl = execSync(
+      `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --get-url --no-playlist "${youtubeUrl}"`,
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+    ).trim();
 
-    const response = await fetchWithRetry(lavalinkUrl, {
-      headers: { Authorization: lavalinkAuth },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Lavalink returned ${response.status}`);
+    if (!streamUrl || !streamUrl.startsWith("http")) {
+      throw new Error("Failed to get stream URL from yt-dlp");
     }
 
-    const data = await response.json();
-
-    if (data.loadType !== "track" || !data.data?.info?.uri) {
-      throw new Error(`Could not resolve track: ${data.loadType}`);
-    }
-
-    const streamUrl = data.data.info.uri;
-    console.log(`🔗 Got stream URL from Lavalink`);
+    console.log(`🔗 Got direct stream URL`);
 
     // Step 2: Download the stream URL directly
     await new Promise((resolve, reject) => {

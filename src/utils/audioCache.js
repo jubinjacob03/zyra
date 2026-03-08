@@ -1,3 +1,20 @@
+/**
+ * Audio Caching Module - YouTube Download & Supabase Storage
+ *
+ * Environment Variables Required:
+ * - SUPABASE_URL: Supabase project URL
+ * - SUPABASE_SERVICE_KEY: Supabase service role key
+ * - YOUTUBE_VISITOR_DATA: YouTube visitor data from PoToken generation
+ * - YOUTUBE_POTOKEN: PoToken for YouTube authentication
+ * - YOUTUBE_COOKIE (optional): YouTube cookies for enhanced authentication
+ *
+ * To get YOUTUBE_COOKIE (if bot detection occurs):
+ * 1. Log into YouTube in a browser
+ * 2. Open DevTools > Application > Cookies > youtube.com
+ * 3. Copy all cookies in format: "name1=value1; name2=value2; ..."
+ * 4. Set as environment variable: YOUTUBE_COOKIE="your_cookies_here"
+ */
+
 const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
@@ -110,13 +127,34 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
   console.log(`⬇️ Downloading via YouTube.js: ${youtubeUrl}`);
 
   try {
-    const { Innertube, Utils } = await import("youtubei.js");
+    const { Innertube, Utils, UniversalCache } = await import("youtubei.js");
 
-    const yt = await Innertube.create({
-      visitor_data: process.env.YOUTUBE_VISITOR_DATA,
-      po_token: process.env.YOUTUBE_POTOKEN,
-      retrieve_player: true,
-    });
+    const cacheDir = path.join(__dirname, "../../cache");
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    }
+
+    const config = {
+      cache: new UniversalCache(false),
+      fetch: async (input, init) => {
+        const url = typeof input === "string" ? input : input.url;
+        console.log(`🌐 Fetching: ${url.substring(0, 100)}...`);
+        return fetch(input, init);
+      },
+    };
+
+    if (process.env.YOUTUBE_VISITOR_DATA && process.env.YOUTUBE_POTOKEN) {
+      config.visitor_data = process.env.YOUTUBE_VISITOR_DATA;
+      config.po_token = process.env.YOUTUBE_POTOKEN;
+      console.log(`🔐 Using PoToken authentication`);
+    }
+
+    if (process.env.YOUTUBE_COOKIE) {
+      config.cookie = process.env.YOUTUBE_COOKIE;
+      console.log(`🍪 Using cookie authentication`);
+    }
+
+    const yt = await Innertube.create(config);
 
     console.log(`🔍 Getting video info...`);
     const info = await yt.getInfo(videoId);
@@ -128,6 +166,20 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
 
     console.log(`📹 Title: ${info.basic_info.title}`);
     console.log(`⏱️ Duration: ${info.basic_info.duration}s`);
+
+    const format = info.chooseFormat({
+      type: "audio",
+      quality: "best",
+      format: "opus",
+    });
+
+    if (!format) {
+      throw new Error("No suitable audio format found");
+    }
+
+    console.log(
+      `🎵 Selected format: ${format.mime_type} (${format.bitrate} bps)`,
+    );
 
     console.log(`🎵 Downloading audio stream...`);
     const stream = await yt.download(videoId, {
@@ -161,8 +213,27 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
 
     console.error("❌ YouTube.js download failed:", error.message);
 
+    if (error.message?.includes("Sign in to confirm")) {
+      console.error("🤖 Bot detection triggered. Possible solutions:");
+      console.error(
+        "   1. Add YOUTUBE_COOKIE env variable with authenticated cookies",
+      );
+      console.error("   2. Regenerate PoToken (may be expired)");
+      console.error("   3. Wait before retrying");
+      throw new Error("Bot detection - authentication required");
+    }
+    if (
+      error.message?.includes("Failed to extract signature") ||
+      error.message?.includes("Failed to extract n")
+    ) {
+      console.error(
+        "🔧 Player decipher failed. YouTube may have updated their player.",
+      );
+      console.error("   Try: npm update youtubei.js");
+      throw new Error("Stream decryption failed - update required");
+    }
     if (error.message?.includes("LOGIN_REQUIRED")) {
-      throw new Error("Age-restricted video - authentication required");
+      throw new Error("Age-restricted video - cookie authentication required");
     }
     if (error.message?.includes("UNPLAYABLE")) {
       throw new Error("Video is not available for playback");

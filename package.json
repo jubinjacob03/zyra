@@ -27,6 +27,7 @@
     "genius-lyrics": "^4.4.7",
     "jsdom": "^28.1.0",
     "shoukaku": "^4.3.0",
+    "youtubei.js": "^16.0.1",
     "yt-dlp-exec": "^1.0.2"
   },
   "devDependencies": {

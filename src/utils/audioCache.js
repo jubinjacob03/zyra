@@ -1,10 +1,8 @@
 const { createClient } = require("@supabase/supabase-js");
-const https = require("https");
-const http = require("http");
+const { Innertube, Utils } = require("youtubei.js");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { execSync } = require("child_process");
 
 let supabase = null;
 function initSupabase() {
@@ -40,10 +38,36 @@ function generateFileId(youtubeUrl) {
 }
 
 /**
+ * Extract video ID from YouTube URL
+ * @param {string} url - YouTube URL or video ID
+ * @returns {string} - Video ID
+ */
+function extractVideoId(url) {
+  if (/^[\w-]{11}$/.test(url)) return url;
+  
+  if (url.includes('/shorts/')) {
+    throw new Error('YouTube Shorts are not supported');
+  }
+  
+  const patterns = [
+    /[?&]v=([\w-]{11})/,
+    /youtu\.be\/([\w-]{11})/,
+    /embed\/([\w-]{11})/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  
+  throw new Error(`Could not extract video ID from: ${url}`);
+}
+
+/**
  * Check if a song is already cached in Supabase
  * @param {string} fileId - Unique file identifier
  * @param {string} bucket - Storage bucket name
- * @returns {Promise<string|null>} - Stream URL if exists, null otherwise
+ * @returns {Promise<string|null>} - Signed URL if exists, null otherwise
  */
 async function checkCache(fileId, bucket) {
   const client = initSupabase();
@@ -51,11 +75,15 @@ async function checkCache(fileId, bucket) {
 
   try {
     const { data: files } = await client.storage.from(bucket).list("songs", {
-      search: `${fileId}.ogg`,
+      search: `${fileId}.webm`,
     });
 
     if (files && files.length > 0) {
-      return `http://localhost:8000/stream/${fileId}.ogg?bucket=${bucket}`;
+      const { data } = await client.storage
+        .from(bucket)
+        .createSignedUrl(`songs/${fileId}.webm`, 3600);
+
+      return data?.signedUrl || null;
     }
 
     return null;
@@ -66,7 +94,7 @@ async function checkCache(fileId, bucket) {
 }
 
 /**
- * Download audio from YouTube using Lavalink + direct stream download
+ * Download audio from YouTube using YouTube.js (InnerTube API)
  * @param {string} youtubeUrl - YouTube video URL
  * @param {string} fileId - Unique file identifier
  * @returns {Promise<string>} - Path to downloaded file
@@ -77,103 +105,71 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
     fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  const webmPath = path.join(tmpDir, `${fileId}.webm`);
-  const oggPath = path.join(tmpDir, `${fileId}.ogg`);
+  const outputPath = path.join(tmpDir, `${fileId}.webm`);
+  const videoId = extractVideoId(youtubeUrl);
 
-  console.log(`⬇️ Downloading: ${youtubeUrl}`);
+  console.log(`⬇️ Downloading via YouTube.js: ${youtubeUrl}`);
 
   try {
-    // Step 1: Use Lavalink to resolve YouTube URL (bypasses bot detection with OAuth2)
-    const lavalinkUrl = `http://localhost:2333/v4/loadtracks?identifier=${encodeURIComponent(youtubeUrl)}`;
-    const lavalinkAuth = process.env.LAVALINK_PASSWORD || "youshallnotpass";
-
-    const fetchWithRetry = (url, options, retries = 3) => {
-      return fetch(url, options).then((res) => {
-        if (!res.ok && retries > 0) {
-          console.log(`Lavalink request failed, retrying... (${retries} left)`);
-          return new Promise((resolve) => setTimeout(resolve, 1000)).then(() =>
-            fetchWithRetry(url, options, retries - 1),
-          );
-        }
-        return res;
-      });
-    };
-
-    const response = await fetchWithRetry(lavalinkUrl, {
-      headers: { Authorization: lavalinkAuth },
+    const yt = await Innertube.create({
+      visitor_data: process.env.YOUTUBE_VISITOR_DATA,
+      po_token: process.env.YOUTUBE_POTOKEN,
+      retrieve_player: true,
     });
 
-    if (!response.ok) {
-      throw new Error(`Lavalink returned ${response.status}`);
+    console.log(`🔍 Getting video info...`);
+    const info = await yt.getInfo(videoId);
+
+    if (info.playability_status?.status !== "OK") {
+      const reason = info.playability_status?.reason || "Unknown error";
+      throw new Error(`Video not playable: ${reason}`);
     }
 
-    const data = await response.json();
+    console.log(`📹 Title: ${info.basic_info.title}`);
+    console.log(`⏱️ Duration: ${info.basic_info.duration}s`);
 
-    if (data.loadType !== "track" || !data.data?.info?.uri) {
-      throw new Error(`Could not resolve track: ${data.loadType}`);
+    console.log(`🎵 Downloading audio stream...`);
+    const stream = await yt.download(videoId, {
+      type: "audio",
+      quality: "best",
+      format: "webm",
+    });
+
+    const file = fs.createWriteStream(outputPath);
+    let downloadedBytes = 0;
+
+    for await (const chunk of Utils.streamToIterable(stream)) {
+      file.write(chunk);
+      downloadedBytes += chunk.length;
     }
 
-    const streamUrl = data.data.info.uri;
-    console.log(`🔗 Got stream URL from Lavalink`);
-
-    // Step 2: Download the stream URL directly
     await new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(webmPath);
-      const protocol = streamUrl.startsWith("https") ? https : http;
-
-      protocol
-        .get(streamUrl, (streamResponse) => {
-          if (streamResponse.statusCode !== 200) {
-            reject(
-              new Error(`Stream download failed: ${streamResponse.statusCode}`),
-            );
-            return;
-          }
-
-          streamResponse.pipe(file);
-
-          file.on("finish", () => {
-            file.close();
-            resolve();
-          });
-        })
-        .on("error", (err) => {
-          fs.unlink(webmPath, () => {});
-          reject(err);
-        });
-
-      file.on("error", (err) => {
-        fs.unlink(webmPath, () => {});
-        reject(err);
-      });
+      file.on("finish", resolve);
+      file.on("error", reject);
+      file.close();
     });
 
-    const stats = fs.statSync(webmPath);
+    const stats = fs.statSync(outputPath);
     console.log(`✅ Downloaded: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
 
-    // Step 3: Convert WebM to OGG/Opus for Lavaplayer compatibility
-    console.log(`🔄 Converting to OGG/Opus format...`);
-    try {
-      execSync(
-        `ffmpeg -i "${webmPath}" -c:a libopus -b:a 128k "${oggPath}" -y`,
-        { stdio: "pipe" },
-      );
-      const oggStats = fs.statSync(oggPath);
-      console.log(
-        `✅ Converted: ${(oggStats.size / 1024 / 1024).toFixed(2)} MB`,
-      );
-
-      // Clean up WebM file
-      fs.unlinkSync(webmPath);
-      return oggPath;
-    } catch (conversionError) {
-      console.error(`❌ FFmpeg conversion failed:`, conversionError.message);
-      // Fall back to WebM if conversion fails
-      console.log(`⚠️ Using original WebM file`);
-      return webmPath;
-    }
+    return outputPath;
   } catch (error) {
-    console.error("❌ Download failed:", error.message);
+    if (fs.existsSync(outputPath)) {
+      fs.unlinkSync(outputPath);
+    }
+
+    console.error("❌ YouTube.js download failed:", error.message);
+    
+    if (error.message?.includes("LOGIN_REQUIRED")) {
+      throw new Error("Age-restricted video - authentication required");
+    }
+    if (error.message?.includes("UNPLAYABLE")) {
+      throw new Error("Video is not available for playback");
+    }
+    if (error.message?.includes("Video not playable")) {
+      throw error;
+    }
+    
     throw new Error(`Failed to download: ${error.message}`);
   }
 }
@@ -183,7 +179,7 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
  * @param {string} filePath - Local file path
  * @param {string} fileId - Unique file identifier
  * @param {string} bucket - Storage bucket name
- * @returns {Promise<string>} - Stream URL for Lavalink
+ * @returns {Promise<string>} - Signed URL for streaming
  */
 async function uploadToSupabase(filePath, fileId, bucket) {
   const client = initSupabase();
@@ -195,23 +191,25 @@ async function uploadToSupabase(filePath, fileId, bucket) {
 
   try {
     const fileBuffer = fs.readFileSync(filePath);
-    const fileExt = filePath.endsWith(".ogg") ? ".ogg" : ".webm";
-    const fileName = `songs/${fileId}${fileExt}`;
+    const fileName = `songs/${fileId}.webm`;
 
-    const contentType = fileExt === ".ogg" ? "audio/ogg" : "audio/webm";
-    const { error } = await client.storage
+    const { data, error } = await client.storage
       .from(bucket)
       .upload(fileName, fileBuffer, {
-        contentType: contentType,
+        contentType: "audio/webm",
         cacheControl: "3600",
         upsert: true,
       });
 
     if (error) throw error;
 
+    const { data: urlData } = await client.storage
+      .from(bucket)
+      .createSignedUrl(fileName, 3600);
+
     console.log(`✅ Uploaded: ${fileName}`);
 
-    return `http://localhost:8000/stream/${fileId}${fileExt}?bucket=${bucket}`;
+    return urlData.signedUrl;
   } catch (error) {
     console.error("❌ Upload failed:", error.message);
     throw new Error(`Failed to upload: ${error.message}`);

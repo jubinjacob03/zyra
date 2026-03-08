@@ -137,8 +137,17 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
     const config = {
       cache: new UniversalCache(false),
       fetch: async (input, init) => {
-        const url = typeof input === "string" ? input : input.url;
-        console.log(`🌐 Fetching: ${url.substring(0, 100)}...`);
+        let url;
+        if (typeof input === "string") {
+          url = input;
+        } else if (input && typeof input === "object" && "url" in input) {
+          url = input.url;
+        }
+        if (url) {
+          const displayUrl =
+            url.length > 80 ? url.substring(0, 80) + "..." : url;
+          console.log(`🌐 Fetching: ${displayUrl}`);
+        }
         return fetch(input, init);
       },
     };

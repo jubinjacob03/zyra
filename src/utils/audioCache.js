@@ -68,7 +68,7 @@ async function checkCache(fileId, bucket) {
 }
 
 /**
- * Download audio from YouTube using Lavalink's authenticated streaming API
+ * Download audio from YouTube - Hybrid approach (Lavalink → yt-dlp fallback)
  * @param {string} youtubeUrl - YouTube video URL
  * @param {string} fileId - Unique file identifier
  * @returns {Promise<string>} - Path to downloaded file
@@ -84,76 +84,179 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
 
   console.log(`⬇️ Downloading: ${youtubeUrl}`);
 
+  // STRATEGY: Try Lavalink first (uses OAuth2/PoToken), fallback to yt-dlp if it fails
+  let streamUrl = null;
+  let downloadMethod = null;
+
   try {
-    // Step 1: Extract video ID from YouTube URL
+    // === METHOD 1: Try Lavalink's /youtube/stream endpoint ===
+    // Extract video ID
     const videoIdMatch = youtubeUrl.match(/(?:v=|\/)([\w-]{11})/);
-    if (!videoIdMatch) {
-      throw new Error("Invalid YouTube URL format");
-    }
-    const videoId = videoIdMatch[1];
-    console.log(`📹 Video ID: ${videoId}`);
+    if (videoIdMatch) {
+      const videoId = videoIdMatch[1];
 
-    // Step 2: Use Lavalink's /youtube/stream endpoint (bypasses bot detection with OAuth2 + PoToken)
-    // Handle both host:port and full URL formats
-    let lavalinkHost = process.env.LAVALINK_URL || "localhost:2333";
-    if (!lavalinkHost.startsWith("http")) {
-      lavalinkHost = `http://${lavalinkHost}`;
-    }
-    const lavalinkPassword = process.env.LAVALINK_PASSWORD || "remani-lavalink";
+      // Get Lavalink connection details
+      let lavalinkHost = process.env.LAVALINK_URL || "localhost:2333";
+      if (!lavalinkHost.startsWith("http")) {
+        lavalinkHost = `http://${lavalinkHost}`;
+      }
+      const lavalinkPassword =
+        process.env.LAVALINK_PASSWORD || "remani-lavalink";
+      const lavalinkUrl = `${lavalinkHost}/youtube/stream/${videoId}?withClient=ANDROID_VR`;
 
-    console.log(`🎵 Requesting authenticated stream from Lavalink...`);
+      console.log(
+        `🎵 Attempting Lavalink download (OAuth2/PoToken authenticated)...`,
+      );
 
-    // Lavalink's youtube-source plugin handles OAuth2/PoToken and returns direct audio stream
-    const streamUrl = `${lavalinkHost}/youtube/stream/${videoId}?withClient=ANDROID_VR`;
+      // Try Lavalink endpoint with timeout
+      const lavalinkSuccess = await new Promise((resolve) => {
+        const file = fs.createWriteStream(webmPath);
+        const protocol = lavalinkHost.startsWith("https") ? https : http;
 
-    await new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(webmPath);
-      const protocol = lavalinkHost.startsWith("https") ? https : http;
-      const url = new URL(streamUrl);
-
-      const options = {
-        hostname: url.hostname,
-        port: url.port || (protocol === https ? 443 : 80),
-        path: url.pathname + url.search,
-        method: "GET",
-        headers: {
-          Authorization: lavalinkPassword,
-        },
-      };
-
-      const request = protocol.request(options, (streamResponse) => {
-        if (streamResponse.statusCode !== 200) {
-          reject(
-            new Error(
-              `Lavalink stream failed: ${streamResponse.statusCode} ${streamResponse.statusMessage}`,
-            ),
-          );
+        // Parse URL properly
+        let parsedUrl;
+        try {
+          parsedUrl = new URL(lavalinkUrl);
+        } catch (e) {
+          console.log(`⚠️ Lavalink URL parsing failed: ${e.message}`);
+          resolve(false);
           return;
         }
 
-        streamResponse.pipe(file);
+        const options = {
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port || (protocol === https ? 443 : 80),
+          path: parsedUrl.pathname + parsedUrl.search,
+          method: "GET",
+          headers: { Authorization: lavalinkPassword },
+          timeout: 10000, // 10 second timeout for Lavalink attempt
+        };
 
-        file.on("finish", () => {
+        const request = protocol.request(options, (response) => {
+          // Check status code
+          if (response.statusCode !== 200) {
+            console.log(
+              `⚠️ Lavalink returned ${response.statusCode}: ${response.statusMessage}`,
+            );
+            file.close();
+            fs.unlink(webmPath, () => {});
+            resolve(false);
+            return;
+          }
+
+          // Success! Stream the data
+          response.pipe(file);
+
+          file.on("finish", () => {
+            file.close();
+            console.log(`✅ Lavalink download successful!`);
+            resolve(true);
+          });
+
+          file.on("error", (err) => {
+            console.log(`⚠️ Lavalink file write error: ${err.message}`);
+            fs.unlink(webmPath, () => {});
+            resolve(false);
+          });
+        });
+
+        request.on("error", (err) => {
+          console.log(`⚠️ Lavalink request failed: ${err.message}`);
           file.close();
-          resolve();
+          fs.unlink(webmPath, () => {});
+          resolve(false);
+        });
+
+        request.on("timeout", () => {
+          console.log(`⚠️ Lavalink timeout`);
+          request.destroy();
+          file.close();
+          fs.unlink(webmPath, () => {});
+          resolve(false);
+        });
+
+        request.end();
+      });
+
+      if (lavalinkSuccess) {
+        downloadMethod = "Lavalink (OAuth2)";
+        // File already downloaded via Lavalink
+      } else {
+        // Lavalink failed, continuing to yt-dlp fallback
+        console.log(`📋 Falling back to yt-dlp...`);
+      }
+    }
+  } catch (error) {
+    console.log(`⚠️ Lavalink attempt error: ${error.message}`);
+  }
+
+  // === METHOD 2: yt-dlp fallback (if Lavalink didn't work) ===
+  if (!downloadMethod) {
+    try {
+      console.log(`🔍 Extracting stream URL with yt-dlp (Node.js runtime)...`);
+
+      streamUrl = execSync(
+        `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --get-url --no-playlist --js-runtimes node "${youtubeUrl}"`,
+        { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+      ).trim();
+
+      if (!streamUrl || !streamUrl.startsWith("http")) {
+        throw new Error(`Invalid stream URL: ${streamUrl}`);
+      }
+
+      console.log(`✅ Stream URL extracted via yt-dlp`);
+      console.log(`⬇️ Downloading stream...`);
+
+      await new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(webmPath);
+        const protocol = streamUrl.startsWith("https") ? https : http;
+
+        const request = protocol.get(streamUrl, (response) => {
+          if (response.statusCode !== 200) {
+            reject(
+              new Error(
+                `Download failed: ${response.statusCode} ${response.statusMessage}`,
+              ),
+            );
+            return;
+          }
+
+          response.pipe(file);
+          file.on("finish", () => {
+            file.close();
+            resolve();
+          });
+        });
+
+        request.on("error", (err) => {
+          fs.unlink(webmPath, () => {});
+          reject(err);
+        });
+
+        file.on("error", (err) => {
+          fs.unlink(webmPath, () => {});
+          reject(err);
+        });
+
+        request.setTimeout(30000, () => {
+          request.destroy();
+          reject(new Error("Download timeout"));
         });
       });
 
-      request.on("error", (err) => {
-        fs.unlink(webmPath, () => {});
-        reject(err);
-      });
+      downloadMethod = "yt-dlp";
+    } catch (ytdlpError) {
+      throw new Error(
+        `Both methods failed. Lavalink: unavailable, yt-dlp: ${ytdlpError.message}`,
+      );
+    }
+  }
 
-      file.on("error", (err) => {
-        fs.unlink(webmPath, () => {});
-        reject(err);
-      });
-
-      request.end();
-    });
-
+  try {
     const stats = fs.statSync(webmPath);
-    console.log(`✅ Downloaded: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+    console.log(
+      `✅ Downloaded: ${(stats.size / 1024 / 1024).toFixed(2)} MB (via ${downloadMethod})`,
+    );
 
     // Step 3: Convert WebM to OGG/Opus for Lavaplayer compatibility
     console.log(`🔄 Converting to OGG/Opus format...`);

@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { execSync } = require("child_process");
+const { URL } = require("url");
 
 let supabase = null;
 function initSupabase() {
@@ -67,7 +68,7 @@ async function checkCache(fileId, bucket) {
 }
 
 /**
- * Download audio from YouTube using Lavalink + direct stream download
+ * Download audio from YouTube using Lavalink's authenticated streaming API
  * @param {string} youtubeUrl - YouTube video URL
  * @param {string} fileId - Unique file identifier
  * @returns {Promise<string>} - Path to downloaded file
@@ -84,50 +85,71 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
   console.log(`⬇️ Downloading: ${youtubeUrl}`);
 
   try {
-    // Step 1: Use yt-dlp to get the direct stream URL (handles bot detection and signatures)
-    console.log(`🔍 Getting direct stream URL with yt-dlp...`);
-
-    const streamUrl = execSync(
-      `yt-dlp -f "bestaudio[ext=webm]/bestaudio/best" --get-url --no-playlist "${youtubeUrl}"`,
-      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-    ).trim();
-
-    if (!streamUrl || !streamUrl.startsWith("http")) {
-      throw new Error("Failed to get stream URL from yt-dlp");
+    // Step 1: Extract video ID from YouTube URL
+    const videoIdMatch = youtubeUrl.match(/(?:v=|\/)([\w-]{11})/);
+    if (!videoIdMatch) {
+      throw new Error("Invalid YouTube URL format");
     }
+    const videoId = videoIdMatch[1];
+    console.log(`📹 Video ID: ${videoId}`);
 
-    console.log(`🔗 Got direct stream URL`);
+    // Step 2: Use Lavalink's /youtube/stream endpoint (bypasses bot detection with OAuth2 + PoToken)
+    // Handle both host:port and full URL formats
+    let lavalinkHost = process.env.LAVALINK_URL || "localhost:2333";
+    if (!lavalinkHost.startsWith("http")) {
+      lavalinkHost = `http://${lavalinkHost}`;
+    }
+    const lavalinkPassword = process.env.LAVALINK_PASSWORD || "remani-lavalink";
 
-    // Step 2: Download the stream URL directly
+    console.log(`🎵 Requesting authenticated stream from Lavalink...`);
+
+    // Lavalink's youtube-source plugin handles OAuth2/PoToken and returns direct audio stream
+    const streamUrl = `${lavalinkHost}/youtube/stream/${videoId}?withClient=ANDROID_VR`;
+
     await new Promise((resolve, reject) => {
       const file = fs.createWriteStream(webmPath);
-      const protocol = streamUrl.startsWith("https") ? https : http;
+      const protocol = lavalinkHost.startsWith("https") ? https : http;
+      const url = new URL(streamUrl);
 
-      protocol
-        .get(streamUrl, (streamResponse) => {
-          if (streamResponse.statusCode !== 200) {
-            reject(
-              new Error(`Stream download failed: ${streamResponse.statusCode}`),
-            );
-            return;
-          }
+      const options = {
+        hostname: url.hostname,
+        port: url.port || (protocol === https ? 443 : 80),
+        path: url.pathname + url.search,
+        method: "GET",
+        headers: {
+          Authorization: lavalinkPassword,
+        },
+      };
 
-          streamResponse.pipe(file);
+      const request = protocol.request(options, (streamResponse) => {
+        if (streamResponse.statusCode !== 200) {
+          reject(
+            new Error(
+              `Lavalink stream failed: ${streamResponse.statusCode} ${streamResponse.statusMessage}`,
+            ),
+          );
+          return;
+        }
 
-          file.on("finish", () => {
-            file.close();
-            resolve();
-          });
-        })
-        .on("error", (err) => {
-          fs.unlink(webmPath, () => {});
-          reject(err);
+        streamResponse.pipe(file);
+
+        file.on("finish", () => {
+          file.close();
+          resolve();
         });
+      });
+
+      request.on("error", (err) => {
+        fs.unlink(webmPath, () => {});
+        reject(err);
+      });
 
       file.on("error", (err) => {
         fs.unlink(webmPath, () => {});
         reject(err);
       });
+
+      request.end();
     });
 
     const stats = fs.statSync(webmPath);

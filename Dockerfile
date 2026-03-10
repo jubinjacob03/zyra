@@ -20,7 +20,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install production dependencies
-RUN npm ci --only=production --omit=dev && \
+RUN npm install --only=production --no-package-lock && \
     npm cache clean --force
 
 # Copy application files

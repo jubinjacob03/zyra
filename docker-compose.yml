@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   remani-bot:
@@ -9,28 +9,29 @@ services:
       - .env
     volumes:
       - ./logs:/app/logs
-      # Optional: Mount cookies for yt-dlp
-      # - ./cookies.txt:/app/cookies.txt:ro
+      - ./cache:/app/cache
     environment:
       - NODE_ENV=production
       - TZ=UTC
-    # Resource limits (adjust based on your needs)
+      - YTDL_NO_UPDATE=1
+    ports:
+      - "8000:8000"
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
+          cpus: "2"
+          memory: 1G
         reservations:
-          cpus: '0.5'
-          memory: 256M
+          cpus: "0.5"
+          memory: 512M
     # Health check
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'node src/index.js' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-    # Network mode (optional, for better connectivity)
+      start_period: 40s
+    # Network mode
     network_mode: bridge
     # Logging
     logging:

@@ -1,16 +1,17 @@
-FROM node:18-alpine
+# Use Node.js 22 Alpine for smaller image size
+FROM node:22-alpine
 
 # Install system dependencies
 RUN apk add --no-cache \
-    ffmpeg \
     python3 \
     py3-pip \
-    git \
-    curl
-
-# Install yt-dlp (latest version for better bot detection evasion)
-# Using --break-system-packages is safe in Docker containers
-RUN pip3 install --no-cache-dir --upgrade --break-system-packages yt-dlp
+    ffmpeg \
+    curl \
+    wget \
+    ca-certificates \
+    && pip3 install --no-cache-dir --break-system-packages yt-dlp \
+    && yt-dlp --version \
+    && ffmpeg -version
 
 # Create app directory
 WORKDIR /app
@@ -18,24 +19,29 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install app dependencies
-RUN npm ci --only=production
+# Install production dependencies
+RUN npm ci --only=production --omit=dev && \
+    npm cache clean --force
 
-# Copy app source
+# Copy application files
 COPY . .
 
-# Copy cookies.txt if it exists (for YouTube bot detection evasion)
-# Make sure cookies.txt is NOT in .dockerignore if you want to use it
-COPY cookies.txt* ./
+# Create necessary directories
+RUN mkdir -p /app/logs /app/cache/audio
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Ensure yt-dlp is accessible
+RUN yt-dlp --version || (echo "yt-dlp installation failed" && exit 1)
 
-# Expose health check port (optional)
-EXPOSE 3000
+# Set environment
+ENV NODE_ENV=production \
+    YTDL_NO_UPDATE=1
 
-# Set environment variables
-ENV NODE_ENV=production
+# Expose API port (if using the music API)
+EXPOSE 8000
 
-# Run the bot
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:8000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));" || exit 0
+
+# Start the bot
 CMD ["node", "src/index.js"]

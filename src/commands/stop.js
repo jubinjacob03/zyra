@@ -13,7 +13,7 @@ module.exports = {
             return interaction.reply({ embeds: [errorEmbed('Nothing is playing right now.')], flags: 64 });
         }
 
-        await queue.stop();
-        await interaction.reply({ embeds: [successEmbed('Stopped the music and cleared the queue.')] });
+        queue.stop();
+        await interaction.reply({ embeds: [successEmbed('⏹️ Stopped the music and cleared the queue.')] });
     },
 };

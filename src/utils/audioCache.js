@@ -159,9 +159,11 @@ async function callCobaltApi(instance, youtubeUrl) {
         res.on("data", (chunk) => (data += chunk));
         res.on("end", () => {
           try {
-            resolve(JSON.parse(data));
+            const parsed = JSON.parse(data);
+            resolve(parsed);
           } catch (e) {
-            reject(new Error("Invalid JSON"));
+            console.error(`Invalid JSON from ${instance}:`, data.substring(0, 200));
+            reject(new Error(`Invalid JSON: ${data.substring(0, 100)}`));
           }
         });
       },
@@ -191,24 +193,36 @@ async function downloadFromYouTube(youtubeUrl, fileId) {
 
   const filePath = path.join(tmpDir, `${fileId}.${AUDIO_FORMAT}`);
   const cobaltInstances = [
+    "https://api.cobalt.tools",
     "https://co.wuk.sh",
+    "https://cobalt.api.timelessnesses.me",
     "https://cobalt-api.kwiatekmiki.com",
   ];
 
   let streamUrl = null;
+  let lastError = null;
+  
   for (const instance of cobaltInstances) {
     try {
       const response = await callCobaltApi(instance, youtubeUrl);
       if (response.status === "tunnel" && response.url) {
         streamUrl = response.url;
+        console.log(`✅ Using Cobalt instance: ${instance}`);
         break;
+      } else if (response.status === "error") {
+        console.warn(`Cobalt ${instance}: ${response.text || "Unknown error"}`);
+        lastError = new Error(response.text || "Cobalt returned error status");
       }
     } catch (error) {
       console.warn(`Cobalt ${instance} failed:`, error.message);
+      lastError = error;
     }
   }
 
-  if (!streamUrl) throw new Error("All Cobalt instances failed");
+  if (!streamUrl) {
+    const errorMsg = lastError ? `All Cobalt instances failed. Last error: ${lastError.message}` : "All Cobalt instances failed";
+    throw new Error(errorMsg);
+  }
 
   await downloadFromUrl(streamUrl, filePath, 60000);
   const stats = fs.statSync(filePath);

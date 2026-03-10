@@ -17,13 +17,11 @@ RUN apk add --no-cache \
 # Install Deno for yt-dlp JavaScript runtime support (required for YouTube)
 RUN curl -fsSL https://deno.land/install.sh | sh \
     && cp /root/.deno/bin/deno /usr/local/bin/deno \
-    && chmod +x /usr/local/bin/deno
-
-# Add /usr/local/bin to PATH and verify Deno installation
-ENV PATH="/usr/local/bin:${PATH}"
-RUN deno --version
-
-# Create app directory
+        && chmod +x /usr/local/bin/deno \
+        && /usr/local/bin/deno --version
+    
+    # Add /usr/local/bin to PATH for runtime
+    ENV PATH="/usr/local/bin:${PATH}"
 WORKDIR /app
 
 # Copy package files

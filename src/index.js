@@ -202,7 +202,7 @@ class MusicQueue {
         noPlaylist: true,
         geoBypass: true,
         noCheckCertificates: true,
-        extractorArgs: "youtube:player_client=tv_simply",
+        extractorArgs: "youtube:player_client=android",
       });
 
       ytdlpProcess.stderr?.on("data", () => {});
@@ -578,12 +578,10 @@ async function searchSongInternal(query, user) {
     );
   }
 
-  // Use tv_simply client - no cookies or PO tokens required
+  // Use android client - no cookies or PO tokens required (as of 2026)
   // This client works without authentication and avoids bot detection
   const antiDetectionOpts = {
-    extractorArgs: "youtube:player_client=tv_simply",
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    extractorArgs: "youtube:player_client=android",
   };
 
   if (spotifyTrackPattern.test(query) && spotifyAPI) {

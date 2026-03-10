@@ -9,9 +9,15 @@ RUN apk add --no-cache \
     curl \
     wget \
     ca-certificates \
+    unzip \
     && pip3 install --no-cache-dir --break-system-packages yt-dlp \
     && yt-dlp --version \
     && ffmpeg -version
+
+# Install Deno for yt-dlp JavaScript runtime support (required for YouTube)
+RUN curl -fsSL https://deno.land/install.sh | sh \
+    && mv /root/.deno/bin/deno /usr/local/bin/deno \
+    && deno --version
 
 # Create app directory
 WORKDIR /app

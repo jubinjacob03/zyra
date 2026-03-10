@@ -588,10 +588,9 @@ async function searchSongInternal(query, user) {
     ? { cookies: "./cookies.txt" }
     : {};
 
-  // Enhanced anti-detection options
+  // Enhanced anti-detection options (for metadata extraction only)
   const antiDetectionOpts = {
     ...cookieOpts,
-    format: "bestaudio/best", // Specify format to avoid "format not available" errors
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     referer: "https://www.youtube.com/",

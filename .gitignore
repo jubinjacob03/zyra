@@ -7,6 +7,9 @@ package-lock.json
 .env.local
 .env.production
 
+# YouTube cookies (sensitive)
+cookies.txt
+
 # Logs
 *.log
 logs/

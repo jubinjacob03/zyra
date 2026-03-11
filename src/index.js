@@ -200,18 +200,13 @@ class MusicQueue {
         noPlaylist: true,
         geoBypass: true,
         noCheckCertificates: true,
-        sleepRequests: 1,
+        addHeader: [
+          'referer:youtube.com',
+          'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        ],
+        extractorArgs: 'youtube:player_client=android',
+        ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' })
       };
-
-      if (fs.existsSync("./cookies.txt")) {
-        ytdlpOpts.cookies = "./cookies.txt";
-      } else {
-        ytdlpOpts.extractorArgs = "youtube:player_client=android_vr";
-      }
-
-      if (process.env.YOUTUBE_POTOKEN) {
-        ytdlpOpts.extractorArgs = `youtube:player_client=default,mweb;po_token=mweb.gvs+${process.env.YOUTUBE_POTOKEN}`;
-      }
 
       const ytdlpProcess = youtubedl.exec(song.url, ytdlpOpts);
 
@@ -588,19 +583,24 @@ async function searchSongInternal(query, user) {
     );
   }
 
+  const cookieOpts = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
+  
   const antiDetectionOpts = {
-    noCheckCertificates: true,
-    sleepRequests: 1,
-    ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
+    ...cookieOpts,
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    referer: 'https://www.youtube.com/',
+    addHeader: [
+      'Accept-Language:en-US,en;q=0.9',
+      'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Sec-Fetch-Mode:navigate',
+      'Sec-Fetch-Dest:document'
+    ]
   };
 
-  if (!antiDetectionOpts.cookies) {
-    antiDetectionOpts.extractorArgs = "youtube:player_client=android_vr";
-  }
-
-  if (process.env.YOUTUBE_POTOKEN) {
-    antiDetectionOpts.extractorArgs = `youtube:player_client=default,mweb;po_token=mweb.gvs+${process.env.YOUTUBE_POTOKEN}`;
-  }
+  // Temporarily disabled PO token support for testing
+  // if (process.env.YOUTUBE_POTOKEN) {
+  //   antiDetectionOpts.extractorArgs = `youtube:player_client=default,mweb;po_token=mweb.gvs+${process.env.YOUTUBE_POTOKEN}`;
+  // }
 
   if (spotifyTrackPattern.test(query) && spotifyAPI) {
     try {

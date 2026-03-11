@@ -579,10 +579,22 @@ async function searchSongInternal(query, user) {
     );
   }
 
-  // Use iOS client to bypass bot detection - works better than web client
+  // For metadata extraction: use web client with cookies and headers
+  // For audio streaming: use iOS client (configured in play() method)
+  const cookieOpts = fs.existsSync("./cookies.txt")
+    ? { cookies: "./cookies.txt" }
+    : {};
   const antiDetectionOpts = {
-    extractorArgs: "youtube:player_client=ios",
-    ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
+    ...cookieOpts,
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    referer: "https://www.youtube.com/",
+    addHeader: [
+      "Accept-Language:en-US,en;q=0.9",
+      "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Sec-Fetch-Mode:navigate",
+      "Sec-Fetch-Dest:document",
+    ],
   };
 
   if (spotifyTrackPattern.test(query) && spotifyAPI) {

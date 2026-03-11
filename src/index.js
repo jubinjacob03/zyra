@@ -202,10 +202,7 @@ class MusicQueue {
         noPlaylist: true,
         geoBypass: true,
         noCheckCertificates: true,
-        addHeader: [
-          "referer:youtube.com",
-          "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        ],
+        extractorArgs: "youtube:player_client=ios",
         ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
       });
 
@@ -582,23 +579,10 @@ async function searchSongInternal(query, user) {
     );
   }
 
-  // Anti-bot detection configuration for yt-dlp
-  const cookieOpts = fs.existsSync("./cookies.txt")
-    ? { cookies: "./cookies.txt" }
-    : {};
-
-  // Enhanced anti-detection options
+  // Use iOS client to bypass bot detection - works better than web client
   const antiDetectionOpts = {
-    ...cookieOpts,
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    referer: "https://www.youtube.com/",
-    addHeader: [
-      "Accept-Language:en-US,en;q=0.9",
-      "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Sec-Fetch-Mode:navigate",
-      "Sec-Fetch-Dest:document",
-    ],
+    extractorArgs: "youtube:player_client=ios",
+    ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
   };
 
   if (spotifyTrackPattern.test(query) && spotifyAPI) {

@@ -213,10 +213,8 @@ class MusicQueue {
       };
 
       if (poTokenData) {
-        ytdlpOpts.extractorArgs = `youtube:player_client=mweb;po_token=mweb.gvs+${poTokenData.poToken}`;
-        if (fs.existsSync("./cookies.txt")) {
-          ytdlpOpts.cookies = "./cookies.txt";
-        }
+        // Use web client with PO token and visitor data (no cookies needed)
+        ytdlpOpts.extractorArgs = `youtube:player_client=web;po_token=web.gvs+${poTokenData.poToken};player_skip=webpage,configs;visitor_data=${poTokenData.visitorData}`;
       } else {
         ytdlpOpts.extractorArgs = "youtube:player_client=android_vr";
       }
@@ -597,7 +595,7 @@ async function searchSongInternal(query, user) {
   }
 
   // Get PO Token for YouTube bot detection bypass
-  // mweb client with PO token provides best compatibility
+  // Use web client with PO token and visitor data (no cookies needed)
   let poTokenData;
   try {
     poTokenData = await getPoToken();
@@ -608,8 +606,7 @@ async function searchSongInternal(query, user) {
 
   const antiDetectionOpts = poTokenData
     ? {
-        extractorArgs: `youtube:player_client=mweb;po_token=mweb.gvs+${poTokenData.poToken}`,
-        ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
+        extractorArgs: `youtube:player_client=web;po_token=web.gvs+${poTokenData.poToken};player_skip=webpage,configs;visitor_data=${poTokenData.visitorData}`,
       }
     : {
         extractorArgs: "youtube:player_client=android_vr",

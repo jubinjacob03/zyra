@@ -5,7 +5,6 @@ const {
   Collection,
   Events,
   ActivityType,
-  EmbedBuilder,
 } = require("discord.js");
 const {
   joinVoiceChannel,
@@ -17,7 +16,6 @@ const {
   NoSubscriberBehavior,
   StreamType,
 } = require("@discordjs/voice");
-const play = require("play-dl");
 const youtubedlExec = require("youtube-dl-exec");
 const youtube = require("youtube-sr").default;
 const fs = require("fs");
@@ -26,7 +24,8 @@ const os = require("os");
 const { formatDuration } = require("./utils/embed");
 const { initEmojis } = require("./utils/customEmoji");
 const SpotifyAPI = require("./utils/spotify");
-const YouTubeSearchEngine = require("./utils/youtubeSearch");
+const { YouTubeSearchEngine } = require("./utils/youtubeSearch");
+const { getPoToken, generatePoToken } = require("./utils/potoken");
 
 // Cross-platform yt-dlp configuration
 // Windows: Use WinGet system installation (no spaces in path)
@@ -64,7 +63,7 @@ if (os.platform() === "win32") {
 const ffmpegPath = require("ffmpeg-static");
 process.env.FFMPEG_PATH = ffmpegPath;
 
-process.on("unhandledRejection", (reason, promise) => {
+process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
     if (reason.command && reason.command.includes("yt-dlp")) {
       return;
@@ -194,7 +193,16 @@ class MusicQueue {
     this.streamStarted = false;
 
     try {
-      const ytdlpProcess = youtubedl.exec(song.url, {
+      // Get PO Token for streaming
+      let poTokenData;
+      try {
+        poTokenData = await getPoToken();
+      } catch (error) {
+        console.error("Failed to get PO token for streaming");
+        poTokenData = null;
+      }
+
+      const ytdlpOpts = {
         output: "-",
         quiet: true,
         noWarnings: true,
@@ -202,9 +210,18 @@ class MusicQueue {
         noPlaylist: true,
         geoBypass: true,
         noCheckCertificates: true,
-        // android_vr: No PO token required, no cookies needed, bypasses bot detection
-        extractorArgs: "youtube:player_client=android_vr",
-      });
+      };
+
+      if (poTokenData) {
+        ytdlpOpts.extractorArgs = `youtube:player_client=mweb;po_token=mweb.gvs+${poTokenData.poToken}`;
+        if (fs.existsSync("./cookies.txt")) {
+          ytdlpOpts.cookies = "./cookies.txt";
+        }
+      } else {
+        ytdlpOpts.extractorArgs = "youtube:player_client=android_vr";
+      }
+
+      const ytdlpProcess = youtubedl.exec(song.url, ytdlpOpts);
 
       ytdlpProcess.stderr?.on("data", () => {});
 
@@ -484,8 +501,8 @@ class MusicQueue {
 /**
  * Create and initialize a music queue for a guild
  * @param {string} guildId - Discord guild ID
- * @param {TextChannel} textChannel - Text channel for bot messages
- * @param {VoiceChannel} voiceChannel - Voice channel to join
+ * @param {object} textChannel - Text channel for bot messages
+ * @param {object} voiceChannel - Voice channel to join
  * @returns {Promise<MusicQueue>} Initialized music queue
  * @throws {Error} If connection fails or times out
  */
@@ -579,12 +596,24 @@ async function searchSongInternal(query, user) {
     );
   }
 
-  // Use android_vr client: No PO token required, no cookies needed
-  // This client bypasses YouTube bot detection completely
-  // Reference: https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-  const antiDetectionOpts = {
-    extractorArgs: "youtube:player_client=android_vr",
-  };
+  // Get PO Token for YouTube bot detection bypass
+  // mweb client with PO token provides best compatibility
+  let poTokenData;
+  try {
+    poTokenData = await getPoToken();
+  } catch (error) {
+    console.error("Failed to get PO token, falling back to default client");
+    poTokenData = null;
+  }
+
+  const antiDetectionOpts = poTokenData
+    ? {
+        extractorArgs: `youtube:player_client=mweb;po_token=mweb.gvs+${poTokenData.poToken}`,
+        ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
+      }
+    : {
+        extractorArgs: "youtube:player_client=android_vr",
+      };
 
   if (spotifyTrackPattern.test(query) && spotifyAPI) {
     try {
@@ -1103,6 +1132,16 @@ for (const file of commandFiles) {
 client.once(Events.ClientReady, async (readyClient) => {
   initEmojis(readyClient);
 
+  // Initialize PO Token for YouTube bot detection bypass
+  console.log("🔑 Initializing YouTube PO Token...");
+  try {
+    await generatePoToken();
+    console.log("✅ PO Token initialized successfully");
+  } catch (error) {
+    console.error("⚠️  Failed to initialize PO Token:", error.message);
+    console.error("⚠️  Bot will attempt to use fallback client");
+  }
+
   console.log(`\n🎵 Remani Music Bot is online!`);
   console.log(`📡 Logged in as ${readyClient.user.tag}`);
   console.log(`🌐 Serving ${readyClient.guilds.cache.size} servers\n`);
@@ -1341,13 +1380,6 @@ async function updateMusicController(interaction, queue) {
       console.error("Error updating music controller:", error.message);
     }
   }
-}
-
-async function updateMusicPanel(guildId, client) {
-  const queue = client.getQueue(guildId);
-  if (!queue) return;
-
-  await queue.updateMusicPanel();
 }
 
 client.on("error", console.error);

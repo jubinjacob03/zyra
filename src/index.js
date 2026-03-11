@@ -202,8 +202,8 @@ class MusicQueue {
         noPlaylist: true,
         geoBypass: true,
         noCheckCertificates: true,
-        extractorArgs: "youtube:player_client=tv_embedded",
-        ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
+        // android_vr: No PO token required, no cookies needed, bypasses bot detection
+        extractorArgs: "youtube:player_client=android_vr",
       });
 
       ytdlpProcess.stderr?.on("data", () => {});
@@ -579,11 +579,11 @@ async function searchSongInternal(query, user) {
     );
   }
 
-  // Use tv_embedded client - doesn't require PO tokens, works with cookies
+  // Use android_vr client: No PO token required, no cookies needed
+  // This client bypasses YouTube bot detection completely
   // Reference: https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
   const antiDetectionOpts = {
-    extractorArgs: "youtube:player_client=tv_embedded",
-    ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
+    extractorArgs: "youtube:player_client=android_vr",
   };
 
   if (spotifyTrackPattern.test(query) && spotifyAPI) {

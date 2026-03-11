@@ -202,7 +202,7 @@ class MusicQueue {
         noPlaylist: true,
         geoBypass: true,
         noCheckCertificates: true,
-        extractorArgs: "youtube:player_client=ios",
+        extractorArgs: "youtube:player_client=tv_embedded",
         ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
       });
 
@@ -579,22 +579,11 @@ async function searchSongInternal(query, user) {
     );
   }
 
-  // For metadata extraction: use web client with cookies and headers
-  // For audio streaming: use iOS client (configured in play() method)
-  const cookieOpts = fs.existsSync("./cookies.txt")
-    ? { cookies: "./cookies.txt" }
-    : {};
+  // Use tv_embedded client - doesn't require PO tokens, works with cookies
+  // Reference: https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
   const antiDetectionOpts = {
-    ...cookieOpts,
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    referer: "https://www.youtube.com/",
-    addHeader: [
-      "Accept-Language:en-US,en;q=0.9",
-      "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Sec-Fetch-Mode:navigate",
-      "Sec-Fetch-Dest:document",
-    ],
+    extractorArgs: "youtube:player_client=tv_embedded",
+    ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
   };
 
   if (spotifyTrackPattern.test(query) && spotifyAPI) {

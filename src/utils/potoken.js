@@ -1,10 +1,56 @@
-const { execSync } = require("child_process");
+const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
 let cachedPoToken = null;
 let cachedVisitorData = null;
 let tokenExpiry = 0;
+
+/**
+ * Run a command and return output
+ * @param {string} command 
+ * @param {string[]} args 
+ * @param {object} options 
+ */
+function runCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, {
+      ...options,
+      shell: true,
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    if (proc.stdout) {
+      proc.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+    }
+
+    if (proc.stderr) {
+      proc.stderr.on("data", (data) => {
+        stderr += data.toString();
+        // Log stderr in real-time for progress
+        if (options.logStderr !== false) {
+          process.stderr.write(data);
+        }
+      });
+    }
+
+    proc.on("error", (error) => {
+      reject(error);
+    });
+
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`Command failed with exit code ${code}\n${stderr}`));
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+}
 
 /**
  * Generate YouTube PO Token and Visitor Data
@@ -23,19 +69,19 @@ async function generatePoToken() {
   console.log("🔄 Generating new PO Token...");
   
   try {
-    const potokenDir = path.join(__dirname, "..", "potoken");
+    const potokenDir = path.join(__dirname, "..", "..", "potoken");
     
     // Check if potoken dependencies are installed
     if (!fs.existsSync(path.join(potokenDir, "node_modules"))) {
       console.log("📦 Installing PO Token generator dependencies...");
-      execSync("npm install", { cwd: potokenDir, stdio: "inherit" });
+      await runCommand("npm", ["install"], { cwd: potokenDir });
     }
 
     // Run the generator script
-    const output = execSync("node generate.mjs", {
+    console.error("🔧 Running PO Token generator...");
+    const output = await runCommand("node", ["generate.mjs"], { 
       cwd: potokenDir,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "inherit"], // stderr to console, stdout to variable
+      logStderr: true,
     });
 
     const result = JSON.parse(output.trim());

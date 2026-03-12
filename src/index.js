@@ -201,12 +201,12 @@ class MusicQueue {
         geoBypass: true,
         noCheckCertificates: true,
         addHeader: [
-          'referer:youtube.com',
-          'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          "referer:youtube.com",
+          "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         ],
-        extractorArgs: 'youtube:player_client=android',
-        ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' }),
-        ...(process.env.YOUTUBE_PROXY && { proxy: process.env.YOUTUBE_PROXY })
+        extractorArgs: "youtube:player_client=android",
+        ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
+        ...(process.env.YOUTUBE_PROXY && { proxy: process.env.YOUTUBE_PROXY }),
       };
 
       const ytdlpProcess = youtubedl.exec(song.url, ytdlpOpts);
@@ -584,19 +584,22 @@ async function searchSongInternal(query, user) {
     );
   }
 
-  const cookieOpts = fs.existsSync('./cookies.txt') ? { cookies: './cookies.txt' } : {};
-  
+  const cookieOpts = fs.existsSync("./cookies.txt")
+    ? { cookies: "./cookies.txt" }
+    : {};
+
   const antiDetectionOpts = {
     ...cookieOpts,
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    referer: 'https://www.youtube.com/',
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    referer: "https://www.youtube.com/",
     addHeader: [
-      'Accept-Language:en-US,en;q=0.9',
-      'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Sec-Fetch-Mode:navigate',
-      'Sec-Fetch-Dest:document'
+      "Accept-Language:en-US,en;q=0.9",
+      "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Sec-Fetch-Mode:navigate",
+      "Sec-Fetch-Dest:document",
     ],
-    ...(process.env.YOUTUBE_PROXY && { proxy: process.env.YOUTUBE_PROXY })
+    ...(process.env.YOUTUBE_PROXY && { proxy: process.env.YOUTUBE_PROXY }),
   };
 
   if (spotifyTrackPattern.test(query) && spotifyAPI) {

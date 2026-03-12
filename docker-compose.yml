@@ -10,7 +10,6 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./cache:/app/cache
-      - ./cookies.txt:/app/cookies.txt
     environment:
       - NODE_ENV=production
       - TZ=UTC

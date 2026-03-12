@@ -101,50 +101,8 @@ module.exports = function attachMusicApi(client) {
           username: username || "api",
         };
 
-        let result;
-
-        if (fromPlaylist) {
-          try {
-            const {
-              generateFileId,
-              checkCache,
-            } = require("./utils/audioCache");
-            const fileId = generateFileId(query);
-            const cachedUrl = await checkCache(fileId, "playlist-songs");
-
-            if (cachedUrl) {
-              const node = client.shoukaku.options.nodeResolver(
-                client.shoukaku.nodes,
-              );
-              if (node) {
-                const trackData = await node.rest.resolve(cachedUrl);
-                if (trackData?.tracks?.length > 0) {
-                  const track = trackData.tracks[0];
-                  result = {
-                    type: "single",
-                    name: track.info.title,
-                    url: query,
-                    thumbnail: track.info.artworkUrl || "",
-                    duration: Math.floor(track.info.length / 1000),
-                    formattedDuration: formatDuration(
-                      Math.floor(track.info.length / 1000),
-                    ),
-                    author: track.info.author || "",
-                    encoded: track.encoded,
-                    fromPlaylist: true,
-                    cachedUrl: cachedUrl,
-                  };
-                }
-              }
-            }
-          } catch (error) {
-            console.error("[Playlist Cache Check]", error);
-          }
-        }
-
-        if (!result) {
-          result = await client.searchSong(query, fakeUser);
-        }
+        // Search for the song/playlist
+        const result = await client.searchSong(query, fakeUser);
 
         if (!result)
           return send(res, 404, { error: "No results found for query" });
@@ -210,9 +168,6 @@ module.exports = function attachMusicApi(client) {
           case "volume":
             queue.setVolume(Math.max(0, Math.min(100, Number(value) || 50)));
             break;
-          case "seek":
-            queue.seek(Number(value) || 0);
-            break;
           case "remove": {
             const removed = queue.remove(Number(value) || 0);
             if (!removed)
@@ -223,9 +178,6 @@ module.exports = function attachMusicApi(client) {
               removed: removed.name,
             });
           }
-          case "filter":
-            await queue.setFilter(value || "off");
-            break;
           default:
             return send(res, 400, { error: `Unknown action: ${action}` });
         }
@@ -243,9 +195,7 @@ module.exports = function attachMusicApi(client) {
           "/shuffle",
           "/loop",
           "/volume",
-          "/seek",
           "/remove",
-          "/filter",
         ];
         if (directActions.includes(path)) {
           const body = await parseBody(req);
@@ -285,22 +235,11 @@ module.exports = function attachMusicApi(client) {
               queue.setVolume(vol);
               return send(res, 200, { success: true, volume: vol });
             }
-            case "/seek": {
-              queue.seek(Number(body.value) || 0);
-              break;
-            }
             case "/remove": {
               const removed = queue.remove(Number(body.value) || 0);
               if (!removed)
                 return send(res, 400, { error: "Invalid queue position" });
               return send(res, 200, { success: true, removed: removed.name });
-            }
-            case "/filter": {
-              await queue.setFilter(body.value || "off");
-              return send(res, 200, {
-                success: true,
-                filter: body.value || "off",
-              });
             }
           }
           return send(res, 200, { success: true });
@@ -337,8 +276,8 @@ module.exports = function attachMusicApi(client) {
             queueLength: 0,
           });
 
-        // queue.position is raw Lavalink ms — divide to match web's seconds-based elapsed
-        const elapsed = Math.floor((queue.position ?? 0) / 1000);
+        // Note: Direct yt-dlp streaming doesn't track elapsed time
+        const elapsed = 0;
 
         return send(res, 200, {
           playing: queue.playing && !queue.paused,
@@ -346,7 +285,6 @@ module.exports = function attachMusicApi(client) {
           repeatMode: queue.repeatMode,
           volume: queue.volume,
           elapsed,
-          currentFilter: queue.currentFilter || "off",
           song: {
             name: queue.songs[0].name,
             url: queue.songs[0].url,

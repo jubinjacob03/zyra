@@ -205,7 +205,8 @@ class MusicQueue {
           'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         ],
         extractorArgs: 'youtube:player_client=android',
-        ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' })
+        ...(fs.existsSync('./cookies.txt') && { cookies: './cookies.txt' }),
+        ...(process.env.YOUTUBE_PROXY && { proxy: process.env.YOUTUBE_PROXY })
       };
 
       const ytdlpProcess = youtubedl.exec(song.url, ytdlpOpts);
@@ -594,13 +595,9 @@ async function searchSongInternal(query, user) {
       'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Sec-Fetch-Mode:navigate',
       'Sec-Fetch-Dest:document'
-    ]
+    ],
+    ...(process.env.YOUTUBE_PROXY && { proxy: process.env.YOUTUBE_PROXY })
   };
-
-  // Temporarily disabled PO token support for testing
-  // if (process.env.YOUTUBE_POTOKEN) {
-  //   antiDetectionOpts.extractorArgs = `youtube:player_client=default,mweb;po_token=mweb.gvs+${process.env.YOUTUBE_POTOKEN}`;
-  // }
 
   if (spotifyTrackPattern.test(query) && spotifyAPI) {
     try {

@@ -311,28 +311,46 @@ module.exports = function attachMusicApi(client) {
 
         try {
           const maxResults = Math.min(Number(limit) || 10, 25);
+          const searchLimit = Math.min(maxResults + 5, 30);
           const searchResults = await youtube.search(query, {
-            limit: maxResults,
+            limit: searchLimit,
             type: "video", // Only get videos, not playlists/channels
+            safeSearch: false,
           });
 
           if (!searchResults || !searchResults.length) {
             return send(res, 200, { results: [] });
           }
 
-          const results = searchResults.map((video) => ({
-            title: video.title,
-            author: video.channel?.name || "Unknown",
-            duration: Math.floor((video.duration || 0) / 1000), // Convert ms to seconds
-            url: video.url,
-            thumbnail: video.thumbnail?.url || null,
-            id: video.id,
-          }));
+          const results = [];
+          for (const video of searchResults) {
+            try {
+              // Skip if missing critical data
+              if (!video || !video.url) continue;
+
+              results.push({
+                title: video.title || "Untitled",
+                author: video.channel?.name || video.author?.name || "Unknown",
+                duration: Math.floor((video.duration || 0) / 1000),
+                url: video.url,
+                thumbnail: video.thumbnail?.url || video.thumbnail || null,
+                id: video.id || video.url.split("v=")[1] || "",
+              });
+
+              if (results.length >= maxResults) break;
+            } catch (e) {
+              console.warn("[Search] Skipping malformed result:", e.message);
+              continue;
+            }
+          }
 
           return send(res, 200, { results });
         } catch (error) {
           console.error("[Search Error]", error);
-          return send(res, 500, { error: `Search failed: ${error.message}` });
+          return send(res, 200, {
+            results: [],
+            error: "Search partially failed",
+          });
         }
       }
 

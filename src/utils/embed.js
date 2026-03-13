@@ -4,6 +4,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
+const { e, btn } = require("./customEmoji");
 
 const COLORS = {
   PRIMARY: 0x000000,
@@ -18,34 +19,35 @@ const COLORS = {
   MUTED: 0x757575,
 };
 
+// Use custom emojis with Unicode fallbacks
 const ICONS = {
-  PLAY: "▶️",
-  PAUSE: "⏸️",
-  STOP: "⏹️",
-  SKIP: "⏭️",
-  PREVIOUS: "⏮️",
-  SHUFFLE: "🔀",
-  REPEAT: "🔁",
-  REPEAT_ONE: "🔂",
+  PLAY: () => e("PLAY"),
+  PAUSE: () => e("PAUSE"),
+  STOP: () => e("STOP"),
+  SKIP: () => e("SKIP"),
+  PREVIOUS: () => e("PREVIOUS"),
+  SHUFFLE: () => e("SHUFFLE"),
+  REPEAT: () => e("LOOP"),
+  REPEAT_ONE: () => e("LOOP_ONE"),
 
-  VOLUME_HIGH: "🔊",
-  VOLUME_MID: "🔉",
-  VOLUME_LOW: "🔈",
-  QUEUE: "📋",
-  MUSIC_NOTE: "🎵",
-  HEADPHONES: "🎧",
+  VOLUME_HIGH: () => e("VOLUP"),
+  VOLUME_MID: () => e("VOLDOWN"),
+  VOLUME_LOW: () => e("VOLDOWN"),
+  QUEUE: () => e("QUEUE"),
+  MUSIC_NOTE: () => e("MUSIC"),
+  HEADPHONES: () => e("HEADPHONES"),
 
-  SUCCESS: "✅",
-  ERROR: "❌",
-  WARNING: "⚠️",
-  INFO: "ℹ️",
-  LIVE: "🔴",
+  SUCCESS: () => e("SUCCESS"),
+  ERROR: () => e("ERROR"),
+  WARNING: () => e("WARNING"),
+  INFO: () => e("INFO"),
+  LIVE: () => e("YOUTUBE"),
 
-  SPOTIFY: "🟢",
-  YOUTUBE: "🔴",
+  SPOTIFY: () => e("SPOTIFY"),
+  YOUTUBE: () => e("YOUTUBE"),
 
-  USER: "👤",
-  TIME: "⏱️",
+  USER: () => e("USER"),
+  TIME: () => e("TIME"),
   DOT: "•",
   ARROW: "→",
   BAR: "▬",

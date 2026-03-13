@@ -296,6 +296,7 @@ module.exports = function attachMusicApi(client) {
           queue: queue.songs.slice(1, 10).map((s, i) => ({
             index: i + 1,
             name: s.name,
+            url: s.url,
             thumbnail: s.thumbnail,
             formattedDuration: s.formattedDuration,
             author: s.author,
@@ -321,7 +322,7 @@ module.exports = function attachMusicApi(client) {
           const results = searchResults.map((video) => ({
             title: video.title,
             author: video.channel?.name || "Unknown",
-            duration: video.duration || 0,
+            duration: Math.floor((video.duration || 0) / 1000), // Convert ms to seconds
             url: video.url,
             thumbnail: video.thumbnail?.url || null,
             id: video.id,

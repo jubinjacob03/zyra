@@ -1,6 +1,5 @@
 const http = require("node:http");
-const { formatDuration } = require("./utils/embed");
-const youtube = require("youtube-sr").default;
+const ytdl = require("youtube-dl-exec");
 
 module.exports = function attachMusicApi(client) {
   const port = parseInt(process.env.MUSIC_API_PORT) || 8000;
@@ -60,14 +59,8 @@ module.exports = function attachMusicApi(client) {
       }
 
       if (req.method === "POST" && path === "/play") {
-        const {
-          guildId,
-          voiceChannelId,
-          query,
-          userId,
-          username,
-          fromPlaylist,
-        } = await parseBody(req);
+        const { guildId, voiceChannelId, query, userId, username } =
+          await parseBody(req);
 
         if (!guildId || !voiceChannelId || !query)
           return send(res, 400, {
@@ -311,46 +304,35 @@ module.exports = function attachMusicApi(client) {
 
         try {
           const maxResults = Math.min(Number(limit) || 10, 25);
-          const searchLimit = Math.min(maxResults + 5, 30);
-          const searchResults = await youtube.search(query, {
-            limit: searchLimit,
-            type: "video", // Only get videos, not playlists/channels
-            safeSearch: false,
+          const searchPrefix = `ytsearch${maxResults}:${query}`;
+          const searchResults = await ytdl(searchPrefix, {
+            dumpSingleJson: true,
+            noWarnings: true,
+            noCallHome: true,
+            noCheckCertificate: true,
+            preferFreeFormats: true,
+            youtubeSkipDashManifest: true,
+            flatPlaylist: true,
           });
 
-          if (!searchResults || !searchResults.length) {
+          const entries = searchResults?.entries || [];
+          if (!entries.length) {
             return send(res, 200, { results: [] });
           }
 
-          const results = [];
-          for (const video of searchResults) {
-            try {
-              // Skip if missing critical data
-              if (!video || !video.url) continue;
-
-              results.push({
-                title: video.title || "Untitled",
-                author: video.channel?.name || video.author?.name || "Unknown",
-                duration: Math.floor((video.duration || 0) / 1000),
-                url: video.url,
-                thumbnail: video.thumbnail?.url || video.thumbnail || null,
-                id: video.id || video.url.split("v=")[1] || "",
-              });
-
-              if (results.length >= maxResults) break;
-            } catch (e) {
-              console.warn("[Search] Skipping malformed result:", e.message);
-              continue;
-            }
-          }
+          const results = entries.map((video) => ({
+            title: video.title || "Untitled",
+            author: video.uploader || video.channel || "Unknown",
+            duration: Math.floor(video.duration || 0),
+            url: `https://www.youtube.com/watch?v=${video.id}`,
+            thumbnail: video.thumbnail || null,
+            id: video.id || "",
+          }));
 
           return send(res, 200, { results });
         } catch (error) {
           console.error("[Search Error]", error);
-          return send(res, 200, {
-            results: [],
-            error: "Search partially failed",
-          });
+          return send(res, 200, { results: [], error: "Search failed" });
         }
       }
 

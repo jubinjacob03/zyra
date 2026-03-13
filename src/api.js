@@ -325,7 +325,7 @@ module.exports = function attachMusicApi(client) {
             author: video.uploader || video.channel || "Unknown",
             duration: Math.floor(video.duration || 0),
             url: `https://www.youtube.com/watch?v=${video.id}`,
-            thumbnail: video.thumbnail || null,
+            thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`,
             id: video.id || "",
           }));
 

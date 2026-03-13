@@ -21,33 +21,33 @@ const COLORS = {
 
 // Use custom emojis with Unicode fallbacks
 const ICONS = {
-  PLAY: () => e("PLAY"),
-  PAUSE: () => e("PAUSE"),
-  STOP: () => e("STOP"),
-  SKIP: () => e("SKIP"),
-  PREVIOUS: () => e("PREVIOUS"),
-  SHUFFLE: () => e("SHUFFLE"),
-  REPEAT: () => e("LOOP"),
-  REPEAT_ONE: () => e("LOOP_ONE"),
+  PLAY: e("PLAY"),
+  PAUSE: e("PAUSE"),
+  STOP: e("STOP"),
+  SKIP: e("SKIP"),
+  PREVIOUS: e("PREVIOUS"),
+  SHUFFLE: e("SHUFFLE"),
+  REPEAT: e("LOOP"),
+  REPEAT_ONE: e("LOOP_ONE"),
 
-  VOLUME_HIGH: () => e("VOLUP"),
-  VOLUME_MID: () => e("VOLDOWN"),
-  VOLUME_LOW: () => e("VOLDOWN"),
-  QUEUE: () => e("QUEUE"),
-  MUSIC_NOTE: () => e("MUSIC"),
-  HEADPHONES: () => e("HEADPHONES"),
+  VOLUME_HIGH: e("VOLUP"),
+  VOLUME_MID: e("VOLDOWN"),
+  VOLUME_LOW: e("VOLDOWN"),
+  QUEUE: e("QUEUE"),
+  MUSIC_NOTE: e("MUSIC"),
+  HEADPHONES: e("HEADPHONES"),
 
-  SUCCESS: () => e("SUCCESS"),
-  ERROR: () => e("ERROR"),
-  WARNING: () => e("WARNING"),
-  INFO: () => e("INFO"),
-  LIVE: () => e("YOUTUBE"),
+  SUCCESS: e("SUCCESS"),
+  ERROR: e("ERROR"),
+  WARNING: e("WARNING"),
+  INFO: e("INFO"),
+  LIVE: e("YOUTUBE"),
 
-  SPOTIFY: () => e("SPOTIFY"),
-  YOUTUBE: () => e("YOUTUBE"),
+  SPOTIFY: e("SPOTIFY"),
+  YOUTUBE: e("YOUTUBE"),
 
-  USER: () => e("USER"),
-  TIME: () => e("TIME"),
+  USER: e("USER"),
+  TIME: e("TIME"),
   DOT: "•",
   ARROW: "→",
   BAR: "▬",
@@ -148,28 +148,28 @@ function createMusicPanel(queue) {
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("music_shuffle")
-      .setEmoji(ICONS.SHUFFLE)
+      .setEmoji(btn("SHUFFLE"))
       .setStyle(ButtonStyle.Secondary)
       .setLabel("Shuffle"),
     new ButtonBuilder()
       .setCustomId("music_previous")
-      .setEmoji(ICONS.PREVIOUS)
+      .setEmoji(btn("PREVIOUS"))
       .setStyle(ButtonStyle.Secondary)
       .setLabel("Previous")
       .setDisabled(true),
     new ButtonBuilder()
       .setCustomId("music_pause")
-      .setEmoji(queue.paused ? ICONS.PLAY : ICONS.PAUSE)
+      .setEmoji(queue.paused ? btn("PLAY") : btn("PAUSE"))
       .setStyle(queue.paused ? ButtonStyle.Success : ButtonStyle.Primary)
       .setLabel(queue.paused ? "Play" : "Pause"),
     new ButtonBuilder()
       .setCustomId("music_skip")
-      .setEmoji(ICONS.SKIP)
+      .setEmoji(btn("SKIP"))
       .setStyle(ButtonStyle.Secondary)
       .setLabel("Skip"),
     new ButtonBuilder()
       .setCustomId("music_stop")
-      .setEmoji(ICONS.STOP)
+      .setEmoji(btn("STOP"))
       .setStyle(ButtonStyle.Danger)
       .setLabel("Stop"),
   );
@@ -177,29 +177,29 @@ function createMusicPanel(queue) {
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("music_voldown")
-      .setEmoji("🔉")
+      .setEmoji(btn("VOLDOWN"))
       .setStyle(ButtonStyle.Secondary)
       .setLabel("Vol -"),
     new ButtonBuilder()
       .setCustomId("music_volup")
-      .setEmoji("🔊")
+      .setEmoji(btn("VOLUP"))
       .setStyle(ButtonStyle.Secondary)
       .setLabel("Vol +"),
     new ButtonBuilder()
       .setCustomId("music_loop")
-      .setEmoji(ICONS.REPEAT)
+      .setEmoji(btn("LOOP"))
       .setStyle(
         queue.repeatMode > 0 ? ButtonStyle.Success : ButtonStyle.Secondary,
       )
       .setLabel("Loop"),
     new ButtonBuilder()
       .setCustomId("music_queue")
-      .setEmoji(ICONS.QUEUE)
+      .setEmoji(btn("QUEUE"))
       .setStyle(ButtonStyle.Secondary)
       .setLabel("Queue"),
     new ButtonBuilder()
       .setCustomId("music_refresh")
-      .setEmoji("🔄")
+      .setEmoji(btn("REFRESH"))
       .setStyle(ButtonStyle.Secondary)
       .setLabel("Refresh"),
   );

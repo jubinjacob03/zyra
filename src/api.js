@@ -313,35 +313,21 @@ module.exports = function attachMusicApi(client) {
           const maxResults = Math.min(Number(limit) || 10, 25);
           const searchResults = await youtube.search(query, {
             limit: maxResults,
+            type: "video", // Only get videos, not playlists/channels
           });
 
           if (!searchResults || !searchResults.length) {
             return send(res, 200, { results: [] });
           }
 
-          const results = searchResults.map((video) => {
-            let author = "Unknown";
-            try {
-              author = video.channel?.name || video.author?.name || "Unknown";
-            } catch (e) {
-              console.warn(
-                "[Search Result] Failed to parse author for video:",
-                video,
-              );
-            }
-
-            return {
-              title: video.title || "Untitled",
-              author: author,
-              duration: Math.floor((video.duration || 0) / 1000), // Convert ms to seconds
-              url: video.url || "",
-              thumbnail:
-                (typeof video.thumbnail === "string"
-                  ? video.thumbnail
-                  : video.thumbnail?.url) || null,
-              id: video.id || "",
-            };
-          });
+          const results = searchResults.map((video) => ({
+            title: video.title,
+            author: video.channel?.name || "Unknown",
+            duration: Math.floor((video.duration || 0) / 1000), // Convert ms to seconds
+            url: video.url,
+            thumbnail: video.thumbnail?.url || null,
+            id: video.id,
+          }));
 
           return send(res, 200, { results });
         } catch (error) {

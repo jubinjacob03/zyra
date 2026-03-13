@@ -320,14 +320,17 @@ module.exports = function attachMusicApi(client) {
             return send(res, 200, { results: [] });
           }
 
-          const results = entries.map((video) => ({
-            title: video.title || "Untitled",
-            author: video.uploader || video.channel || "Unknown",
-            duration: Math.floor(video.duration || 0),
-            url: `https://www.youtube.com/watch?v=${video.id}`,
-            thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`,
-            id: video.id || "",
-          }));
+          // Filter out YouTube Shorts (videos under 61 seconds)
+          const results = entries
+            .filter((video) => (video.duration || 0) >= 61)
+            .map((video) => ({
+              title: video.title || "Untitled",
+              author: video.uploader || video.channel || "Unknown",
+              duration: Math.floor(video.duration || 0),
+              url: `https://www.youtube.com/watch?v=${video.id}`,
+              thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`,
+              id: video.id || "",
+            }));
 
           return send(res, 200, { results });
         } catch (error) {

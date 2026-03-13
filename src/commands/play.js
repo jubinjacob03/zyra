@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { errorEmbed, COLORS } = require("../utils/embed");
 const { createCompleteMusicController } = require("../utils/componentsV2");
+const { e } = require("../utils/customEmoji");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -107,7 +108,7 @@ module.exports = {
           const addedEmbed = new EmbedBuilder()
             .setColor(0x0e0e12)
             .setDescription(
-              `🎵 **${result.songs.length} songs** from playlist added to queue`,
+              `${e("MUSIC")} **${result.songs.length} songs** from playlist added to queue`,
             );
           try {
             await interaction.editReply({
@@ -147,7 +148,7 @@ module.exports = {
           const addedEmbed = new EmbedBuilder()
             .setColor(0x0e0e12)
             .setDescription(
-              `🎵 **${result.name}** added to queue at position **${position}**`,
+              `${e("MUSIC")} **${result.name}** added to queue at position **${position}**`,
             );
           try {
             await interaction.editReply({
@@ -165,7 +166,7 @@ module.exports = {
       if (error.message.includes("Mix playlists are not supported")) {
         const embed = new EmbedBuilder()
           .setColor("#E74C3C")
-          .setTitle("❌ YouTube Mix Playlists Not Supported")
+          .setTitle(`${e("ERROR")} YouTube Mix Playlists Not Supported`)
           .setDescription(
             "Mix playlists are personalized and user-specific - they cannot be accessed by bots.",
           )
@@ -204,7 +205,7 @@ module.exports = {
             content: null,
             embeds: [
               errorEmbed(
-                "⏱️ Search took too long. Please try a simpler query or check your internet connection.",
+                `${e("TIME")} Search took too long. Please try a simpler query or check your internet connection.`,
               ),
             ],
           });
@@ -212,7 +213,7 @@ module.exports = {
           return await interaction.channel.send({
             embeds: [
               errorEmbed(
-                "⏱️ Search took too long. Please try a simpler query or check your internet connection.",
+                `${e("TIME")} Search took too long. Please try a simpler query or check your internet connection.`,
               ),
             ],
           });

@@ -22,7 +22,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { formatDuration } = require("./utils/embed");
-const { initEmojis } = require("./utils/customEmoji");
+const { initEmojis, e } = require("./utils/customEmoji");
 const SpotifyAPI = require("./utils/spotify");
 const YouTubeSearchEngine = require("./utils/youtubeSearch");
 
@@ -149,7 +149,7 @@ class MusicQueue {
     this.player.on("error", (error) => {
       console.error("Player error:", error);
       this.textChannel
-        .send(`❌ Player error: ${error.message}`)
+        .send(`${e("ERROR")} Player error: ${error.message}`)
         .catch(console.error);
       this.processQueue();
     });
@@ -224,7 +224,7 @@ class MusicQueue {
           console.error("❌ Audio stream failed to start within 10 seconds");
           this.textChannel
             .send(
-              "❌ Failed to start audio stream. The video might be unavailable or region-locked.",
+              `${e("ERROR")} Failed to start audio stream. The video might be unavailable or region-locked.`,
             )
             .catch(console.error);
           this.processQueue();
@@ -269,7 +269,7 @@ class MusicQueue {
       this.startProgressUpdates();
     } catch (error) {
       this.textChannel.send(
-        `❌ Error playing **${song.name}**: ${error.message}`,
+        `${e("ERROR")} Error playing **${song.name}**: ${error.message}`,
       );
       this.songs.shift();
       this.processQueue();
@@ -293,7 +293,7 @@ class MusicQueue {
       if (this.songs.length === 0) {
         console.log("🎵 Queue finished");
         this.textChannel.send(
-          "🎵 Queue finished. Add more songs to keep the party going!",
+          `${e("MUSIC")} Queue finished. Add more songs to keep the party going!`,
         );
         this.stop();
       } else {

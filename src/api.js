@@ -1,8 +1,8 @@
 const http = require("node:http");
 const ytdl = require("youtube-dl-exec");
 
-module.exports = function attachMusicApi(client) {
-  const port = parseInt(process.env.MUSIC_API_PORT) || 8000;
+module.exports = function attachMusicApi(client, customPort = null) {
+  const port = customPort || parseInt(process.env.MUSIC_API_PORT) || 8000;
   const apiKey = process.env.MUSIC_API_KEY;
 
   const send = (res, status, data) => {

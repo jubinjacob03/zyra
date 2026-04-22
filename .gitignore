@@ -7,6 +7,9 @@ package-lock.json
 .env.local
 .env.production
 
+# Configuration with bot tokens
+config.json
+
 # YouTube cookies (sensitive)
 cookies.txt
 

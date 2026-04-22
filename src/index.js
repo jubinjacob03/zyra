@@ -112,7 +112,13 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
  * Handles voice connection, audio playback, queue management, and player state
  */
 class MusicQueue {
-  constructor(guildId, textChannel, voiceChannel, connection) {
+  constructor(
+    guildId,
+    textChannel,
+    voiceChannel,
+    connection,
+    persistent = false,
+  ) {
     this.guildId = guildId;
     this.textChannel = textChannel;
     this.voiceChannel = voiceChannel;
@@ -122,6 +128,8 @@ class MusicQueue {
     this.playing = false;
     this.paused = false;
     this.repeatMode = 0;
+    this.persistent = persistent;
+    this.lastInteraction = null;
     this.player = createAudioPlayer({
       behaviors: {
         noSubscriber: NoSubscriberBehavior.Play,
@@ -133,6 +141,25 @@ class MusicQueue {
 
     this.connection.subscribe(this.player);
     this.setupPlayerEvents();
+  }
+
+  /**
+   * Send message - uses ephemeral followUp for persistent queues, regular send otherwise
+   */
+  async sendMessage(content) {
+    if (this.persistent) {
+      if (this.lastInteraction) {
+        try {
+          await this.lastInteraction.followUp({ content, flags: 64 });
+        } catch (error) {
+          console.log("ℹ️ Message suppressed (interaction expired):", content);
+        }
+      } else {
+        console.log("ℹ️ Message suppressed (no interaction):", content);
+      }
+    } else {
+      await this.textChannel.send(content).catch(console.error);
+    }
   }
 
   /**
@@ -148,9 +175,7 @@ class MusicQueue {
 
     this.player.on("error", (error) => {
       console.error("Player error:", error);
-      this.textChannel
-        .send(`${e("ERROR")} Player error: ${error.message}`)
-        .catch(console.error);
+      this.sendMessage(`${e("ERROR")} Player error: ${error.message}`);
       this.processQueue();
     });
   }
@@ -268,7 +293,8 @@ class MusicQueue {
 
       this.startProgressUpdates();
     } catch (error) {
-      this.textChannel.send(
+      console.error(`❌ Playback error: ${error.message}`);
+      this.sendMessage(
         `${e("ERROR")} Error playing **${song.name}**: ${error.message}`,
       );
       this.songs.shift();
@@ -292,10 +318,19 @@ class MusicQueue {
 
       if (this.songs.length === 0) {
         console.log("🎵 Queue finished");
-        this.textChannel.send(
-          `${e("MUSIC")} Queue finished. Add more songs to keep the party going!`,
-        );
-        this.stop();
+
+        if (!this.persistent) {
+          this.playing = false;
+          this.stopProgressUpdates();
+          this.textChannel.send(
+            `${e("MUSIC")} Queue finished. Add more songs to keep the party going!`,
+          );
+          this.stop();
+        } else {
+          this.playing = false;
+          this.stopProgressUpdates();
+          console.log("⚪ Instance idle - waiting for new songs");
+        }
       } else {
         this.play();
       }
@@ -494,7 +529,12 @@ class MusicQueue {
  * @returns {Promise<MusicQueue>} Initialized music queue
  * @throws {Error} If connection fails or times out
  */
-client.createQueue = async function (guildId, textChannel, voiceChannel) {
+client.createQueue = async function (
+  guildId,
+  textChannel,
+  voiceChannel,
+  persistent = false,
+) {
   const connection = joinVoiceChannel({
     channelId: voiceChannel.id,
     guildId: guildId,
@@ -511,7 +551,13 @@ client.createQueue = async function (guildId, textChannel, voiceChannel) {
     throw new Error("Failed to connect to voice channel");
   }
 
-  const queue = new MusicQueue(guildId, textChannel, voiceChannel, connection);
+  const queue = new MusicQueue(
+    guildId,
+    textChannel,
+    voiceChannel,
+    connection,
+    persistent,
+  );
   this.queues.set(guildId, queue);
 
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
@@ -521,7 +567,30 @@ client.createQueue = async function (guildId, textChannel, voiceChannel) {
         entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
       ]);
     } catch {
-      if (queue) queue.stop();
+      if (queue && !queue.persistent) {
+        queue.stop();
+      } else if (queue && queue.persistent) {
+        console.log(
+          "⚠️ Persistent instance disconnected - attempting reconnect...",
+        );
+        try {
+          const newConnection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: guildId,
+            adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+          });
+
+          await entersState(newConnection, VoiceConnectionStatus.Ready, 10_000);
+          queue.connection = newConnection;
+          newConnection.subscribe(queue.player);
+          console.log("✅ Persistent instance reconnected successfully");
+        } catch (reconnectError) {
+          console.error(
+            "❌ Failed to reconnect persistent instance:",
+            reconnectError.message,
+          );
+        }
+      }
     }
   });
 
@@ -1381,7 +1450,16 @@ if (!process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
   process.exit(1);
 }
 
-// Attach the lightweight Music HTTP API (used by Shantha web bridge)
-require("./api")(client);
+if (require.main === module) {
+  require("./api")(client);
+  client.login(process.env.DISCORD_TOKEN);
+}
 
-client.login(process.env.DISCORD_TOKEN);
+module.exports = {
+  MusicQueue,
+  searchSong,
+  handleButtonInteraction,
+  updateMusicController,
+  processSpotifyPlaylistBackground,
+  formatDuration,
+};

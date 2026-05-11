@@ -58,7 +58,9 @@ const initRuntimeLogger = ({ label } = {}) => {
   const originalLog = console.log.bind(console);
   const originalWarn = console.warn.bind(console);
   const originalError = console.error.bind(console);
-  const originalDebug = console.debug ? console.debug.bind(console) : originalLog;
+  const originalDebug = console.debug
+    ? console.debug.bind(console)
+    : originalLog;
 
   console.log = (...args) => write("info", args, originalLog);
   console.warn = (...args) => write("warn", args, originalWarn);

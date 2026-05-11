@@ -57,7 +57,6 @@ const createPanelChannel = (baseChannel) => {
   };
 };
 
-
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
     if (reason.command && reason.command.includes("yt-dlp")) return;
@@ -302,7 +301,6 @@ function startInstance(config, instanceIndex) {
       console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
 
       autoRejoiner.attach(connection);
-
     } catch (error) {
       console.error("Failed to join VC:", error);
       autoRejoiner.startRetry();

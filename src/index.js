@@ -28,7 +28,6 @@ const { initRuntimeLogger } = require("./utils/runtimeLogger");
 
 initRuntimeLogger({ label: process.env.RUNTIME_LOGGER_LABEL || "main" });
 
-
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
     if (reason.command && reason.command.includes("yt-dlp")) {

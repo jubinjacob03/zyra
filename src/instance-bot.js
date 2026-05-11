@@ -47,7 +47,6 @@ console.log(`   Guild: ${guildId}`);
 console.log(`   Voice Channel: ${voiceChannelId}`);
 console.log(`   API Port: ${apiPort}`);
 
-
 // Import search function from master
 const { searchSong, formatDuration } = require("./index");
 

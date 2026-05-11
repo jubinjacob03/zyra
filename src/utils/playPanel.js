@@ -35,7 +35,6 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
   const playButton = new ButtonBuilder()
     .setCustomId("play_song")
     .setLabel("Play Music")
-    .setEmoji("🎵")
     .setStyle(ButtonStyle.Primary);
 
   const row = new ActionRowBuilder().addComponents(playButton);

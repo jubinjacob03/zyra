@@ -76,6 +76,24 @@ process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
 });
 
+async function connectVoice({ voiceChannel, guildId, timeoutMs = 30000 }) {
+  const connection = joinVoiceChannel({
+    channelId: voiceChannel.id,
+    guildId: guildId,
+    adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+  });
+
+  try {
+    await entersState(connection, VoiceConnectionStatus.Ready, timeoutMs);
+    return connection;
+  } catch (error) {
+    if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+      connection.destroy();
+    }
+    throw error;
+  }
+}
+
 function createRejoiner({ voiceChannel, guildId, queue, label }) {
   let retryTimer = null;
   let retrying = false;
@@ -85,13 +103,7 @@ function createRejoiner({ voiceChannel, guildId, queue, label }) {
     retrying = true;
 
     try {
-      const newConnection = joinVoiceChannel({
-        channelId: voiceChannel.id,
-        guildId: guildId,
-        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-      });
-
-      await entersState(newConnection, VoiceConnectionStatus.Ready, 10_000);
+      const newConnection = await connectVoice({ voiceChannel, guildId });
 
       if (queue) {
         queue.connection = newConnection;
@@ -292,13 +304,11 @@ function startInstance(config, instanceIndex) {
     });
 
     try {
-      const connection = joinVoiceChannel({
-        channelId: voiceChannel.id,
+      const connection = await connectVoice({
+        voiceChannel,
         guildId: guild.id,
-        adapterCreator: guild.voiceAdapterCreator,
       });
 
-      await entersState(connection, VoiceConnectionStatus.Ready, 30000);
       console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
 
       autoRejoiner.attach(connection);

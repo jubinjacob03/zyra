@@ -23,7 +23,7 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
 
   const helpEmbed = new EmbedBuilder()
     .setColor(0x00ffff)
-    .setTitle(`$ Music Player`)
+    .setTitle(`Music Player`)
     .setDescription(
       `Click the button below to play music in this VC!\n\n` +
         `**Supports:**\n` +

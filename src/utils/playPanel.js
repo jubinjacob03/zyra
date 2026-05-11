@@ -1,5 +1,4 @@
 const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require("discord.js");
-const { btn } = require("./customEmoji");
 
 async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
   if (!channel || typeof channel.send !== "function") return null;
@@ -23,12 +22,12 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
   const bullet = "\u2022";
 
   const helpEmbed = new EmbedBuilder()
-    .setColor(0x0e0e12)
-    .setTitle(`${instanceName} - Music Player`)
+    .setColor(0x00ffff)
+    .setTitle(`$ Music Player`)
     .setDescription(
       `Click the button below to play music in this VC!\n\n` +
         `**Supports:**\n` +
-        `${bullet} Song names (e.g., royalty)\n` +
+        `${bullet} Song names\n` +
         `${bullet} YouTube links\n` +
         `${bullet} Spotify links (tracks & playlists)`,
     );
@@ -36,7 +35,7 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
   const playButton = new ButtonBuilder()
     .setCustomId("play_song")
     .setLabel("Play Music")
-    .setEmoji(btn("MUSIC"))
+    .setEmoji("🎵")
     .setStyle(ButtonStyle.Primary);
 
   const row = new ActionRowBuilder().addComponents(playButton);

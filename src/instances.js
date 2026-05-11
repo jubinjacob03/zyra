@@ -5,83 +5,58 @@ const {
   VoiceConnectionStatus,
   entersState,
 } = require("@discordjs/voice");
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const youtubedlExec = require("youtube-dl-exec");
 const { initEmojis } = require("./utils/customEmoji");
-const SpotifyAPI = require("./utils/spotify");
+const { youtubedl } = require("./utils/media");
 
-const {
-  MusicQueue,
-  searchSong,
-  handleButtonInteraction,
-  updateMusicController,
-  processSpotifyPlaylistBackground,
-  formatDuration,
-} = require("./index");
+let MusicQueue;
+let searchSong;
+let handleButtonInteraction;
+let updateMusicController;
+let processSpotifyPlaylistBackground;
+let formatDuration;
+let spotifyAPI;
 
 const instanceConfig = require("../config.json");
 
-const instanceIndex = parseInt(process.argv[2] || "1") - 1;
-if (instanceIndex < 0 || instanceIndex >= instanceConfig.instances.length) {
-  console.error(
-    `❌ Invalid instance index. Use: node instances.js [1-${instanceConfig.instances.length}]`,
-  );
-  process.exit(1);
-}
+const asEphemeral = (payload) => ({
+  ...payload,
+  flags: 64,
+});
 
-const config = instanceConfig.instances[instanceIndex];
-const INSTANCE_NAME = config.name;
-const INSTANCE_BOT_TOKEN = config.botToken;
-const GUILD_ID = config.guildId;
-const INSTANCE_VOICE_CHANNEL_ID = config.voiceChannelId;
-const INSTANCE_API_PORT = config.apiPort;
+const createSilentChannel = () => {
+  const silentMessage = {
+    edit: async () => {},
+    fetch: async () => {},
+  };
 
-if (!INSTANCE_BOT_TOKEN || !GUILD_ID) {
-  console.error("❌ Missing configuration: botToken or guildId in config.json");
-  process.exit(1);
-}
+  return {
+    send: async () => silentMessage,
+  };
+};
 
-console.log(`🎵 Starting instance: ${INSTANCE_NAME}`);
-console.log(`   Guild: ${GUILD_ID}`);
-console.log(
-  `   Voice Channel (with built-in chat): ${INSTANCE_VOICE_CHANNEL_ID}`,
-);
-console.log(`   API Port: ${INSTANCE_API_PORT}`);
+const createPanelChannel = (baseChannel) => {
+  const silentMessage = {
+    edit: async () => {},
+    fetch: async () => {},
+  };
 
-let youtubedl;
-if (os.platform() === "win32") {
-  const systemYtdlp = path.join(
-    os.homedir(),
-    "AppData",
-    "Local",
-    "Microsoft",
-    "WinGet",
-    "Packages",
-    "yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe",
-    "yt-dlp.exe",
-  );
-  if (fs.existsSync(systemYtdlp)) {
-    youtubedl = youtubedlExec.create(systemYtdlp);
-    console.log("✅ Using system yt-dlp (Windows)");
-  } else {
-    youtubedl = youtubedlExec;
-    console.log("⚠️ Using bundled yt-dlp");
-  }
-} else {
-  const systemYtdlp = "/root/.nix-profile/bin/yt-dlp";
-  if (fs.existsSync(systemYtdlp)) {
-    youtubedl = youtubedlExec.create(systemYtdlp);
-    console.log("✅ Using system yt-dlp (Nix)");
-  } else {
-    youtubedl = youtubedlExec;
-    console.log("✅ Using bundled yt-dlp (Linux/Mac)");
-  }
-}
+  const allowPanelPayload = (payload) => {
+    if (!payload || typeof payload === "string") return false;
+    if (payload.content) return false;
+    if (payload.embeds && payload.components) return true;
+    return false;
+  };
 
-const ffmpegPath = require("ffmpeg-static");
-process.env.FFMPEG_PATH = ffmpegPath;
+  return {
+    send: async (payload) => {
+      if (!baseChannel || !allowPanelPayload(payload)) {
+        return silentMessage;
+      }
+      return baseChannel.send(payload);
+    },
+  };
+};
+
 
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
@@ -101,305 +76,418 @@ process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
 });
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-});
+function createRejoiner({ voiceChannel, guildId, queue, label }) {
+  let retryTimer = null;
+  let retrying = false;
 
-client.queues = new Map();
-client.musicPanels = new Map();
-client.youtubedl = youtubedl;
-client.INSTANCE_NAME = INSTANCE_NAME;
-client.INSTANCE_VOICE_CHANNEL_ID = INSTANCE_VOICE_CHANNEL_ID;
+  const attempt = async () => {
+    if (retrying) return;
+    retrying = true;
 
-client.MusicQueue = MusicQueue;
-client.searchSong = searchSong;
-client.updateMusicController = updateMusicController;
-client.processSpotifyPlaylistBackground = processSpotifyPlaylistBackground;
-client.formatDuration = formatDuration;
+    try {
+      const newConnection = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: guildId,
+        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+      });
 
-client.getQueue = function (guildId) {
-  return this.queues.get(guildId);
-};
+      await entersState(newConnection, VoiceConnectionStatus.Ready, 10_000);
 
-client.createQueue = async function (guildId, textChannel, voiceChannel) {
-  const connection = joinVoiceChannel({
-    channelId: voiceChannel.id,
-    guildId: guildId,
-    adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-  });
+      if (queue) {
+        queue.connection = newConnection;
+        newConnection.subscribe(queue.player);
+      }
 
-  try {
-    await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
-  } catch (error) {
-    if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-      connection.destroy();
+      if (retryTimer) {
+        clearInterval(retryTimer);
+        retryTimer = null;
+      }
+
+      attach(newConnection);
+      console.log(`Rejoined ${label}`);
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      console.log(`Rejoin failed for ${label}: ${message}`);
+    } finally {
+      retrying = false;
     }
-    console.error("Voice connection failed:", error);
-    throw new Error("Failed to connect to voice channel");
+  };
+
+  const startRetry = () => {
+    if (retryTimer) return;
+    retryTimer = setInterval(attempt, 5000);
+    attempt();
+  };
+
+  const attach = (connection) => {
+    connection.on(VoiceConnectionStatus.Disconnected, startRetry);
+    connection.on(VoiceConnectionStatus.Destroyed, startRetry);
+  };
+
+  return { attach, startRetry };
+}
+
+function startInstance(config, instanceIndex) {
+  const label = `instance-${instanceIndex + 1}`;
+  if (!process.env.RUNTIME_LOGGER_LABEL) {
+    process.env.RUNTIME_LOGGER_LABEL = label;
   }
 
-  const queue = new MusicQueue(
+  if (!MusicQueue) {
+    ({
+      MusicQueue,
+      searchSong,
+      handleButtonInteraction,
+      updateMusicController,
+      processSpotifyPlaylistBackground,
+      formatDuration,
+      spotifyAPI,
+    } = require("./index"));
+  }
+
+  if (!config) {
+    throw new Error(`❌ Invalid instance index: ${instanceIndex + 1}`);
+  }
+
+  const {
+    name: INSTANCE_NAME,
+    botToken: INSTANCE_BOT_TOKEN,
+    guildId: GUILD_ID,
+    voiceChannelId: INSTANCE_VOICE_CHANNEL_ID,
+    apiPort: INSTANCE_API_PORT,
+  } = config;
+
+  if (!INSTANCE_BOT_TOKEN || !GUILD_ID) {
+    throw new Error(
+      "❌ Missing configuration: botToken or guildId in config.json",
+    );
+  }
+
+  console.log(`🎵 Starting instance: ${INSTANCE_NAME}`);
+  console.log(`   Guild: ${GUILD_ID}`);
+  console.log(
+    `   Voice Channel (with built-in chat): ${INSTANCE_VOICE_CHANNEL_ID}`,
+  );
+  console.log(`   API Port: ${INSTANCE_API_PORT}`);
+
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+    ],
+  });
+
+  client.commands = new Collection();
+  client.queues = new Map();
+  client.musicPanels = new Map();
+  client.youtubedl = youtubedl;
+  client.INSTANCE_NAME = INSTANCE_NAME;
+  client.INSTANCE_VOICE_CHANNEL_ID = INSTANCE_VOICE_CHANNEL_ID;
+
+  client.on("error", console.error);
+
+  if (spotifyAPI) {
+    client.spotifyAPI = spotifyAPI;
+  }
+
+  client.MusicQueue = MusicQueue;
+  client.searchSong = searchSong;
+  client.updateMusicController = updateMusicController;
+  const silentChannel = createSilentChannel();
+  client.processSpotifyPlaylistBackground = (tracks, queue) =>
+    processSpotifyPlaylistBackground(queue, tracks, silentChannel);
+  client.formatDuration = formatDuration;
+
+  const originalHandleButtonInteraction = handleButtonInteraction;
+
+  client.handleButtonInteraction = async (interaction) => {
+    const previousReply = interaction.reply.bind(interaction);
+    const previousFollowUp = interaction.followUp.bind(interaction);
+    const previousDeferUpdate = interaction.deferUpdate?.bind(interaction);
+
+    interaction.reply = (options) => previousReply(asEphemeral(options));
+    interaction.followUp = (options) => previousFollowUp(asEphemeral(options));
+
+    if (previousDeferUpdate) {
+      interaction.deferUpdate = () => interaction.deferReply({ flags: 64 });
+    }
+
+    return originalHandleButtonInteraction(interaction, client);
+  };
+
+  client.getQueue = function (guildId) {
+    return this.queues.get(guildId);
+  };
+
+  client.createQueue = async function (
     guildId,
     textChannel,
     voiceChannel,
-    connection,
-    true,
-  );
-  this.queues.set(guildId, queue);
+    persistent = true,
+  ) {
+    const connection = joinVoiceChannel({
+      channelId: voiceChannel.id,
+      guildId: guildId,
+      adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+    });
 
-  connection.on(VoiceConnectionStatus.Disconnected, async () => {
-    console.log("⚠️ Instance disconnected - attempting rejoin...");
     try {
-      await Promise.race([
-        entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
-        entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
-      ]);
-      console.log("✅ Instance reconnected successfully");
-    } catch {
-      console.log("⚠️ Rejoin attempt failed - will retry on next disconnect");
-      setTimeout(async () => {
-        try {
-          const newConnection = joinVoiceChannel({
-            channelId: voiceChannel.id,
-            guildId: guildId,
-            adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-          });
-          await entersState(newConnection, VoiceConnectionStatus.Ready, 10_000);
-          queue.connection = newConnection;
-          newConnection.subscribe(queue.player);
-          console.log("✅ Force rejoin successful");
-        } catch (error) {
-          console.error("❌ Force rejoin failed:", error.message);
-        }
-      }, 3000);
+      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+    } catch (error) {
+      if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+        connection.destroy();
+      }
+      console.error("Voice connection failed:", error);
+      throw new Error("Failed to connect to voice channel");
+    }
+
+    const panelChannel = createPanelChannel(voiceChannel);
+    const queue = new MusicQueue(
+      this,
+      guildId,
+      panelChannel,
+      voiceChannel,
+      connection,
+      persistent,
+    );
+    this.queues.set(guildId, queue);
+
+    const queueRejoiner = createRejoiner({
+      voiceChannel,
+      guildId,
+      queue,
+      label: `${INSTANCE_NAME} queue`,
+    });
+    queueRejoiner.attach(connection);
+
+    return queue;
+  };
+
+  console.log(
+    `✅ Instance configured - no slash commands, message-based control`,
+  );
+
+  client.once(Events.ClientReady, async (c) => {
+    console.log(`🤖 Instance ready as ${c.user.tag} (name: ${INSTANCE_NAME})`);
+    await initEmojis(client);
+
+    const guild = client.guilds.cache.get(GUILD_ID);
+    if (!guild) {
+      console.error(`❌ Guild ${GUILD_ID} not found`);
+      process.exit(1);
+    }
+
+    const voiceChannel = guild.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
+    if (!voiceChannel) {
+      console.error(`❌ Voice channel ${INSTANCE_VOICE_CHANNEL_ID} not found`);
+      process.exit(1);
+    }
+
+    const autoRejoiner = createRejoiner({
+      voiceChannel,
+      guildId: guild.id,
+      label: `${INSTANCE_NAME} auto-join`,
+    });
+
+    try {
+      const connection = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: guild.id,
+        adapterCreator: guild.voiceAdapterCreator,
+      });
+
+      await entersState(connection, VoiceConnectionStatus.Ready, 30000);
+      console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
+
+      autoRejoiner.attach(connection);
+
+    } catch (error) {
+      console.error("Failed to join VC:", error);
+      autoRejoiner.startRetry();
     }
   });
 
-  return queue;
-};
+  client.on(Events.InteractionCreate, async (interaction) => {
+    if (interaction.channelId !== INSTANCE_VOICE_CHANNEL_ID) return;
 
-let spotifyAPI = null;
-if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
-  spotifyAPI = new SpotifyAPI(
-    process.env.SPOTIFY_CLIENT_ID,
-    process.env.SPOTIFY_CLIENT_SECRET,
-  );
-  client.spotifyAPI = spotifyAPI;
-  console.log("✅ Spotify API initialized");
-} else {
-  console.log("⚠️ Spotify credentials not found");
+    if (interaction.isButton()) {
+      if (interaction.customId === "play_song") {
+        const {
+          ModalBuilder,
+          TextInputBuilder,
+          TextInputStyle,
+          ActionRowBuilder,
+        } = require("discord.js");
+
+        const modal = new ModalBuilder()
+          .setCustomId("song_input_modal")
+          .setTitle("🎵 Play Music");
+
+        const songInput = new TextInputBuilder()
+          .setCustomId("song_query")
+          .setLabel("Song name, YouTube or Spotify link")
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder("e.g., royalty, https://youtu.be/...")
+          .setRequired(true);
+
+        const row = new ActionRowBuilder().addComponents(songInput);
+        modal.addComponents(row);
+
+        await interaction.showModal(modal);
+        return;
+      }
+
+      await client.handleButtonInteraction(interaction);
+    }
+
+    if (
+      interaction.isModalSubmit() &&
+      interaction.customId === "song_input_modal"
+    ) {
+      const query = interaction.fields.getTextInputValue("song_query");
+      const member = interaction.member;
+      const voiceChannel = member?.voice?.channel;
+
+      if (!voiceChannel) {
+        return interaction.reply(
+          asEphemeral({ content: "❌ You need to be in a voice channel!" }),
+        );
+      }
+
+      await interaction.deferReply({ flags: 64 });
+
+      try {
+        console.log(`🔍 Modal search for: "${query}"`);
+
+        const result = await Promise.race([
+          client.searchSong(query, member),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Operation timeout")), 30000),
+          ),
+        ]);
+
+        if (!result) {
+          return interaction.editReply(
+            asEphemeral({ content: "❌ No results found for your query." }),
+          );
+        }
+
+        let queue = client.getQueue(interaction.guildId);
+
+        if (!queue) {
+          queue = await client.createQueue(
+            interaction.guildId,
+            interaction.channel,
+            voiceChannel,
+            true,
+          );
+        }
+
+        queue.lastInteraction = interaction;
+
+        if (result.type === "playlist") {
+          queue.addSongs(result.tracks);
+          await interaction.editReply(
+            asEphemeral({
+              content: `✅ Added ${result.tracks.length} songs`,
+            }),
+          );
+
+          if (result.backgroundProcessing) {
+            client
+              .processSpotifyPlaylistBackground(result.tracks, queue)
+              .catch(console.error);
+          }
+        } else {
+          queue.addSong(result);
+          await interaction.editReply(
+            asEphemeral({ content: "✅ Added to queue" }),
+          );
+        }
+
+        if (!queue.playing) {
+          queue.play();
+        }
+      } catch (error) {
+        console.error("Modal play error:", error);
+        await interaction.editReply(
+          asEphemeral({ content: `❌ ${error.message || "Failed to play"}` }),
+        );
+      }
+    }
+  });
+
+  let apiServer = null;
+  let shuttingDown = false;
+
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    try {
+      apiServer?.close();
+    } catch {}
+    try {
+      client.destroy();
+    } catch {}
+    setTimeout(() => process.exit(0), 5000);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  client.login(INSTANCE_BOT_TOKEN);
+
+  setTimeout(() => {
+    apiServer = require("./api")(client, INSTANCE_API_PORT);
+  }, 3000);
+
+  return client;
 }
 
-console.log(
-  `✅ Instance configured - no slash commands, message-based control`,
-);
+function startInstances({ index } = {}) {
+  const instances = instanceConfig.instances || [];
 
-client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Instance ready as ${c.user.tag} (name: ${INSTANCE_NAME})`);
-  await initEmojis(client);
-
-  const guild = client.guilds.cache.get(GUILD_ID);
-  if (!guild) {
-    console.error(`❌ Guild ${GUILD_ID} not found`);
-    process.exit(1);
+  if (!instances.length) {
+    console.log("⚠️ No instances configured");
+    return [];
   }
 
-  const voiceChannel = guild.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
-  if (!voiceChannel) {
-    console.error(`❌ Voice channel ${INSTANCE_VOICE_CHANNEL_ID} not found`);
-    process.exit(1);
+  if (typeof index === "number") {
+    if (index < 0 || index >= instances.length) {
+      throw new Error(
+        `❌ Invalid instance index. Use: node instances.js [1-${instances.length}]`,
+      );
+    }
+    return [startInstance(instances[index], index)];
+  }
+
+  return [startInstance(instances[0], 0)];
+}
+
+if (require.main === module) {
+  const arg = process.argv[2];
+  let index;
+  if (arg) {
+    const parsed = parseInt(arg, 10);
+    if (Number.isNaN(parsed)) {
+      console.error(
+        `❌ Invalid instance index. Use: node instances.js [1-${instanceConfig.instances.length}]`,
+      );
+      process.exit(1);
+    }
+    index = parsed - 1;
   }
 
   try {
-    const connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId: guild.id,
-      adapterCreator: guild.voiceAdapterCreator,
-    });
-
-    await entersState(connection, VoiceConnectionStatus.Ready, 30000);
-    console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
-
-    connection.on(VoiceConnectionStatus.Disconnected, async () => {
-      console.log("⚠️ Auto-join disconnect detected - attempting rejoin...");
-      try {
-        await entersState(connection, VoiceConnectionStatus.Ready, 5000);
-        console.log("✅ Auto-join reconnected");
-      } catch {
-        console.log(
-          "⚠️ Auto-join rejoin failed - trying force rejoin after delay",
-        );
-        setTimeout(async () => {
-          try {
-            const newConnection = joinVoiceChannel({
-              channelId: voiceChannel.id,
-              guildId: guild.id,
-              adapterCreator: guild.voiceAdapterCreator,
-            });
-            await entersState(
-              newConnection,
-              VoiceConnectionStatus.Ready,
-              10_000,
-            );
-            console.log("✅ Force rejoin successful for auto-join");
-          } catch (error) {
-            console.error("❌ Force rejoin failed:", error.message);
-          }
-        }, 3000);
-      }
-    });
-
-    const {
-      EmbedBuilder,
-      ButtonBuilder,
-      ButtonStyle,
-      ActionRowBuilder,
-    } = require("discord.js");
-    const { e } = require("./utils/customEmoji");
-
-    const helpEmbed = new EmbedBuilder()
-      .setColor(0x00ffff)
-      .setTitle(`${e("music_note")} NexKord - Music Player`)
-      .setDescription(
-        `Click the button below to play music in this VC!\n\n` +
-          `**Query Supports:**\n` +
-          `• Song names\n` +
-          `• YouTube links\n` +
-          `• Spotify links (tracks & playlists)`,
-      );
-
-    const playButton = new ButtonBuilder()
-      .setCustomId("play_song")
-      .setLabel("🎵 Play Music")
-      .setStyle(ButtonStyle.Primary);
-
-    const row = new ActionRowBuilder().addComponents(playButton);
-
-    const pinned = await voiceChannel.send({
-      embeds: [helpEmbed],
-      components: [row],
-    });
-    await pinned.pin().catch(() => console.log("Could not pin message"));
+    startInstances({ index });
   } catch (error) {
-    console.error("❌ Failed to join VC:", error);
+    console.error(error.message || error);
+    process.exit(1);
   }
-});
+}
 
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (interaction.channelId !== INSTANCE_VOICE_CHANNEL_ID) return;
-
-  if (interaction.isButton()) {
-    if (interaction.customId === "play_song") {
-      const {
-        ModalBuilder,
-        TextInputBuilder,
-        TextInputStyle,
-        ActionRowBuilder,
-      } = require("discord.js");
-
-      const modal = new ModalBuilder()
-        .setCustomId("song_input_modal")
-        .setTitle("🎵 Play Music");
-
-      const songInput = new TextInputBuilder()
-        .setCustomId("song_query")
-        .setLabel("Song name, YouTube or Spotify link")
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder("e.g., royalty, https://youtu.be/...")
-        .setRequired(true);
-
-      const row = new ActionRowBuilder().addComponents(songInput);
-      modal.addComponents(row);
-
-      await interaction.showModal(modal);
-      return;
-    }
-
-    await handleButtonInteraction(interaction, client);
-  }
-
-  if (
-    interaction.isModalSubmit() &&
-    interaction.customId === "song_input_modal"
-  ) {
-    const query = interaction.fields.getTextInputValue("song_query");
-    const member = interaction.member;
-    const voiceChannel = member?.voice?.channel;
-
-    if (!voiceChannel) {
-      return interaction.reply({
-        content: "❌ You need to be in a voice channel!",
-        flags: 64,
-      });
-    }
-
-    await interaction.deferReply({ flags: 64 });
-
-    try {
-      console.log(`🔍 Modal search for: "${query}"`);
-
-      const result = await Promise.race([
-        client.searchSong(query, member),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Operation timeout")), 30000),
-        ),
-      ]);
-
-      if (!result) {
-        return interaction.editReply({
-          content: "❌ No results found for your query.",
-        });
-      }
-
-      let queue = client.getQueue(interaction.guildId);
-      const isNewQueue = !queue;
-
-      if (!queue) {
-        queue = await client.createQueue(
-          interaction.guildId,
-          interaction.channel,
-          voiceChannel,
-          true,
-        );
-      }
-
-      queue.lastInteraction = interaction;
-
-      if (result.type === "playlist") {
-        queue.addSongs(result.tracks);
-        await interaction.editReply({
-          content: `✅ Added ${result.tracks.length} songs`,
-        });
-
-        if (result.backgroundProcessing) {
-          client
-            .processSpotifyPlaylistBackground(result.tracks, queue)
-            .catch(console.error);
-        }
-      } else {
-        queue.addSong(result);
-        await interaction.editReply({ content: "✅ Added to queue" });
-      }
-
-      if (!queue.playing) {
-        queue.play();
-      }
-    } catch (error) {
-      console.error("Modal play error:", error);
-      await interaction.editReply({
-        content: `❌ ${error.message || "Failed to play"}`,
-      });
-    }
-  }
-});
-
-client.login(INSTANCE_BOT_TOKEN);
-
-setTimeout(() => {
-  require("./api")(client, INSTANCE_API_PORT);
-}, 3000);
+module.exports = {
+  startInstances,
+};

@@ -16,51 +16,18 @@ const {
   NoSubscriberBehavior,
   StreamType,
 } = require("@discordjs/voice");
-const youtubedlExec = require("youtube-dl-exec");
 const youtube = require("youtube-sr").default;
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 const { formatDuration } = require("./utils/embed");
 const { initEmojis, e } = require("./utils/customEmoji");
 const SpotifyAPI = require("./utils/spotify");
 const YouTubeSearchEngine = require("./utils/youtubeSearch");
+const { youtubedl } = require("./utils/media");
+const { initRuntimeLogger } = require("./utils/runtimeLogger");
 
-// Cross-platform yt-dlp configuration
-// Windows: Use WinGet system installation (no spaces in path)
-// Linux/Mac: Use bundled binary from youtube-dl-exec or system yt-dlp
-let youtubedl;
-if (os.platform() === "win32") {
-  const systemYtdlp = path.join(
-    os.homedir(),
-    "AppData",
-    "Local",
-    "Microsoft",
-    "WinGet",
-    "Packages",
-    "yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe",
-    "yt-dlp.exe",
-  );
-  if (fs.existsSync(systemYtdlp)) {
-    youtubedl = youtubedlExec.create(systemYtdlp);
-    console.log("✅ Using system yt-dlp (Windows)");
-  } else {
-    youtubedl = youtubedlExec;
-    console.log("⚠️ Using bundled yt-dlp");
-  }
-} else {
-  const systemYtdlp = "/root/.nix-profile/bin/yt-dlp";
-  if (fs.existsSync(systemYtdlp)) {
-    youtubedl = youtubedlExec.create(systemYtdlp);
-    console.log("✅ Using system yt-dlp (Nix)");
-  } else {
-    youtubedl = youtubedlExec;
-    console.log("✅ Using bundled yt-dlp (Linux/Mac)");
-  }
-}
+initRuntimeLogger({ label: process.env.RUNTIME_LOGGER_LABEL || "main" });
 
-const ffmpegPath = require("ffmpeg-static");
-process.env.FFMPEG_PATH = ffmpegPath;
 
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
@@ -113,12 +80,14 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
  */
 class MusicQueue {
   constructor(
+    client,
     guildId,
     textChannel,
     voiceChannel,
     connection,
     persistent = false,
   ) {
+    this.client = client;
     this.guildId = guildId;
     this.textChannel = textChannel;
     this.voiceChannel = voiceChannel;
@@ -137,6 +106,7 @@ class MusicQueue {
       },
     });
     this.currentResource = null;
+    this.currentProcess = null;
     this.streamStarted = false;
 
     this.connection.subscribe(this.player);
@@ -180,6 +150,15 @@ class MusicQueue {
     });
   }
 
+  stopCurrentProcess() {
+    if (this.currentProcess) {
+      try {
+        this.currentProcess.kill();
+      } catch {}
+      this.currentProcess = null;
+    }
+  }
+
   /**
    * Add a single song to the queue
    * @param {Object} song - Song object with metadata
@@ -211,6 +190,8 @@ class MusicQueue {
       return;
     }
 
+    this.stopCurrentProcess();
+
     const song = this.songs[0];
     this.playing = true;
     this.paused = false;
@@ -235,8 +216,15 @@ class MusicQueue {
       };
 
       const ytdlpProcess = youtubedl.exec(song.url, ytdlpOpts);
+      this.currentProcess = ytdlpProcess;
 
       ytdlpProcess.stderr?.on("data", () => {});
+
+      ytdlpProcess.once("close", () => {
+        if (this.currentProcess === ytdlpProcess) {
+          this.currentProcess = null;
+        }
+      });
 
       let streamTimeout;
       ytdlpProcess.stdout?.once("data", () => {
@@ -247,11 +235,10 @@ class MusicQueue {
       streamTimeout = setTimeout(() => {
         if (!this.streamStarted) {
           console.error("❌ Audio stream failed to start within 10 seconds");
-          this.textChannel
-            .send(
-              `${e("ERROR")} Failed to start audio stream. The video might be unavailable or region-locked.`,
-            )
-            .catch(console.error);
+          this.stopCurrentProcess();
+          this.sendMessage(
+            `${e("ERROR")} Failed to start audio stream. The video might be unavailable or region-locked.`,
+          ).catch(console.error);
           this.processQueue();
         }
       }, 10000);
@@ -270,7 +257,7 @@ class MusicQueue {
       const { createCompleteMusicController } = require("./utils/componentsV2");
       const controller = createCompleteMusicController(this);
 
-      const existingPanel = client.musicPanels.get(this.guildId);
+      const existingPanel = this.client.musicPanels.get(this.guildId);
       let message;
 
       if (existingPanel?.message) {
@@ -284,7 +271,7 @@ class MusicQueue {
         message = await this.textChannel.send(controller);
       }
 
-      client.musicPanels.set(this.guildId, {
+      this.client.musicPanels.set(this.guildId, {
         message,
         song,
         startTime: Date.now(),
@@ -293,6 +280,7 @@ class MusicQueue {
 
       this.startProgressUpdates();
     } catch (error) {
+      this.stopCurrentProcess();
       console.error(`❌ Playback error: ${error.message}`);
       this.sendMessage(
         `${e("ERROR")} Error playing **${song.name}**: ${error.message}`,
@@ -307,6 +295,7 @@ class MusicQueue {
    * Handles repeat modes and queue progression
    */
   processQueue() {
+    this.stopCurrentProcess();
     if (this.repeatMode === 1) {
       this.play();
     } else {
@@ -357,6 +346,7 @@ class MusicQueue {
    * Skip current song
    */
   skip() {
+    this.stopCurrentProcess();
     this.player.stop();
   }
 
@@ -367,9 +357,15 @@ class MusicQueue {
   stop() {
     this.songs = [];
     this.playing = false;
+    this.paused = false;
+    this.stopCurrentProcess();
     this.player.stop();
 
     this.stopProgressUpdates();
+
+    if (this.persistent) {
+      return;
+    }
 
     if (
       this.connection &&
@@ -382,8 +378,8 @@ class MusicQueue {
       }
     }
 
-    client.queues.delete(this.guildId);
-    client.musicPanels.delete(this.guildId);
+    this.client.queues.delete(this.guildId);
+    this.client.musicPanels.delete(this.guildId);
   }
 
   /**
@@ -429,7 +425,7 @@ class MusicQueue {
       clearInterval(this.progressInterval);
     }
 
-    const panelData = client.musicPanels.get(this.guildId);
+    const panelData = this.client.musicPanels.get(this.guildId);
     if (!panelData) return;
 
     this.progressInterval = setInterval(async () => {
@@ -454,7 +450,7 @@ class MusicQueue {
    * Update the music panel embed with current progress
    */
   async updateMusicPanel() {
-    const panelData = client.musicPanels.get(this.guildId);
+    const panelData = this.client.musicPanels.get(this.guildId);
     if (!panelData?.message || !this.songs[0]) return;
 
     try {
@@ -469,11 +465,11 @@ class MusicQueue {
     } catch (error) {
       if (error.code === 10008) {
         console.log("Music panel message was deleted - cleaning up");
-        client.musicPanels.delete(this.guildId);
+        this.client.musicPanels.delete(this.guildId);
         this.stopProgressUpdates();
       } else if (error.code === 10003) {
         console.log("Music panel channel not found - cleaning up");
-        client.musicPanels.delete(this.guildId);
+        this.client.musicPanels.delete(this.guildId);
         this.stopProgressUpdates();
       } else {
         console.error("Error updating music panel:", error.message);
@@ -552,6 +548,7 @@ client.createQueue = async function (
   }
 
   const queue = new MusicQueue(
+    this,
     guildId,
     textChannel,
     voiceChannel,
@@ -1110,6 +1107,8 @@ async function processSpotifyPlaylistBackground(
 ) {
   if (!remainingTracks || remainingTracks.length === 0) return;
 
+  const queueClient = queue.client;
+
   let convertedCount = 0;
   let failedCount = 0;
 
@@ -1153,7 +1152,7 @@ async function processSpotifyPlaylistBackground(
 
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    if (!client.getQueue(queue.guildId)) {
+    if (!queueClient || !queueClient.getQueue(queue.guildId)) {
       break;
     }
   }
@@ -1399,6 +1398,8 @@ async function updateMusicController(interaction, queue) {
       return;
     }
 
+    const panelClient = queue?.client || interaction?.client;
+
     const { createCompleteMusicController } = require("./utils/componentsV2");
     const controller = createCompleteMusicController(queue);
 
@@ -1412,13 +1413,13 @@ async function updateMusicController(interaction, queue) {
     if (error.code === 10008) {
       console.log("Message was deleted - cannot update music controller");
 
-      const panelData = client.musicPanels.get(queue.guildId);
+      const panelData = panelClient?.musicPanels?.get(queue.guildId);
       if (
         panelData &&
         panelData.message &&
         panelData.message.id === interaction.message.id
       ) {
-        client.musicPanels.delete(queue.guildId);
+        panelClient.musicPanels.delete(queue.guildId);
       }
     } else if (error.code === 10062) {
       console.log("Interaction expired - cannot update music controller");
@@ -1430,29 +1431,49 @@ async function updateMusicController(interaction, queue) {
 
 client.on("error", console.error);
 
-if (!process.env.DISCORD_TOKEN) {
-  console.error("❌ DISCORD_TOKEN is not set in .env file!");
-  process.exit(1);
-}
+function startMainBot() {
+  if (!process.env.DISCORD_TOKEN) {
+    console.error("❌ DISCORD_TOKEN is not set in .env file!");
+    process.exit(1);
+  }
 
-// Validate Spotify credentials if provided
-if (process.env.SPOTIFY_CLIENT_ID && !process.env.SPOTIFY_CLIENT_SECRET) {
-  console.error(
-    "❌ SPOTIFY_CLIENT_SECRET is required when SPOTIFY_CLIENT_ID is provided!",
-  );
-  process.exit(1);
-}
+  if (process.env.SPOTIFY_CLIENT_ID && !process.env.SPOTIFY_CLIENT_SECRET) {
+    console.error(
+      "❌ SPOTIFY_CLIENT_SECRET is required when SPOTIFY_CLIENT_ID is provided!",
+    );
+    process.exit(1);
+  }
 
-if (!process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
-  console.error(
-    "❌ SPOTIFY_CLIENT_ID is required when SPOTIFY_CLIENT_SECRET is provided!",
-  );
-  process.exit(1);
+  if (!process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
+    console.error(
+      "❌ SPOTIFY_CLIENT_ID is required when SPOTIFY_CLIENT_SECRET is provided!",
+    );
+    process.exit(1);
+  }
+
+  const apiServer = require("./api")(client);
+
+  let shuttingDown = false;
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    try {
+      apiServer?.close();
+    } catch {}
+    try {
+      client.destroy();
+    } catch {}
+    setTimeout(() => process.exit(0), 5000);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  return client.login(process.env.DISCORD_TOKEN);
 }
 
 if (require.main === module) {
-  require("./api")(client);
-  client.login(process.env.DISCORD_TOKEN);
+  startMainBot();
 }
 
 module.exports = {
@@ -1462,4 +1483,6 @@ module.exports = {
   updateMusicController,
   processSpotifyPlaylistBackground,
   formatDuration,
+  spotifyAPI,
+  startMainBot,
 };

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "deploy": "node src/deploy-commands.js",
-    "dev": "nodemon src/index.js",
+    "dev": "nodemon src/dev.js",
     "postinstall": "youtube-dl-exec --version || echo 'yt-dlp check complete'"
   },
   "keywords": [

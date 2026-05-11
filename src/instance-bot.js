@@ -21,10 +21,8 @@ const {
   NoSubscriberBehavior,
   StreamType,
 } = require("@discordjs/voice");
-const youtubedlExec = require("youtube-dl-exec");
 const fs = require("fs");
-const path = require("path");
-const os = require("os");
+const { youtubedl } = require("./utils/media");
 
 // Load instance configuration
 const instanceIndex = parseInt(process.argv[2]) - 1;
@@ -49,33 +47,6 @@ console.log(`   Guild: ${guildId}`);
 console.log(`   Voice Channel: ${voiceChannelId}`);
 console.log(`   API Port: ${apiPort}`);
 
-// Cross-platform yt-dlp
-let youtubedl;
-if (os.platform() === "win32") {
-  const systemYtdlp = path.join(
-    os.homedir(),
-    "AppData",
-    "Local",
-    "Microsoft",
-    "WinGet",
-    "Packages",
-    "yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe",
-    "yt-dlp.exe",
-  );
-  if (fs.existsSync(systemYtdlp)) {
-    youtubedl = youtubedlExec.create(systemYtdlp);
-    console.log("✅ Using system yt-dlp (Windows)");
-  } else {
-    youtubedl = youtubedlExec;
-    console.log("⚠️ Using bundled yt-dlp");
-  }
-} else {
-  youtubedl = youtubedlExec;
-  console.log("✅ Using system yt-dlp");
-}
-
-const ffmpegPath = require("ffmpeg-static");
-process.env.FFMPEG_PATH = ffmpegPath;
 
 // Import search function from master
 const { searchSong, formatDuration } = require("./index");

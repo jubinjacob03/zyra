@@ -6,6 +6,7 @@ const {
   entersState,
 } = require("@discordjs/voice");
 const { initEmojis } = require("./utils/customEmoji");
+const { ensurePlayMusicPanel } = require("./utils/playPanel");
 const { youtubedl } = require("./utils/media");
 
 let MusicQueue;
@@ -301,6 +302,11 @@ function startInstance(config, instanceIndex) {
       console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
 
       autoRejoiner.attach(connection);
+      try {
+        await ensurePlayMusicPanel(voiceChannel, INSTANCE_NAME, c.user.id);
+      } catch (error) {
+        console.log("Could not post play panel:", error.message || error);
+      }
     } catch (error) {
       console.error("Failed to join VC:", error);
       autoRejoiner.startRetry();

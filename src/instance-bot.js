@@ -3,9 +3,6 @@ const {
   Client,
   GatewayIntentBits,
   Events,
-  EmbedBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ActionRowBuilder,
   ModalBuilder,
   TextInputBuilder,
@@ -23,6 +20,7 @@ const {
 } = require("@discordjs/voice");
 const fs = require("fs");
 const { youtubedl } = require("./utils/media");
+const { ensurePlayMusicPanel } = require("./utils/playPanel");
 
 // Load instance configuration
 const instanceIndex = parseInt(process.argv[2]) - 1;
@@ -301,34 +299,15 @@ client.once(Events.ClientReady, async (readyClient) => {
       }
     });
 
-    // Post pinned embed
-    const helpEmbed = new EmbedBuilder()
-      .setColor(0x0e0e12)
-      .setTitle(`${INSTANCE_NAME} - Music Player`)
-      .setDescription(
-        `Click the button below to play music in this VC!\n\n` +
-          `**Supports:**\n` +
-          `• Song names (e.g., \`powerhouse\`)\n` +
-          `• YouTube links\n` +
-          `• Spotify links (tracks & playlists)`,
-      );
-
-    const playButton = new ButtonBuilder()
-      .setCustomId("play_song")
-      .setLabel("🎵 Play Music")
-      .setStyle(ButtonStyle.Primary);
-
-    const row = new ActionRowBuilder().addComponents(playButton);
-
-    const pinned = await textChannel.send({
-      embeds: [helpEmbed],
-      components: [row],
-    });
-
-    queue.controllerMessage = pinned;
-
-    await pinned.pin().catch(() => console.log("Could not pin message"));
-    console.log("✅ Posted music controller");
+    const pinned = await ensurePlayMusicPanel(
+      textChannel,
+      INSTANCE_NAME,
+      client.user.id,
+    );
+    queue.controllerMessage = pinned || null;
+    if (pinned) {
+      console.log("✅ Posted music controller");
+    }
   } catch (error) {
     console.error("❌ Failed to initialize:", error);
   }

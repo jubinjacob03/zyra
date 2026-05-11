@@ -25,7 +25,7 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
     .setColor(0x00ffff)
     .setTitle(`Music Player`)
     .setDescription(
-      `Click the button below to play music in this VC!\n\n` +
+      `Click the button below to play music in this VC !\n\n` +
         `**Supports:**\n` +
         `${bullet} Song names\n` +
         `${bullet} YouTube links\n` +

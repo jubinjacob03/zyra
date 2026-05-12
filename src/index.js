@@ -77,6 +77,30 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
  * Music Queue Manager
  * Handles voice connection, audio playback, queue management, and player state
  */
+async function findExistingMusicPanel(channel, clientUserId) {
+  if (!channel || !channel.messages || !channel.messages.fetch) return null;
+  if (!clientUserId) return null;
+
+  try {
+    const messages = await channel.messages.fetch({ limit: 100 });
+    return (
+      messages.find(
+        (message) =>
+          message.author?.id === clientUserId &&
+          message.components?.some((row) =>
+            row.components?.some(
+              (component) =>
+                typeof component.customId === "string" &&
+                component.customId.startsWith("music_"),
+            ),
+          ),
+      ) || null
+    );
+  } catch {
+    return null;
+  }
+}
+
 class MusicQueue {
   constructor(
     client,
@@ -257,16 +281,32 @@ class MusicQueue {
       const controller = createCompleteMusicController(this);
 
       const existingPanel = this.client.musicPanels.get(this.guildId);
-      let message;
+      let message = existingPanel?.message || null;
 
-      if (existingPanel?.message) {
+      if (message) {
         try {
-          await existingPanel.message.edit(controller);
-          message = existingPanel.message;
+          await message.edit(controller);
         } catch {
-          message = await this.textChannel.send(controller);
+          message = null;
         }
-      } else {
+      }
+
+      if (!message) {
+        const reused = await findExistingMusicPanel(
+          this.textChannel,
+          this.client.user?.id,
+        );
+        if (reused) {
+          try {
+            await reused.edit(controller);
+            message = reused;
+          } catch {
+            message = null;
+          }
+        }
+      }
+
+      if (!message) {
         message = await this.textChannel.send(controller);
       }
 

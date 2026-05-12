@@ -55,6 +55,7 @@ const createPanelChannel = (baseChannel) => {
       }
       return baseChannel.send(payload);
     },
+    messages: baseChannel?.messages,
   };
 };
 

@@ -25,6 +25,7 @@ const SpotifyAPI = require("./utils/spotify");
 const YouTubeSearchEngine = require("./utils/youtubeSearch");
 const { youtubedl } = require("./utils/media");
 const { initRuntimeLogger } = require("./utils/runtimeLogger");
+const { getControllerPanel, setControllerPanel } = require("./utils/panelStore");
 
 initRuntimeLogger({ label: process.env.RUNTIME_LOGGER_LABEL || "main" });
 
@@ -77,16 +78,22 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
  * Music Queue Manager
  * Handles voice connection, audio playback, queue management, and player state
  */
+const isEditableByClient = (message, clientUserId) => {
+  if (!message) return false;
+  if (typeof message.editable === "boolean") return message.editable;
+  if (!clientUserId) return true;
+  return message.author?.id === clientUserId;
+};
+
 async function findExistingMusicPanel(channel, clientUserId) {
   if (!channel || !channel.messages || !channel.messages.fetch) return null;
-  if (!clientUserId) return null;
 
   try {
     const messages = await channel.messages.fetch({ limit: 100 });
     return (
       messages.find(
         (message) =>
-          message.author?.id === clientUserId &&
+          isEditableByClient(message, clientUserId) &&
           message.components?.some((row) =>
             row.components?.some(
               (component) =>
@@ -99,6 +106,36 @@ async function findExistingMusicPanel(channel, clientUserId) {
   } catch {
     return null;
   }
+}
+
+async function resolveStoredMusicPanel(client, channelId) {
+  if (!channelId) return null;
+  const storedId = getControllerPanel(channelId);
+  if (!storedId) return null;
+
+  let channel = client.channels.cache.get(channelId);
+  if (!channel) {
+    try {
+      channel = await client.channels.fetch(channelId);
+    } catch {
+      channel = null;
+    }
+  }
+
+  if (!channel?.messages?.fetch) return null;
+
+  try {
+    const message = await channel.messages.fetch(storedId);
+    if (isEditableByClient(message, client.user?.id)) {
+      return message;
+    }
+  } catch (error) {
+    if (error?.code === 10008 || error?.code === 10003) {
+      setControllerPanel(channelId, null);
+    }
+  }
+
+  return null;
 }
 
 class MusicQueue {
@@ -282,12 +319,28 @@ class MusicQueue {
 
       const existingPanel = this.client.musicPanels.get(this.guildId);
       let message = existingPanel?.message || null;
+      const panelChannelId = this.textChannel?.id || null;
 
       if (message) {
         try {
           await message.edit(controller);
         } catch {
           message = null;
+        }
+      }
+
+      if (!message) {
+        const stored = await resolveStoredMusicPanel(
+          this.client,
+          panelChannelId,
+        );
+        if (stored) {
+          try {
+            await stored.edit(controller);
+            message = stored;
+          } catch {
+            message = null;
+          }
         }
       }
 
@@ -308,6 +361,10 @@ class MusicQueue {
 
       if (!message) {
         message = await this.textChannel.send(controller);
+      }
+
+      if (message?.id && message?.channelId) {
+        setControllerPanel(message.channelId, message.id);
       }
 
       this.client.musicPanels.set(this.guildId, {
@@ -505,10 +562,14 @@ class MusicQueue {
       if (error.code === 10008) {
         console.log("Music panel message was deleted - cleaning up");
         this.client.musicPanels.delete(this.guildId);
+        const channelId = panelData?.message?.channelId || this.textChannel?.id;
+        if (channelId) setControllerPanel(channelId, null);
         this.stopProgressUpdates();
       } else if (error.code === 10003) {
         console.log("Music panel channel not found - cleaning up");
         this.client.musicPanels.delete(this.guildId);
+        const channelId = panelData?.message?.channelId || this.textChannel?.id;
+        if (channelId) setControllerPanel(channelId, null);
         this.stopProgressUpdates();
       } else {
         console.error("Error updating music panel:", error.message);

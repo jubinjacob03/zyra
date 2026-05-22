@@ -16,6 +16,9 @@ services:
       - YTDL_NO_UPDATE=1
     ports:
       - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+      - "8003:8003"
     deploy:
       resources:
         limits:

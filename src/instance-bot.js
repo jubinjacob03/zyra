@@ -49,7 +49,7 @@ console.log(`   Voice Channel: ${voiceChannelId}`);
 console.log(`   API Port: ${apiPort}`);
 
 // Import search function from master
-const { searchSong, formatDuration } = require("./index");
+const { searchSong, formatDuration } = require("./bot");
 
 const client = new Client({
   intents: [

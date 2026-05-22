@@ -182,7 +182,7 @@ function startInstance(config, instanceIndex) {
       processSpotifyPlaylistBackground,
       formatDuration,
       spotifyAPI,
-    } = require("./index"));
+    } = require("./bot"));
   }
 
   if (!config) {

@@ -2,6 +2,10 @@ const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, SectionBuilde
 const { errorEmbed, infoEmbed } = require("../utils/embed");
 const { e } = require("../utils/customEmoji");
 
+/**
+ * Spotify command module.
+ * Tests Spotify integration and shows status or searches for tracks.
+ */
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("spotify")
@@ -21,6 +25,11 @@ module.exports = {
         ),
     ),
 
+  /**
+   * Executes the spotify command.
+   * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
+   * @param {import('discord.js').Client} client - The Discord client.
+   */
   async execute(interaction, client) {
     const SpotifyAPI = require("../utils/spotify");
 
@@ -36,7 +45,7 @@ module.exports = {
 
     if (subcommand === "status") {
       await interaction.reply({
-        content: "🔍 Checking Spotify status...",
+        content: `${e("INFO")} Checking Spotify status...`,
         flags: 64,
       });
 
@@ -70,7 +79,7 @@ module.exports = {
     if (subcommand === "search") {
       const query = interaction.options.getString("query");
       await interaction.reply({
-        content: "🔍 Searching Spotify...",
+        content: `${e("INFO")} Searching Spotify...`,
         flags: 64,
       });
 
@@ -89,7 +98,7 @@ module.exports = {
         }
 
         const container = new ContainerBuilder().setAccentColor(0x1DB954);
-        let description = `### 🔍 Spotify Search Results\nQuery: **${query}**\n\n`;
+        let description = `### ${e("INFO")} Spotify Search Results\nQuery: **${query}**\n\n`;
         
         results.forEach((track, i) => {
           description += `**${i + 1}.** [${track.name}](${track.external_urls.spotify})\n`;

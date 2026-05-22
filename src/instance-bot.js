@@ -59,7 +59,10 @@ const client = new Client({
   ],
 });
 
-// Simple persistent queue that NEVER leaves VC
+/**
+ * A persistent music queue that remains in the voice channel even when idle.
+ * Handles audio playback, queue management, and controller updates.
+ */
 class PersistentMusicQueue {
   constructor(connection, voiceChannel, textChannel) {
     this.connection = connection;
@@ -326,9 +329,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isButton()) {
     if (interaction.customId === "play_song") {
+      const { e } = require("./utils/customEmoji");
+
       const modal = new ModalBuilder()
         .setCustomId("song_input_modal")
-        .setTitle("🎵 Play Music");
+        .setTitle(`${e("MUSIC")} Play Music`);
 
       const songInput = new TextInputBuilder()
         .setCustomId("song_query")
@@ -348,8 +353,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const member = interaction.member;
     if (!member.voice.channel || member.voice.channel.id !== voiceChannelId) {
       const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+      const { e } = require("./utils/customEmoji");
       const container = new ContainerBuilder().setAccentColor(0xff4444);
-      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("❌ You need to be in the voice channel!"));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} You need to be in the voice channel!`));
       return interaction.reply({
         components: [container],
         flags: MessageFlags.IsComponentsV2 | 64,
@@ -381,6 +387,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case "volup":
         queue.volume = Math.min(100, queue.volume + 10);
         break;
+      case "shuffle":
+        if (queue.songs.length > 1) {
+          const current = queue.songs.shift();
+          for (let i = queue.songs.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [queue.songs[i], queue.songs[j]] = [queue.songs[j], queue.songs[i]];
+          }
+          queue.songs.unshift(current);
+        }
+        break;
+      case "loop":
+        break;
+      case "previous":
+        const { e } = require("./utils/customEmoji");
+        await interaction.followUp({
+          ephemeral: true,
+          content: `${e("PREVIOUS")} Previous track not available.`,
+        });
+        break;
+      case "queue":
+        const { e: e2 } = require("./utils/customEmoji");
+        const songs = queue.songs.slice(0, 10);
+        const queueList = songs
+          .map(
+            (song, i) =>
+              `${i === 0 ? `**${e2("PLAY")} Now:**` : `**${i}.**`} [${song.name}](${song.url}) - \`${song.formattedDuration}\``,
+          )
+          .join("\n");
+        await interaction.followUp({
+          ephemeral: true,
+          content: `${e2("QUEUE")} **Queue** (${queue.songs.length} songs)\n\n${queueList}`,
+        });
+        break;
     }
   }
 
@@ -393,8 +432,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (!member.voice.channel || member.voice.channel.id !== voiceChannelId) {
       const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+      const { e } = require("./utils/customEmoji");
       const container = new ContainerBuilder().setAccentColor(0xff4444);
-      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("❌ You need to be in the voice channel!"));
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} You need to be in the voice channel!`));
       return interaction.reply({
         components: [container],
         flags: MessageFlags.IsComponentsV2 | 64,
@@ -413,17 +453,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ]);
 
       if (!result) {
-        return interaction.editReply({ content: "❌ No results found" });
+        const { e } = require("./utils/customEmoji");
+        return interaction.editReply({ content: `${e("ERROR")} No results found` });
       }
 
       if (result.type === "playlist") {
         result.songs.forEach((song) => queue.addSong(song));
+        const { e } = require("./utils/customEmoji");
         await interaction.editReply({
-          content: `✅ Added ${result.songs.length} songs`,
+          content: `${e("SUCCESS")} Added ${result.songs.length} songs`,
         });
       } else {
         queue.addSong(result);
-        await interaction.editReply({ content: "✅ Added to queue" });
+        const { e } = require("./utils/customEmoji");
+        await interaction.editReply({ content: `${e("SUCCESS")} Added to queue` });
       }
 
       if (!queue.playing) {
@@ -431,8 +474,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     } catch (error) {
       console.error("Search error:", error);
+      const { e } = require("./utils/customEmoji");
       await interaction.editReply({
-        content: `❌ ${error.message || "Failed"}`,
+        content: `${e("ERROR")} ${error.message || "Failed"}`,
       });
     }
   }

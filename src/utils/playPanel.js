@@ -1,6 +1,11 @@
 const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags } = require("discord.js");
 const { getPlayPanel, setPlayPanel } = require("./panelStore");
 
+/**
+ * Checks if a custom ID belongs to a music panel button.
+ * @param {string} customId - The custom ID to check.
+ * @returns {boolean} True if it's a panel button.
+ */
 const isPanelButton = (customId) => {
   if (!customId || typeof customId !== "string") return false;
   if (customId === "play_song") return true;
@@ -18,6 +23,12 @@ const isPanelButton = (customId) => {
   ].includes(customId);
 };
 
+/**
+ * Checks if a message is editable by the client.
+ * @param {import('discord.js').Message} message - The message to check.
+ * @param {string} clientUserId - The client's user ID.
+ * @returns {boolean} True if the message is editable by the client.
+ */
 const isEditableByClient = (message, clientUserId) => {
   if (!message) return false;
   if (typeof message.editable === "boolean") return message.editable;
@@ -25,6 +36,12 @@ const isEditableByClient = (message, clientUserId) => {
   return message.author?.id === clientUserId;
 };
 
+/**
+ * Finds a panel message in a collection of messages.
+ * @param {import('discord.js').Collection<string, import('discord.js').Message>} messages - The messages to search.
+ * @param {string} clientUserId - The client's user ID.
+ * @returns {import('discord.js').Message|undefined} The found panel message, or undefined.
+ */
 const findPanelMessage = (messages, clientUserId) =>
   messages.find(
     (message) =>
@@ -36,6 +53,14 @@ const findPanelMessage = (messages, clientUserId) =>
       ),
   );
 
+/**
+ * Ensures that the play music panel exists in the specified channel.
+ * Creates a new panel if one doesn't exist, or updates the existing one.
+ * @param {import('discord.js').TextChannel} channel - The channel to ensure the panel in.
+ * @param {string} instanceName - The name of the bot instance.
+ * @param {string} clientUserId - The client's user ID.
+ * @returns {Promise<import('discord.js').Message|null>} The panel message, or null if failed.
+ */
 async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
   if (!channel || typeof channel.send !== "function") return null;
 

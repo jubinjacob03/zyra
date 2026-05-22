@@ -16,7 +16,6 @@ console.log("🚀 Starting Cloudflare Tunnel...");
 console.log(`📍 Forwarding: http://localhost:${PORT}`);
 console.log("");
 
-// Start cloudflared process
 const tunnel = spawn(
   "cloudflared",
   ["tunnel", "--url", `http://localhost:${PORT}`],
@@ -27,18 +26,15 @@ const tunnel = spawn(
 
 let urlFound = false;
 
-// Capture stdout for URL
 tunnel.stdout.on("data", (data) => {
   const output = data.toString();
   process.stdout.write(output);
 
-  // Extract URL from output
   const urlMatch = output.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
   if (urlMatch && !urlFound) {
     const publicUrl = urlMatch[0];
     urlFound = true;
 
-    // Save to file
     fs.writeFileSync(URL_FILE, publicUrl, "utf8");
 
     console.log("");
@@ -69,12 +65,10 @@ tunnel.stdout.on("data", (data) => {
   }
 });
 
-// Capture stderr
 tunnel.stderr.on("data", (data) => {
   process.stderr.write(data);
 });
 
-// Handle process exit
 tunnel.on("close", (code) => {
   console.log("");
   console.log(`⚠️  Cloudflare Tunnel exited with code ${code}`);
@@ -85,7 +79,6 @@ tunnel.on("close", (code) => {
   process.exit(code);
 });
 
-// Handle script termination
 process.on("SIGINT", () => {
   console.log("");
   console.log("🛑 Stopping Cloudflare Tunnel...");

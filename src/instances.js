@@ -80,6 +80,15 @@ process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
 });
 
+/**
+ * Connects to a voice channel.
+ * @param {Object} options - Connection options.
+ * @param {import('discord.js').VoiceChannel} options.voiceChannel - The voice channel to join.
+ * @param {string} options.guildId - The ID of the guild.
+ * @param {number} [options.timeoutMs=30000] - Timeout in milliseconds.
+ * @returns {Promise<import('@discordjs/voice').VoiceConnection>} The established voice connection.
+ * @throws {Error} If the connection fails or times out.
+ */
 async function connectVoice({ voiceChannel, guildId, timeoutMs = 30000 }) {
   const connection = joinVoiceChannel({
     channelId: voiceChannel.id,
@@ -98,6 +107,15 @@ async function connectVoice({ voiceChannel, guildId, timeoutMs = 30000 }) {
   }
 }
 
+/**
+ * Creates a rejoiner utility to automatically reconnect to a voice channel if disconnected.
+ * @param {Object} options - Rejoiner options.
+ * @param {import('discord.js').VoiceChannel} options.voiceChannel - The voice channel to rejoin.
+ * @param {string} options.guildId - The ID of the guild.
+ * @param {Object} options.queue - The music queue associated with the connection.
+ * @param {string} options.label - A label for logging purposes.
+ * @returns {Object} An object containing `attach` and `startRetry` methods.
+ */
 function createRejoiner({ voiceChannel, guildId, queue, label }) {
   let retryTimer = null;
   let retrying = false;
@@ -143,6 +161,12 @@ function createRejoiner({ voiceChannel, guildId, queue, label }) {
   return { attach, startRetry };
 }
 
+/**
+ * Starts a new music bot instance based on the provided configuration.
+ * @param {Object} config - The configuration object for the instance.
+ * @param {number} instanceIndex - The index of the instance being started.
+ * @throws {Error} If the configuration is invalid or missing required fields.
+ */
 function startInstance(config, instanceIndex) {
   const label = `instance-${instanceIndex + 1}`;
   if (!process.env.RUNTIME_LOGGER_LABEL) {
@@ -338,10 +362,11 @@ function startInstance(config, instanceIndex) {
           TextInputStyle,
           ActionRowBuilder,
         } = require("discord.js");
+        const { e } = require("./utils/customEmoji");
 
         const modal = new ModalBuilder()
           .setCustomId("song_input_modal")
-          .setTitle("🎵 Play Music");
+          .setTitle(`${e("MUSIC")} Play Music`);
 
         const songInput = new TextInputBuilder()
           .setCustomId("song_query")

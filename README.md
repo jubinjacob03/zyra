@@ -8,10 +8,9 @@ A powerful Discord music bot with YouTube streaming using yt-dlp.
 
 - 🎥 YouTube streaming (videos, playlists, search)
 - 🎧 Spotify integration (tracks, playlists, albums)
-- 🎛️ Audio filters (bassboost, nightcore, vaporwave, karaoke, tremolo, 3d, phaser, surround)
 - 📋 Queue management, shuffle, repeat modes
-- 🔊 Volume control, seek, interactive music panels
-- 🎮 20 slash commands
+- 🔊 Volume control, interactive music panels
+- 🎮 18 slash commands
 - 🌐 Web dashboard & API
 
 ## 🛠️ Stack
@@ -104,15 +103,14 @@ MUSIC_API_KEY=your_api_key
 | `/queue`      | View the queue               |
 | `/nowplaying` | Show current song            |
 | `/volume`     | Set volume (0-100)           |
-| `/seek`       | Seek to position             |
 | `/shuffle`    | Shuffle the queue            |
 | `/loop`       | Toggle repeat mode           |
-| `/filter`     | Apply audio filter           |
 | `/lyrics`     | Get song lyrics              |
 | `/move`       | Move a song in queue         |
 | `/remove`     | Remove a song from queue     |
 | `/clear`      | Clear the queue              |
 | `/spotify`    | Spotify track info           |
+| `/join`       | Join your voice channel      |
 | `/help`       | Show help                    |
 
 ## 🔧 Deployment Notes

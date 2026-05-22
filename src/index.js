@@ -78,8 +78,10 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
 }
 
 /**
- * Music Queue Manager
- * Handles voice connection, audio playback, queue management, and player state
+ * Checks if a message is editable by the client.
+ * @param {import('discord.js').Message} message - The message to check.
+ * @param {string} clientUserId - The client's user ID.
+ * @returns {boolean} True if the message is editable by the client.
  */
 const isEditableByClient = (message, clientUserId) => {
   if (!message) return false;
@@ -88,6 +90,12 @@ const isEditableByClient = (message, clientUserId) => {
   return message.author?.id === clientUserId;
 };
 
+/**
+ * Finds an existing music panel message in the given channel.
+ * @param {import('discord.js').TextChannel} channel - The channel to search in.
+ * @param {string} clientUserId - The client's user ID.
+ * @returns {Promise<import('discord.js').Message|null>} The existing music panel message, or null if not found.
+ */
 async function findExistingMusicPanel(channel, clientUserId) {
   if (!channel || !channel.messages || !channel.messages.fetch) return null;
 
@@ -111,6 +119,12 @@ async function findExistingMusicPanel(channel, clientUserId) {
   }
 }
 
+/**
+ * Resolves a stored music panel message from the channel ID.
+ * @param {import('discord.js').Client} client - The Discord client.
+ * @param {string} channelId - The ID of the channel containing the panel.
+ * @returns {Promise<import('discord.js').Message|null>} The resolved message, or null if not found or inaccessible.
+ */
 async function resolveStoredMusicPanel(client, channelId) {
   if (!channelId) return null;
   const storedId = getControllerPanel(channelId);
@@ -141,6 +155,10 @@ async function resolveStoredMusicPanel(client, channelId) {
   return null;
 }
 
+/**
+ * Music Queue Manager
+ * Handles voice connection, audio playback, queue management, and player state.
+ */
 class MusicQueue {
   constructor(
     client,
@@ -713,11 +731,11 @@ client.getQueue = function (guildId) {
 };
 
 /**
- * Enhanced search function with Spotify support and timeout handling
- * Handles YouTube URLs, Spotify URLs, and search queries
- * @param {string} query - YouTube URL, Spotify URL, or search term
- * @param {GuildMember} user - User who requested the song
- * @returns {Promise<Object|null>} Song/playlist object or null
+ * Enhanced search function with Spotify support and timeout handling.
+ * Handles YouTube URLs, Spotify URLs, and search queries.
+ * @param {string} query - YouTube URL, Spotify URL, or search term.
+ * @param {import('discord.js').GuildMember} user - User who requested the song.
+ * @returns {Promise<Object|null>} Song/playlist object or null.
  */
 async function searchSong(query, user) {
   return Promise.race([
@@ -736,6 +754,13 @@ async function searchSong(query, user) {
   ]);
 }
 
+/**
+ * Internal implementation of the search function.
+ * @param {string} query - The search query or URL.
+ * @param {import('discord.js').GuildMember} user - The user who requested the song.
+ * @returns {Promise<Object>} The resolved song or playlist object.
+ * @throws {Error} If the song cannot be found or the platform is unsupported.
+ */
 async function searchSongInternal(query, user) {
   const videoPattern =
     /^(https?:\/\/)?(www\.)?(m\.|music\.)?(youtube\.com|youtu\.?be)\/.+$/;
@@ -750,7 +775,7 @@ async function searchSongInternal(query, user) {
 
   if (mixPlaylistPattern.test(query)) {
     throw new Error(
-      "❌ **YouTube Mix playlists are not supported**\n\n" +
+      `${e("ERROR")} **YouTube Mix playlists are not supported**\n\n` +
         "🔒 Mix playlists are personalized and user-specific - they cannot be accessed by bots.\n\n" +
         "💡 **Alternatives:**\n" +
         "• Use a regular YouTube playlist instead\n" +
@@ -1206,8 +1231,11 @@ client.searchSong = searchSong;
 client.formatDuration = formatDuration;
 
 /**
- * Background processor for Spotify playlist conversion
- * Converts remaining Spotify tracks to YouTube in the background
+ * Background processor for Spotify playlist conversion.
+ * Converts remaining Spotify tracks to YouTube in the background.
+ * @param {MusicQueue} queue - The music queue to add tracks to.
+ * @param {Array} remainingTracks - The remaining Spotify tracks to convert.
+ * @param {import('discord.js').TextChannel} textChannel - The channel to send updates to.
  */
 async function processSpotifyPlaylistBackground(
   queue,
@@ -1248,7 +1276,7 @@ async function processSpotifyPlaylistBackground(
         if (convertedCount % 10 === 0) {
           const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
           const container = new ContainerBuilder().setAccentColor(0x1db954);
-          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`🎵 **Spotify Converter**: Added ${convertedCount}/${remainingTracks.length} tracks to queue`));
+          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} **Spotify Converter**: Added ${convertedCount}/${remainingTracks.length} tracks to queue`));
           textChannel.send({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
         }
       } else {
@@ -1268,7 +1296,7 @@ async function processSpotifyPlaylistBackground(
   if (convertedCount > 0) {
     const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
     const container = new ContainerBuilder().setAccentColor(0x1db954);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`✅ **Spotify Converter Complete**: Added ${convertedCount} tracks, ${failedCount} failed`));
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("SUCCESS")} **Spotify Converter Complete**: Added ${convertedCount} tracks, ${failedCount} failed`));
     textChannel.send({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
   }
 }
@@ -1336,7 +1364,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       console.error(`Error executing ${interaction.commandName}:`, error);
 
       const errorMessage = {
-        content: "❌ There was an error executing this command!",
+        content: `${e("ERROR")} There was an error executing this command!`,
         ephemeral: true,
       };
 
@@ -1362,10 +1390,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 /**
- * Handle music panel button clicks
- * Processes play/pause, skip, stop, shuffle, loop, volume controls
- * @param {ButtonInteraction} interaction - Button interaction from music panel
- * @param {Client} client - Discord client instance
+ * Handles music panel button clicks.
+ * Processes play/pause, skip, stop, shuffle, loop, and volume controls.
+ * @param {import('discord.js').ButtonInteraction} interaction - Button interaction from music panel.
+ * @param {import('discord.js').Client} client - Discord client instance.
  */
 async function handleButtonInteraction(interaction, client) {
   try {
@@ -1379,7 +1407,7 @@ async function handleButtonInteraction(interaction, client) {
 
   if (!queue) {
     return interaction.followUp({
-      content: "\u274c Nothing is playing right now.",
+      content: `${e("ERROR")} Nothing is playing right now.`,
       ephemeral: true,
     });
   }
@@ -1389,7 +1417,7 @@ async function handleButtonInteraction(interaction, client) {
 
   if (!voiceChannel || voiceChannel.id !== queue.voiceChannel.id) {
     return interaction.followUp({
-      content: "❌ You need to be in the same voice channel.",
+      content: `${e("ERROR")} You need to be in the same voice channel.`,
       ephemeral: true,
     });
   }
@@ -1399,10 +1427,10 @@ async function handleButtonInteraction(interaction, client) {
       case "music_pause":
         if (queue.paused) {
           queue.resume();
-          await interaction.followUp({ ephemeral: true, content: "▶️ Resumed the music." });
+          await interaction.followUp({ ephemeral: true, content: `${e("PLAY")} Resumed the music.` });
         } else {
           queue.pause();
-          await interaction.followUp({ ephemeral: true, content: "⏸️ Paused the music." });
+          await interaction.followUp({ ephemeral: true, content: `${e("PAUSE")} Paused the music.` });
         }
         break;
 
@@ -1410,7 +1438,7 @@ async function handleButtonInteraction(interaction, client) {
         queue.skip();
         await interaction.followUp({
           ephemeral: true,
-          content: "⏭️ Skipped the current song.",
+          content: `${e("SKIP")} Skipped the current song.`,
         });
         break;
 
@@ -1418,13 +1446,13 @@ async function handleButtonInteraction(interaction, client) {
         queue.stop();
         await interaction.followUp({
           ephemeral: true,
-          content: "⏹️ Stopped the music and cleared the queue.",
+          content: `${e("STOP")} Stopped the music and cleared the queue.`,
         });
         break;
 
       case "music_shuffle":
         queue.shuffle();
-        await interaction.followUp({ ephemeral: true, content: "🔀 Shuffled the queue." });
+        await interaction.followUp({ ephemeral: true, content: `${e("SHUFFLE")} Shuffled the queue.` });
         break;
 
       case "music_loop":
@@ -1433,14 +1461,14 @@ async function handleButtonInteraction(interaction, client) {
         queue.setRepeatMode(nextMode);
         await interaction.followUp({
           ephemeral: true,
-          content: `🔁 Loop mode: **${modes[nextMode]}**`,
+          content: `${e("LOOP")} Loop mode: **${modes[nextMode]}**`,
         });
         break;
 
       case "music_previous":
         await interaction.followUp({
           ephemeral: true,
-          content: "⏮️ Previous track not available.",
+          content: `${e("PREVIOUS")} Previous track not available.`,
         });
         break;
 
@@ -1449,12 +1477,12 @@ async function handleButtonInteraction(interaction, client) {
         const queueList = songs
           .map(
             (song, i) =>
-              `${i === 0 ? "**▶️ Now:**" : `**${i}.**`} [${song.name}](${song.url}) - \`${song.formattedDuration}\``,
+              `${i === 0 ? `**${e("PLAY")} Now:**` : `**${i}.**`} [${song.name}](${song.url}) - \`${song.formattedDuration}\``,
           )
           .join("\n");
         await interaction.followUp({
           ephemeral: true,
-          content: `📋 **Queue** (${queue.songs.length} songs)\n\n${queueList}`,
+          content: `${e("QUEUE")} **Queue** (${queue.songs.length} songs)\n\n${queueList}`,
         });
         break;
 
@@ -1463,26 +1491,26 @@ async function handleButtonInteraction(interaction, client) {
         queue.setVolume(newVolDown);
         await interaction.followUp({
           ephemeral: true,
-          content: `🔉 Volume: **${newVolDown}%**`,
+          content: `${e("VOLDOWN")} Volume: **${newVolDown}%**`,
         });
         break;
 
       case "music_volup":
         const newVolUp = Math.min(100, queue.volume + 10);
         queue.setVolume(newVolUp);
-        await interaction.followUp({ ephemeral: true, content: `🔊 Volume: **${newVolUp}%**` });
+        await interaction.followUp({ ephemeral: true, content: `${e("VOLUP")} Volume: **${newVolUp}%**` });
         break;
 
       case "music_refresh":
         await interaction.followUp({
-          content: "🔄 Music controller refreshed!",
+          content: `${e("REFRESH")} Music controller refreshed!`,
           ephemeral: true,
         });
         break;
 
       default:
         await interaction.followUp({
-          content: "❓ Unknown button action.",
+          content: `${e("WARNING")} Unknown button action.`,
           ephemeral: true,
         });
     }
@@ -1492,7 +1520,7 @@ async function handleButtonInteraction(interaction, client) {
     console.error("Button interaction error:", error);
     try {
       await interaction.followUp({
-        content: "❌ An error occurred.",
+        content: `${e("ERROR")} An error occurred.`,
         ephemeral: true,
       });
     } catch (replyError) {

@@ -1,6 +1,10 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { successEmbed, errorEmbed } = require('../utils/embed');
 
+/**
+ * Loop command module.
+ * Sets the loop mode for the current queue.
+ */
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('loop')
@@ -15,6 +19,11 @@ module.exports = {
                     { name: 'Queue', value: '2' }
                 )),
 
+    /**
+     * Executes the loop command.
+     * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
+     * @param {import('discord.js').Client} client - The Discord client.
+     */
     async execute(interaction, client) {
         const queue = client.getQueue(interaction.guildId);
 

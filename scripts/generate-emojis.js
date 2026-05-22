@@ -20,6 +20,15 @@ const SIZE = 128;
 const OUTPUT = path.join(__dirname, "..", "assets", "emojis");
 
 // ─── Helpers ─────────────────────────────────────────────
+/**
+ * Draws a rounded rectangle on the canvas context.
+ * @param {CanvasRenderingContext2D} ctx - The canvas rendering context.
+ * @param {number} x - The x-coordinate of the top-left corner.
+ * @param {number} y - The y-coordinate of the top-left corner.
+ * @param {number} w - The width of the rectangle.
+ * @param {number} h - The height of the rectangle.
+ * @param {number} r - The border radius.
+ */
 function rrect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -236,7 +245,6 @@ const EMOJIS = [
   {
     name: "r_loopone",
     draw(ctx) {
-      // Same loop arrows as r_loop but with "1" in center
       ctx.strokeStyle = RED;
       ctx.lineWidth = 6;
       ctx.lineCap = "round";
@@ -265,7 +273,6 @@ const EMOJIS = [
       ctx.closePath();
       ctx.fill();
 
-      // Draw "1" in center
       ctx.font = "bold 32px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -281,16 +288,13 @@ const EMOJIS = [
       ctx.strokeStyle = RED;
       ctx.lineWidth = 4;
 
-      // Musical note stem
       rrect(ctx, 54, 28, 8, 48, 2);
       ctx.fill();
 
-      // Note head (filled circle at bottom)
       ctx.beginPath();
       ctx.ellipse(50, 76, 12, 10, -0.3, 0, Math.PI * 2);
       ctx.fill();
 
-      // Flag curves
       ctx.beginPath();
       ctx.moveTo(62, 28);
       ctx.bezierCurveTo(80, 28, 85, 40, 85, 48);
@@ -309,16 +313,13 @@ const EMOJIS = [
       ctx.lineWidth = 8;
       ctx.lineCap = "round";
 
-      // Headband arc
       ctx.beginPath();
       ctx.arc(64, 64, 35, Math.PI * 1.1, Math.PI * 1.9);
       ctx.stroke();
 
-      // Left ear cup
       rrect(ctx, 20, 60, 16, 32, 4);
       ctx.fill();
 
-      // Right ear cup
       rrect(ctx, 92, 60, 16, 32, 4);
       ctx.fill();
     },
@@ -333,7 +334,6 @@ const EMOJIS = [
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
-      // Checkmark
       ctx.beginPath();
       ctx.moveTo(30, 64);
       ctx.lineTo(52, 86);
@@ -348,7 +348,6 @@ const EMOJIS = [
       ctx.lineWidth = 10;
       ctx.lineCap = "round";
 
-      // X mark
       ctx.beginPath();
       ctx.moveTo(36, 36);
       ctx.lineTo(92, 92);
@@ -368,7 +367,6 @@ const EMOJIS = [
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
-      // Triangle outline
       ctx.beginPath();
       ctx.moveTo(64, 20);
       ctx.lineTo(110, 100);
@@ -376,7 +374,6 @@ const EMOJIS = [
       ctx.closePath();
       ctx.stroke();
 
-      // Exclamation mark
       ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.moveTo(64, 45);
@@ -395,12 +392,10 @@ const EMOJIS = [
       ctx.lineWidth = 8;
       ctx.lineCap = "round";
 
-      // Circle outline
       ctx.beginPath();
       ctx.arc(64, 64, 40, 0, Math.PI * 2);
       ctx.stroke();
 
-      // i symbol
       ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.moveTo(64, 55);
@@ -421,12 +416,10 @@ const EMOJIS = [
       ctx.lineWidth = 8;
       ctx.lineCap = "round";
 
-      // Circular arrow
       ctx.beginPath();
       ctx.arc(64, 64, 35, Math.PI * 0.7, Math.PI * 2.3);
       ctx.stroke();
 
-      // Arrow head
       ctx.beginPath();
       ctx.moveTo(92, 30);
       ctx.lineTo(92, 50);
@@ -442,12 +435,10 @@ const EMOJIS = [
       ctx.fillStyle = RED;
       ctx.lineWidth = 7;
 
-      // Head circle
       ctx.beginPath();
       ctx.arc(64, 48, 20, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Body arc (shoulders)
       ctx.beginPath();
       ctx.arc(64, 95, 30, Math.PI * 1.1, Math.PI * 1.9);
       ctx.stroke();
@@ -461,26 +452,22 @@ const EMOJIS = [
       ctx.lineWidth = 7;
       ctx.lineCap = "round";
 
-      // Clock circle
       ctx.beginPath();
       ctx.arc(64, 64, 40, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Hour hand (pointing to 3)
       ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.moveTo(64, 64);
       ctx.lineTo(84, 64);
       ctx.stroke();
 
-      // Minute hand (pointing to 12)
       ctx.lineWidth = 5;
       ctx.beginPath();
       ctx.moveTo(64, 64);
       ctx.lineTo(64, 36);
       ctx.stroke();
 
-      // Center dot
       ctx.beginPath();
       ctx.arc(64, 64, 4, 0, Math.PI * 2);
       ctx.fill();
@@ -491,12 +478,10 @@ const EMOJIS = [
   {
     name: "r_youtube",
     draw(ctx) {
-      // Red rectangle with rounded corners
       ctx.fillStyle = YOUTUBE_RED;
       rrect(ctx, 20, 40, 88, 48, 8);
       ctx.fill();
 
-      // White play triangle
       ctx.fillStyle = "#FFFFFF";
       ctx.beginPath();
       ctx.moveTo(54, 52);
@@ -509,13 +494,11 @@ const EMOJIS = [
   {
     name: "r_spotify",
     draw(ctx) {
-      // Green circle
       ctx.fillStyle = SPOTIFY_GREEN;
       ctx.beginPath();
       ctx.arc(64, 64, 50, 0, Math.PI * 2);
       ctx.fill();
 
-      // Dark arcs (Spotify logo)
       ctx.strokeStyle = "#121212";
       ctx.lineWidth = 9;
       ctx.lineCap = "round";
@@ -543,22 +526,18 @@ const EMOJIS = [
       ctx.lineWidth = 7;
       ctx.lineCap = "round";
 
-      // Microphone head (rounded rectangle)
       rrect(ctx, 52, 28, 24, 38, 12);
       ctx.stroke();
 
-      // Microphone stem
       ctx.beginPath();
       ctx.moveTo(64, 66);
       ctx.lineTo(64, 88);
       ctx.stroke();
 
-      // Microphone base (U shape)
       ctx.beginPath();
       ctx.arc(64, 74, 20, 0, Math.PI);
       ctx.stroke();
 
-      // Bottom stand
       ctx.beginPath();
       ctx.moveTo(48, 100);
       ctx.lineTo(80, 100);
@@ -573,7 +552,6 @@ const EMOJIS = [
       ctx.lineWidth = 7;
       ctx.lineCap = "round";
 
-      // Three horizontal lines (playlist items)
       [35, 55, 75].forEach((y) => {
         ctx.beginPath();
         ctx.moveTo(28, y);
@@ -581,7 +559,6 @@ const EMOJIS = [
         ctx.stroke();
       });
 
-      // Play button on the right
       ctx.beginPath();
       ctx.moveTo(88, 47);
       ctx.lineTo(88, 63);
@@ -603,17 +580,9 @@ let skipped = 0;
 for (const emoji of EMOJIS) {
   const filePath = path.join(OUTPUT, `${emoji.name}.webp`);
 
-  // Skip if file already exists (optional - comment out to force regenerate)
-  // if (fs.existsSync(filePath)) {
-  //     console.log(`  ⏭️  ${emoji.name}.webp (already exists)`);
-  //     skipped++;
-  //     continue;
-  // }
-
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext("2d");
 
-  // Transparent background (canvas default)
   ctx.clearRect(0, 0, SIZE, SIZE);
 
   emoji.draw(ctx);

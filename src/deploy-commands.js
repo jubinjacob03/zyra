@@ -1,3 +1,8 @@
+/**
+ * Command Deployment Script
+ * Registers all slash commands with the Discord API.
+ * Can deploy globally or to a specific guild based on environment variables.
+ */
 require('dotenv').config();
 const { REST, Routes } = require('discord.js');
 const fs = require('fs');

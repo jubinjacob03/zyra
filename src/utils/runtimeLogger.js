@@ -9,14 +9,35 @@ const LEVELS = {
   error: 40,
 };
 
+/**
+ * Parses a log level string into its numeric value.
+ * @param {string} value - The log level string (e.g., "info", "debug").
+ * @returns {number} The numeric log level.
+ */
 const parseLevel = (value) => {
   const key = String(value || "info").toLowerCase();
   return LEVELS[key] ?? LEVELS.info;
 };
 
+/**
+ * Pads a string to a specific size.
+ * @param {string|number} value - The value to pad.
+ * @param {number} size - The target size.
+ * @returns {string} The padded string.
+ */
 const pad = (value, size) => String(value).padEnd(size, " ");
+
+/**
+ * Gets the current timestamp formatted as a string.
+ * @returns {string} The formatted timestamp.
+ */
 const now = () => new Date().toISOString().replace("T", " ").replace("Z", "");
 
+/**
+ * Determines the log file name based on the instance label.
+ * @param {string} label - The instance label.
+ * @returns {string|null} The log file name, or null if invalid.
+ */
 const logFileNameForLabel = (label) => {
   if (label === "main") return "instance-main-log.txt";
   const match = /^instance-(\d+)/.exec(label || "");
@@ -24,6 +45,11 @@ const logFileNameForLabel = (label) => {
   return null;
 };
 
+/**
+ * Initializes the runtime logger, overriding console methods to write to a file.
+ * @param {Object} options - Logger options.
+ * @param {string} [options.label] - The instance label.
+ */
 const initRuntimeLogger = ({ label } = {}) => {
   if (global.__runtimeLoggerReady) return;
   if (process.env.RUNTIME_LOGGER_DISABLED === "1") return;

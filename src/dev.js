@@ -1,3 +1,8 @@
+/**
+ * Development Environment Manager
+ * Orchestrates the main bot and multiple instances for local development.
+ * Handles log aggregation, process management, and graceful shutdowns.
+ */
 require("dotenv").config();
 
 const path = require("path");

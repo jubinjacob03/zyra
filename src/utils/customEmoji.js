@@ -54,6 +54,10 @@ const UNICODE = {
 
 const resolved = {};
 
+/**
+ * Initializes custom emojis by scanning the client's guilds.
+ * @param {import('discord.js').Client} client - The Discord client.
+ */
 function initEmojis(client) {
   for (const guild of client.guilds.cache.values()) {
     for (const emoji of guild.emojis.cache.values()) {
@@ -72,11 +76,21 @@ function initEmojis(client) {
   if (count > 0) console.log(`✅ Loaded ${count} custom emojis`);
 }
 
+/**
+ * Gets the full string representation of an emoji (custom or unicode fallback).
+ * @param {string} key - The emoji key.
+ * @returns {string} The emoji string.
+ */
 function e(key) {
   if (resolved[key]) return resolved[key].full;
   return UNICODE[key] || "";
 }
 
+/**
+ * Gets the button-compatible object representation of an emoji.
+ * @param {string} key - The emoji key.
+ * @returns {Object|string} The emoji object or unicode string.
+ */
 function btn(key) {
   if (resolved[key])
     return {

@@ -3,6 +3,10 @@ const { errorEmbed, COLORS } = require("../utils/embed");
 const { createCompleteMusicController } = require("../utils/componentsV2");
 const { e } = require("../utils/customEmoji");
 
+/**
+ * Play command module.
+ * Handles playing songs or playlists from YouTube or Spotify.
+ */
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("play")
@@ -14,6 +18,11 @@ module.exports = {
         .setRequired(true),
     ),
 
+  /**
+   * Executes the play command.
+   * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
+   * @param {import('discord.js').Client} client - The Discord client.
+   */
   async execute(interaction, client) {
     const query = interaction.options.getString("query");
     const member = interaction.member;

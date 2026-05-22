@@ -1,6 +1,14 @@
 const http = require("node:http");
 const ytdl = require("youtube-dl-exec");
 
+/**
+ * Attaches the Music API server to the Discord client.
+ * Provides endpoints for external control and status monitoring.
+ * 
+ * @param {import('discord.js').Client} client - The Discord client instance.
+ * @param {number|null} [customPort=null] - Optional custom port to listen on.
+ * @returns {http.Server} The created HTTP server.
+ */
 module.exports = function attachMusicApi(client, customPort = null) {
   const port = customPort || parseInt(process.env.MUSIC_API_PORT) || 8000;
   const apiKey = process.env.MUSIC_API_KEY;
@@ -94,7 +102,6 @@ module.exports = function attachMusicApi(client, customPort = null) {
           username: username || "api",
         };
 
-        // Search for the song/playlist
         const result = await client.searchSong(query, fakeUser);
 
         if (!result)

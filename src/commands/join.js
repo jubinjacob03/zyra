@@ -2,11 +2,19 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("disc
 const { successEmbed, errorEmbed } = require("../utils/embed");
 const { e } = require("../utils/customEmoji");
 
+/**
+ * Join command module.
+ * Makes the bot join the user's voice channel.
+ */
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("join")
     .setDescription("Join your voice channel"),
 
+  /**
+   * Executes the join command.
+   * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
+   */
   async execute(interaction) {
     try {
       const member = interaction.member;

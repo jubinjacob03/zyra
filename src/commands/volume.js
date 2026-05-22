@@ -1,6 +1,10 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { successEmbed, errorEmbed } = require('../utils/embed');
 
+/**
+ * Volume command module.
+ * Adjusts the playback volume of the current queue.
+ */
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('volume')
@@ -12,6 +16,11 @@ module.exports = {
                 .setMinValue(0)
                 .setMaxValue(100)),
 
+    /**
+     * Executes the volume command.
+     * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
+     * @param {import('discord.js').Client} client - The Discord client.
+     */
     async execute(interaction, client) {
         const queue = client.getQueue(interaction.guildId);
 

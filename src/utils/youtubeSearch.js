@@ -128,7 +128,10 @@ class YouTubeSearchEngine {
     }
 
     /**
-     * Calculate title similarity between YouTube and Spotify titles
+     * Calculate title similarity between YouTube and Spotify titles.
+     * @param {string} youtubeTitle - The title from YouTube.
+     * @param {string} spotifyTitle - The title from Spotify.
+     * @returns {number} A similarity score between 0 and 1.
      */
     static calculateTitleSimilarity(youtubeTitle, spotifyTitle) {
         const normalize = str => str.toLowerCase()
@@ -174,7 +177,10 @@ class YouTubeSearchEngine {
     }
 
     /**
-     * Calculate artist similarity in YouTube title
+     * Calculate artist similarity in YouTube title.
+     * @param {string} youtubeTitle - The title from YouTube.
+     * @param {string} artistNames - The artist names from Spotify.
+     * @returns {number} A similarity score between 0 and 1.
      */
     static calculateArtistSimilarity(youtubeTitle, artistNames) {
         const ytTitle = youtubeTitle.toLowerCase();
@@ -207,7 +213,10 @@ class YouTubeSearchEngine {
     }
 
     /**
-     * Calculate duration similarity with tolerance
+     * Calculate duration similarity with tolerance.
+     * @param {number} youtubeDuration - The duration from YouTube in seconds.
+     * @param {number} spotifyDuration - The duration from Spotify in seconds.
+     * @returns {number} A similarity score between 0 and 1.
      */
     static calculateDurationSimilarity(youtubeDuration, spotifyDuration) {
         if (!youtubeDuration || !spotifyDuration) return 0.5;
@@ -227,8 +236,10 @@ class YouTubeSearchEngine {
     }
 
     /**
-     * Calculate channel credibility score
-     * Official channels and known music channels get higher scores
+     * Calculate channel credibility score.
+     * Official channels and known music channels get higher scores.
+     * @param {string} channelName - The name of the YouTube channel.
+     * @returns {number} A credibility score between 0 and 1.
      */
     static calculateChannelScore(channelName) {
         if (!channelName) return 0;
@@ -256,7 +267,9 @@ class YouTubeSearchEngine {
     }
 
     /**
-     * Clean and format track title for better matching
+     * Clean and format track title for better matching.
+     * @param {string} title - The original track title.
+     * @returns {string} The cleaned track title.
      */
     static cleanTrackTitle(title) {
         return title

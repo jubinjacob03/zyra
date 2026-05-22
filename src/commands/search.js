@@ -1,7 +1,12 @@
 const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, SectionBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
 const { errorEmbed } = require('../utils/embed');
+const { e } = require('../utils/customEmoji');
 const play = require('play-dl');
 
+/**
+ * Search command module.
+ * Searches for a song and displays a selection menu.
+ */
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('search')
@@ -11,6 +16,11 @@ module.exports = {
                 .setDescription('Song to search for')
                 .setRequired(true)),
 
+    /**
+     * Executes the search command.
+     * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
+     * @param {import('discord.js').Client} client - The Discord client.
+     */
     async execute(interaction, client) {
         const query = interaction.options.getString('query');
         const member = interaction.member;
@@ -18,23 +28,23 @@ module.exports = {
 
         if (!voiceChannel) {
             const container = new ContainerBuilder().setAccentColor(0xff4444);
-            container.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ You need to be in a voice channel!'));
+            container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} You need to be in a voice channel!`));
             return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 | 64 });
         }
 
-        await interaction.reply({ content: '🔍 Searching...' });
+        await interaction.reply({ content: `${e("INFO")} Searching...` });
 
         try {
             const results = await play.search(query, { limit: 10 });
 
             if (!results.length) {
                 const container = new ContainerBuilder().setAccentColor(0xff4444);
-                container.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ No results found.'));
+                container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} No results found.`));
                 return interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
             }
 
             const container = new ContainerBuilder().setAccentColor(0x9B59B6);
-            let description = `### 🔍 Search Results\n\n`;
+            let description = `### ${e("INFO")} Search Results\n\n`;
             description += results.map((r, i) => `**${i + 1}.** [${r.title}](${r.url}) - \`${client.formatDuration(r.durationInSec)}\``).join('\n');
             description += `\n\n*Select a song from the dropdown below*`;
 
@@ -83,7 +93,7 @@ module.exports = {
                     await interaction.deleteReply();
                 } catch (error) {
                     const errContainer = new ContainerBuilder().setAccentColor(0xff4444);
-                    errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`❌ Failed to play: ${error.message}`));
+                    errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} Failed to play: ${error.message}`));
                     await interaction.editReply({ components: [errContainer], flags: MessageFlags.IsComponentsV2 });
                 }
             });
@@ -91,14 +101,14 @@ module.exports = {
             collector.on('end', async (collected, reason) => {
                 if (reason === 'time') {
                     const timeoutContainer = new ContainerBuilder().setAccentColor(0xffbb33);
-                    timeoutContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚠️ Search timed out.`));
+                    timeoutContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("WARNING")} Search timed out.`));
                     await interaction.editReply({ components: [timeoutContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
                 }
             });
         } catch (error) {
             console.error('Search error:', error);
             const errContainer = new ContainerBuilder().setAccentColor(0xff4444);
-            errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ Search failed.'));
+            errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} Search failed.`));
             await interaction.editReply({ content: null, components: [errContainer], flags: MessageFlags.IsComponentsV2 });
         }
     },

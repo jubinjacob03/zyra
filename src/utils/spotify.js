@@ -14,8 +14,9 @@ class SpotifyAPI {
     }
 
     /**
-     * Authenticate using Client Credentials Flow
-     * No user authorization required - only for public data
+     * Authenticate using Client Credentials Flow.
+     * No user authorization required - only for public data.
+     * @returns {Promise<void>}
      */
     async authenticate() {
         if (this.isAuthenticating) {
@@ -50,7 +51,8 @@ class SpotifyAPI {
     }
 
     /**
-     * Ensure we have a valid access token
+     * Ensure we have a valid access token.
+     * @returns {Promise<void>}
      */
     async ensureValidToken() {
         if (!this.accessToken || Date.now() >= this.tokenExpiry) {
@@ -59,7 +61,10 @@ class SpotifyAPI {
     }
 
     /**
-     * Extract Spotify ID from various URL formats
+     * Extract Spotify ID from various URL formats.
+     * @param {string} url - The Spotify URL.
+     * @param {string} [type='track'] - The type of ID to extract ('track', 'playlist', 'album').
+     * @returns {string|null} The extracted ID, or null if not found.
      */
     static extractSpotifyId(url, type = 'track') {
         const patterns = {
@@ -73,7 +78,10 @@ class SpotifyAPI {
     }
 
     /**
-     * Get track metadata from Spotify
+     * Get track metadata from Spotify.
+     * @param {string} trackId - The Spotify track ID.
+     * @returns {Promise<Object>} The track metadata.
+     * @throws {Error} If the track is not found or the request fails.
      */
     async getTrack(trackId) {
         await this.ensureValidToken();
@@ -93,8 +101,11 @@ class SpotifyAPI {
     }
 
     /**
-     * Get playlist tracks with pagination support
-     * Handles large playlists efficiently
+     * Get playlist tracks with pagination support.
+     * Handles large playlists efficiently.
+     * @param {string} playlistId - The Spotify playlist ID.
+     * @returns {Promise<{tracks: Array, playlistInfo: Object}>} The playlist tracks and info.
+     * @throws {Error} If the playlist is not found or the request fails.
      */
     async getPlaylistTracks(playlistId) {
         await this.ensureValidToken();
@@ -171,7 +182,10 @@ class SpotifyAPI {
     }
 
     /**
-     * Get album tracks
+     * Get album tracks.
+     * @param {string} albumId - The Spotify album ID.
+     * @returns {Promise<{tracks: Array, albumInfo: Object}>} The album tracks and info.
+     * @throws {Error} If the album is not found or the request fails.
      */
     async getAlbumTracks(albumId) {
         await this.ensureValidToken();
@@ -203,7 +217,11 @@ class SpotifyAPI {
     }
 
     /**
-     * Search Spotify for tracks
+     * Search Spotify for tracks.
+     * @param {string} query - The search query.
+     * @param {number} [limit=10] - The maximum number of results to return.
+     * @returns {Promise<Array>} The search results.
+     * @throws {Error} If the search fails.
      */
     async searchTracks(query, limit = 10) {
         await this.ensureValidToken();

@@ -1,3 +1,7 @@
+/**
+ * PM2 Ecosystem Configuration
+ * Defines the production deployment setup for the bot and its associated services.
+ */
 module.exports = {
   apps: [
     {

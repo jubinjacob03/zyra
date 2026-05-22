@@ -1,6 +1,10 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { successEmbed, errorEmbed } = require('../utils/embed');
 
+/**
+ * Remove command module.
+ * Removes a specific song from the queue by its position.
+ */
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('remove')
@@ -11,6 +15,11 @@ module.exports = {
                 .setRequired(true)
                 .setMinValue(1)),
 
+    /**
+     * Executes the remove command.
+     * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
+     * @param {import('discord.js').Client} client - The Discord client.
+     */
     async execute(interaction, client) {
         const queue = client.getQueue(interaction.guildId);
 

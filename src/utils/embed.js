@@ -11,6 +11,11 @@ const {
 } = require("discord.js");
 const { e, btn } = require("./customEmoji");
 
+/**
+ * Adds a standard footer to a V2 container.
+ * @param {import('discord.js').ContainerBuilder} container - The container to add the footer to.
+ * @returns {import('discord.js').ContainerBuilder} The modified container.
+ */
 function addFooter(container) {
   const ts = Math.floor(Date.now() / 1000);
   container.addSeparatorComponents(
@@ -70,7 +75,11 @@ const ICONS = {
 };
 
 /**
- * Create a modern progress bar using Unicode characters
+ * Creates a modern progress bar using Unicode characters.
+ * @param {number} current - The current progress value.
+ * @param {number} total - The total value.
+ * @param {number} [length=20] - The length of the progress bar.
+ * @returns {string} The progress bar string.
  */
 function createProgressBar(current, total, length = 20) {
   if (!current || !total || total === 0) return "▬".repeat(length);
@@ -86,7 +95,9 @@ function createProgressBar(current, total, length = 20) {
 }
 
 /**
- * Format duration in MM:SS or HH:MM:SS format
+ * Formats a duration in seconds to a readable string (MM:SS or HH:MM:SS).
+ * @param {number} seconds - The duration in seconds.
+ * @returns {string} The formatted time string.
  */
 function formatDuration(seconds) {
   if (!seconds || isNaN(seconds)) return "0:00";
@@ -100,8 +111,10 @@ function formatDuration(seconds) {
 }
 
 /**
- * Create a beautiful, Material Design inspired music panel embed
- * This will be the main interactive controller within Discord
+ * Creates a beautiful, Material Design inspired music panel embed.
+ * This will be the main interactive controller within Discord.
+ * @param {Object} queue - The music queue object.
+ * @returns {Object|null} The message payload containing the components and flags, or null if no song is playing.
  */
 function createMusicPanel(queue) {
   const song = queue.songs[0];
@@ -198,7 +211,11 @@ function createMusicPanel(queue) {
 }
 
 /**
- * Create a clean "Now Playing" notification embed
+ * Creates a clean "Now Playing" notification embed.
+ * @param {Object} song - The song object.
+ * @param {Object} queue - The music queue object.
+ * @param {string} [type="playing"] - The type of notification ("playing" or "added").
+ * @returns {Object} The message payload containing the components and flags.
  */
 function createNowPlayingEmbed(song, queue, type = "playing") {
   const isAdded = type === "added";
@@ -232,7 +249,10 @@ function createNowPlayingEmbed(song, queue, type = "playing") {
 }
 
 /**
- * Create success embed with Material Design styling
+ * Creates a success embed with Material Design styling.
+ * @param {string} description - The success message description.
+ * @param {string|null} [title=null] - An optional title for the embed.
+ * @returns {Object} The message payload containing the components and flags.
  */
 function successEmbed(description, title = null) {
   const container = new ContainerBuilder().setAccentColor(COLORS.SUCCESS);
@@ -242,7 +262,10 @@ function successEmbed(description, title = null) {
 }
 
 /**
- * Create error embed with Material Design styling
+ * Creates an error embed with Material Design styling.
+ * @param {string} description - The error message description.
+ * @param {string|null} [title=null] - An optional title for the embed.
+ * @returns {Object} The message payload containing the components and flags.
  */
 function errorEmbed(description, title = null) {
   const container = new ContainerBuilder().setAccentColor(COLORS.ERROR);

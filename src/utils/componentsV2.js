@@ -15,6 +15,11 @@ const COLORS = {
   SPOTIFY: 0x1db954,
 };
 
+/**
+ * Formats a duration in seconds to a readable string (MM:SS or HH:MM:SS).
+ * @param {number} seconds - The duration in seconds.
+ * @returns {string} The formatted time string.
+ */
 function formatTime(seconds) {
   if (!seconds || isNaN(seconds)) return "0:00";
   const hrs = Math.floor(seconds / 3600);
@@ -25,6 +30,13 @@ function formatTime(seconds) {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+/**
+ * Creates a visual progress bar string.
+ * @param {number} current - The current progress value.
+ * @param {number} total - The total value.
+ * @param {number} [length=18] - The length of the progress bar.
+ * @returns {string} The progress bar string.
+ */
 function createProgressBar(current, total, length = 18) {
   if (!total || total === 0) return "━".repeat(length);
   const progress = Math.min((current || 0) / total, 1);
@@ -32,6 +44,11 @@ function createProgressBar(current, total, length = 18) {
   return "━".repeat(pos) + "●" + "━".repeat(length - pos - 1);
 }
 
+/**
+ * Creates a V2 container for the currently playing song.
+ * @param {Object} queue - The music queue object.
+ * @returns {import('discord.js').ContainerBuilder|null} The constructed container, or null if no song is playing.
+ */
 function createNowPlayingEmbed(queue) {
   const song = queue?.songs?.[0];
   if (!song) return null;
@@ -68,6 +85,11 @@ function createNowPlayingEmbed(queue) {
   return container;
 }
 
+/**
+ * Creates the control buttons for the music panel.
+ * @param {Object} queue - The music queue object.
+ * @returns {import('discord.js').ActionRowBuilder[]} An array of action rows containing the buttons.
+ */
 function createControlButtons(queue) {
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -116,6 +138,11 @@ function createControlButtons(queue) {
   return [row1, row2];
 }
 
+/**
+ * Creates the complete music controller payload with V2 components.
+ * @param {Object} queue - The music queue object.
+ * @returns {Object|null} The message payload containing the components and flags, or null if no song is playing.
+ */
 function createCompleteMusicController(queue) {
   const container = createNowPlayingEmbed(queue);
   if (!container) return null;

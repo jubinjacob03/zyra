@@ -1,9 +1,8 @@
-version: "3.8"
-
 services:
-  remani-bot:
+  zyra-bot:
+    image: zyra-bot
     build: .
-    container_name: remani-discord-bot
+    container_name: zyra-bot
     restart: unless-stopped
     env_file:
       - .env

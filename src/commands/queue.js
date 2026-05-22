@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { queueEmbed, errorEmbed } = require('../utils/embed');
 
 module.exports = {
@@ -14,11 +14,11 @@ module.exports = {
         const queue = client.getQueue(interaction.guildId);
 
         if (!queue || !queue.songs.length) {
-            return interaction.reply({ embeds: [errorEmbed('The queue is empty.')], flags: 64 });
+            return interaction.reply({ ...errorEmbed('The queue is empty.'), flags: 64 });
         }
 
         const page = (interaction.options.getInteger('page') || 1) - 1;
-        const embed = queueEmbed(queue, page);
-        await interaction.reply({ embeds: [embed] });
+        const container = queueEmbed(queue, page);
+        await interaction.reply({ ...container });
     },
 };

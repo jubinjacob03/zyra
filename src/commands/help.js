@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, SectionBuilder, MessageFlags } = require("discord.js");
 const { e } = require("../utils/customEmoji");
 
 module.exports = {
@@ -28,20 +28,19 @@ module.exports = {
       { name: "/filter", desc: "Apply audio filters" },
     ];
 
-    const embed = new EmbedBuilder()
-      .setColor("#9B59B6")
-      .setTitle(`${e("MUSIC")} Remani Music Bot`)
-      .setDescription("Your premium music experience")
-      .addFields(
-        commands.map((cmd) => ({
-          name: cmd.name,
-          value: cmd.desc,
-          inline: true,
-        })),
-      )
-      .setFooter({ text: "Made with ❤️ by God BlazXx" })
-      .setTimestamp();
+    const container = new ContainerBuilder().setAccentColor(0x9B59B6);
+    
+    let description = `### ${e("MUSIC")} Remani Music Bot\nYour premium music experience\n\n`;
+    
+    // Group commands into columns/lines for better readability
+    commands.forEach(cmd => {
+      description += `**${cmd.name}** - ${cmd.desc}\n`;
+    });
 
-    await interaction.reply({ embeds: [embed] });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(description)
+    );
+
+    await interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 });
   },
 };

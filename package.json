@@ -43,6 +43,9 @@
     "@napi-rs/canvas": "^0.1.96",
     "nodemon": "^3.1.7"
   },
+  "nodemonConfig": {
+    "ignore": ["cache/*", "logs/*", "cookies.txt"]
+  },
   "engines": {
     "node": ">=22.0.0"
   }

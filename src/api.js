@@ -351,6 +351,12 @@ module.exports = function attachMusicApi(client, customPort = null) {
 
   server.listen(port, "0.0.0.0", () => {
     console.log(`🎵 Remani Music API listening on port ${port}`);
+  }).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${port} is already in use. API server could not start.`);
+    } else {
+      console.error(`❌ API server error:`, err);
+    }
   });
 
   return server;

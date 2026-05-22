@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { UNICODE } = require("../utils/customEmoji");
 
 module.exports = {
@@ -10,7 +10,7 @@ module.exports = {
     if (!guild) {
       return interaction.reply({
         content: "This command only works in servers",
-        ephemeral: true,
+        flags: 64,
       });
     }
 
@@ -61,7 +61,7 @@ module.exports = {
         `Names: ${rEmojis.slice(0, 10).join(", ")}${rEmojis.length > 10 ? "..." : ""}\n\n` +
         `**Bot Status:** ${customCount}/24 custom, ${unicodeCount}/24 fallback\n\n` +
         loaded.join("\n"),
-      ephemeral: true,
+      flags: 64,
     });
   },
 };

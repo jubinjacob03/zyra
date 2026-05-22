@@ -1,4 +1,4 @@
-const { EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require("discord.js");
+const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags } = require("discord.js");
 const { getPlayPanel, setPlayPanel } = require("./panelStore");
 
 const isPanelButton = (customId) => {
@@ -41,16 +41,32 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
 
   const bullet = "\u2022";
 
-  const helpEmbed = new EmbedBuilder()
-    .setColor(0x00ffff)
-    .setTitle(`Music Player`)
-    .setDescription(
-      `Click the button below to play music in this VC !\n\n` +
-        `**Supports:**\n` +
-        `${bullet} Song names\n` +
-        `${bullet} YouTube links\n` +
-        `${bullet} Spotify links (tracks & playlists)`,
+  const container = new ContainerBuilder().setAccentColor(0x00ffff);
+  const { SectionBuilder, ThumbnailBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize } = require("discord.js");
+  
+  const section = new SectionBuilder()
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### 🎵 Music Player\nClick the button below to play music in this VC!\n-# \u200B\n**Supports:**`
+      )
     );
+    
+  if (channel.client?.user) {
+    section.setThumbnailAccessory(new ThumbnailBuilder().setURL(channel.client.user.displayAvatarURL({ extension: 'png' })));
+  }
+  container.addSectionComponents(section);
+  
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
+  
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `${bullet} Song names\n` +
+      `${bullet} YouTube links\n` +
+      `${bullet} Spotify links (tracks & playlists)`
+    )
+  );
 
   const playButton = new ButtonBuilder()
     .setCustomId("play_song")
@@ -58,7 +74,12 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
     .setStyle(ButtonStyle.Primary);
 
   const row = new ActionRowBuilder().addComponents(playButton);
-  const payload = { embeds: [helpEmbed], components: [row] };
+  container.addActionRowComponents(row);
+
+  const { addFooter } = require("./embed");
+  addFooter(container);
+
+  const payload = { components: [container], flags: MessageFlags.IsComponentsV2 };
 
   const storedId = getPlayPanel(channel.id);
   if (storedId && channel.messages?.fetch) {

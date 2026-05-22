@@ -2,13 +2,16 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SectionBuilder,
+  MessageFlags,
 } = require("discord.js");
 const { e, btn } = require("./customEmoji");
 
 const COLORS = {
-  PLAYING: 0x0e0e12,
-  PAUSED: 0x2c2c34,
+  PLAYING: 0xff0000,
+  PAUSED: 0xaa0000,
   SPOTIFY: 0x1db954,
 };
 
@@ -50,13 +53,19 @@ function createNowPlayingEmbed(queue) {
 
   const description = `${titleIcon} **${song.name}**\n\nby **${song.author || "Unknown Artist"}**\n\n${platformIcon} ${platformName} • ${duration} • ${authorIcon} @${requester}`;
 
-  const embed = new EmbedBuilder().setColor(color).setDescription(description);
-
+  const container = new ContainerBuilder().setAccentColor(color);
+  
   if (song.thumbnail && typeof song.thumbnail === "string") {
-    embed.setThumbnail(song.thumbnail);
+    const { ThumbnailBuilder } = require("discord.js");
+    const section = new SectionBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(description))
+      .setThumbnailAccessory(new ThumbnailBuilder().setURL(song.thumbnail));
+    container.addSectionComponents(section);
+  } else {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(description));
   }
 
-  return embed;
+  return container;
 }
 
 function createControlButtons(queue) {
@@ -73,8 +82,7 @@ function createControlButtons(queue) {
     new ButtonBuilder()
       .setCustomId("music_pause")
       .setEmoji(queue?.paused ? btn("PLAY") : btn("PAUSE"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel(queue?.paused ? "Play" : "Pause"),
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_skip")
       .setEmoji(btn("SKIP"))
@@ -90,32 +98,40 @@ function createControlButtons(queue) {
     new ButtonBuilder()
       .setCustomId("music_voldown")
       .setEmoji(btn("VOLDOWN"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Vol −"),
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_volup")
       .setEmoji(btn("VOLUP"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Vol +"),
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_loop")
       .setEmoji(loopEmoji)
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Loop"),
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_queue")
       .setEmoji(btn("QUEUE"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Queue"),
+      .setStyle(ButtonStyle.Secondary),
   );
 
   return [row1, row2];
 }
 
 function createCompleteMusicController(queue) {
-  const embed = createNowPlayingEmbed(queue);
-  if (!embed) return null;
-  return { embeds: [embed], components: createControlButtons(queue) };
+  const container = createNowPlayingEmbed(queue);
+  if (!container) return null;
+  
+  const { SeparatorBuilder, SeparatorSpacingSize, MessageFlags } = require("discord.js");
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large)
+  );
+  
+  const buttons = createControlButtons(queue);
+  buttons.forEach(row => container.addActionRowComponents(row));
+  
+  const { addFooter } = require("./embed");
+  addFooter(container);
+
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 module.exports = {

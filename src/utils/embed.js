@@ -1,25 +1,40 @@
 const {
-  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SectionBuilder,
+  MessageFlags,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
 } = require("discord.js");
 const { e, btn } = require("./customEmoji");
 
+function addFooter(container) {
+  const ts = Math.floor(Date.now() / 1000);
+  container.addSeparatorComponents(
+    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+  );
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`-# Shantha · <t:${ts}:f>`)
+  );
+  return container;
+}
+
 const COLORS = {
-  PRIMARY: 0x000000,
-  SUCCESS: 0x00c851,
-  WARNING: 0xffbb33,
-  ERROR: 0xff4444,
-  INFO: 0x33b5e5,
-  MUSIC: 0x1a1a1a,
+  PRIMARY: 0xff0000,
+  SUCCESS: 0x00ffff,
+  WARNING: 0x00ffff,
+  ERROR: 0xff0000,
+  INFO: 0x00ffff,
+  MUSIC: 0x00ffff,
   SPOTIFY: 0x1db954,
   YOUTUBE: 0xff0000,
-  ACCENT: 0x6200ea,
+  ACCENT: 0x00ffff,
   MUTED: 0x757575,
 };
 
-// Use custom emojis with Unicode fallbacks
 const ICONS = {
   PLAY: e("PLAY"),
   PAUSE: e("PAUSE"),
@@ -105,106 +120,81 @@ function createMusicPanel(queue) {
         : ICONS.VOLUME_LOW;
 
   const progressBar = createProgressBar(0, song.duration || 100, 15);
+  const isSpotify = song.spotifyData?.isSpotify;
+  const color = isSpotify ? COLORS.SPOTIFY : COLORS.PRIMARY;
+  const platformIcon = isSpotify ? ICONS.SPOTIFY : ICONS.LIVE;
+  const platformName = isSpotify ? "SPOTIFY" : "NOW PLAYING";
 
-  const embed = new EmbedBuilder()
-    .setColor(song.spotifyData?.isSpotify ? COLORS.SPOTIFY : COLORS.PRIMARY)
-    .setAuthor({
-      name: `${ICONS.LIVE} NOW PLAYING`,
-      iconURL: song.user?.avatarURL?.(),
-    })
-    .setTitle(`${song.name}`)
-    .setURL(song.url)
-    .setDescription(
-      `**${song.author || "Unknown Artist"}**\n\n` +
-        `${ICONS.TIME} \`${formatDuration(0)} ${progressBar} ${song.formattedDuration}\`\n` +
-        `${ICONS.USER} ${song.user?.displayName || song.user?.username || "Unknown"}\n` +
-        `${volumeIcon} \`${queue.volume}%\` ${ICONS.DOT} ${loopModes[queue.repeatMode]} ${ICONS.DOT} \`${queue.songs.length} songs\``,
-    )
-    .addFields({
-      name: `${ICONS.QUEUE} Queue Preview`,
-      value:
-        queue.songs
-          .slice(1, 4)
-          .map((s, i) => `\`${i + 2}.\` **${s.name}** - *${s.author}*`)
-          .join("\n") || "*No upcoming songs*",
-      inline: false,
-    })
-    .setFooter({
-      text: `Remani Music ${ICONS.DOT} Live Controller ${song.spotifyData?.isSpotify ? ICONS.SPOTIFY : ICONS.YOUTUBE}`,
-    })
-    .setTimestamp();
+  const container = new ContainerBuilder().setAccentColor(color);
+  
+  let description = `### ${platformIcon} ${platformName}\n**[${song.name}](${song.url})**\n**${song.author || "Unknown Artist"}**\n\n`;
+  description += `${ICONS.TIME} \`${formatDuration(0)} ${progressBar} ${song.formattedDuration}\`\n`;
+  description += `${ICONS.USER} ${song.user?.displayName || song.user?.username || "Unknown"}\n`;
+  description += `${volumeIcon} \`${queue.volume}%\` ${ICONS.DOT} ${loopModes[queue.repeatMode]} ${ICONS.DOT} \`${queue.songs.length} songs\``;
 
   if (song.thumbnail && typeof song.thumbnail === "string") {
-    embed.setThumbnail(song.thumbnail);
-  }
-
-  if (song.spotifyData?.isSpotify) {
-    embed.setAuthor({
-      name: `${ICONS.SPOTIFY} SPOTIFY ${ICONS.ARROW} NOW PLAYING`,
-      iconURL: song.user?.avatarURL?.(),
-    });
+    const { ThumbnailBuilder } = require("discord.js");
+    const section = new SectionBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(description))
+      .setThumbnailAccessory(new ThumbnailBuilder().setURL(song.thumbnail));
+    container.addSectionComponents(section);
+  } else {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(description));
   }
 
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("music_shuffle")
       .setEmoji(btn("SHUFFLE"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Shuffle"),
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_previous")
       .setEmoji(btn("PREVIOUS"))
       .setStyle(ButtonStyle.Secondary)
-      .setLabel("Previous")
       .setDisabled(true),
     new ButtonBuilder()
       .setCustomId("music_pause")
       .setEmoji(queue.paused ? btn("PLAY") : btn("PAUSE"))
-      .setStyle(queue.paused ? ButtonStyle.Success : ButtonStyle.Primary)
-      .setLabel(queue.paused ? "Play" : "Pause"),
+      .setStyle(queue.paused ? ButtonStyle.Success : ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("music_skip")
       .setEmoji(btn("SKIP"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Skip"),
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_stop")
       .setEmoji(btn("STOP"))
-      .setStyle(ButtonStyle.Danger)
-      .setLabel("Stop"),
+      .setStyle(ButtonStyle.Danger),
   );
 
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("music_voldown")
       .setEmoji(btn("VOLDOWN"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Vol -"),
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_volup")
       .setEmoji(btn("VOLUP"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Vol +"),
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_loop")
       .setEmoji(btn("LOOP"))
       .setStyle(
         queue.repeatMode > 0 ? ButtonStyle.Success : ButtonStyle.Secondary,
-      )
-      .setLabel("Loop"),
+      ),
     new ButtonBuilder()
       .setCustomId("music_queue")
       .setEmoji(btn("QUEUE"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Queue"),
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_refresh")
       .setEmoji(btn("REFRESH"))
-      .setStyle(ButtonStyle.Secondary)
-      .setLabel("Refresh"),
+      .setStyle(ButtonStyle.Secondary),
   );
 
-  return { embed, components: [row1, row2] };
+  container.addActionRowComponents(row1);
+  container.addActionRowComponents(row2);
+
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 /**
@@ -221,109 +211,64 @@ function createNowPlayingEmbed(song, queue, type = "playing") {
       ? COLORS.SPOTIFY
       : COLORS.PRIMARY;
 
-  const embed = new EmbedBuilder()
-    .setColor(color)
-    .setTitle(title)
-    .setDescription(
-      `**[${song.name}](${song.url})**\n*${song.author || "Unknown Artist"}*`,
-    )
-    .addFields(
-      {
-        name: `${ICONS.TIME} Duration`,
-        value: `\`${song.formattedDuration}\``,
-        inline: true,
-      },
-      {
-        name: `${ICONS.USER} Requested`,
-        value: `${song.user}`,
-        inline: true,
-      },
-      {
-        name: `${ICONS.QUEUE} Position`,
-        value: `\`#${queue.songs.length}\``,
-        inline: true,
-      },
-    )
-    .setFooter({
-      text: song.spotifyData?.isSpotify
-        ? `Converted from Spotify ${ICONS.SPOTIFY}`
-        : `YouTube Audio ${ICONS.YOUTUBE}`,
-    })
-    .setTimestamp();
+  const container = new ContainerBuilder().setAccentColor(color);
+  
+  let description = `### ${title}\n**[${song.name}](${song.url})**\n*${song.author || "Unknown Artist"}*\n\n`;
+  description += `**${ICONS.TIME} Duration:** \`${song.formattedDuration}\`\n`;
+  description += `**${ICONS.USER} Requested:** ${song.user}\n`;
+  description += `**${ICONS.QUEUE} Position:** \`#${queue.songs.length}\``;
 
   if (song.thumbnail && typeof song.thumbnail === "string") {
-    embed.setThumbnail(song.thumbnail);
+    const { ThumbnailBuilder } = require("discord.js");
+    const section = new SectionBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(description))
+      .setThumbnailAccessory(new ThumbnailBuilder().setURL(song.thumbnail));
+    container.addSectionComponents(section);
+  } else {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(description));
   }
 
-  return embed;
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 /**
  * Create success embed with Material Design styling
  */
 function successEmbed(description, title = null) {
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.SUCCESS)
-    .setDescription(`${ICONS.SUCCESS} ${description}`)
-    .setTimestamp();
-
-  if (title) {
-    embed.setTitle(`${ICONS.SUCCESS} ${title}`);
-    embed.setDescription(description);
-  }
-
-  return embed;
+  const container = new ContainerBuilder().setAccentColor(COLORS.SUCCESS);
+  const content = title ? `### ${ICONS.SUCCESS} ${title}\n${description}` : `${ICONS.SUCCESS} ${description}`;
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 /**
  * Create error embed with Material Design styling
  */
 function errorEmbed(description, title = null) {
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.ERROR)
-    .setDescription(`${ICONS.ERROR} ${description}`)
-    .setTimestamp();
-
-  if (title) {
-    embed.setTitle(`${ICONS.ERROR} ${title}`);
-    embed.setDescription(description);
-  }
-
-  return embed;
+  const container = new ContainerBuilder().setAccentColor(COLORS.ERROR);
+  const content = title ? `### ${ICONS.ERROR} ${title}\n${description}` : `${ICONS.ERROR} ${description}`;
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 /**
  * Create info embed with Material Design styling
  */
 function infoEmbed(description, title = null) {
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.INFO)
-    .setDescription(`${ICONS.INFO} ${description}`)
-    .setTimestamp();
-
-  if (title) {
-    embed.setTitle(`${ICONS.INFO} ${title}`);
-    embed.setDescription(description);
-  }
-
-  return embed;
+  const container = new ContainerBuilder().setAccentColor(COLORS.INFO);
+  const content = title ? `### ${ICONS.INFO} ${title}\n${description}` : `${ICONS.INFO} ${description}`;
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 /**
  * Create warning embed with Material Design styling
  */
 function warningEmbed(description, title = null) {
-  const embed = new EmbedBuilder()
-    .setColor(COLORS.WARNING)
-    .setDescription(`${ICONS.WARNING} ${description}`)
-    .setTimestamp();
-
-  if (title) {
-    embed.setTitle(`${ICONS.WARNING} ${title}`);
-    embed.setDescription(description);
-  }
-
-  return embed;
+  const container = new ContainerBuilder().setAccentColor(COLORS.WARNING);
+  const content = title ? `### ${ICONS.WARNING} ${title}\n${description}` : `${ICONS.WARNING} ${description}`;
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 /**
@@ -362,19 +307,11 @@ function queueEmbed(queue, page = 0) {
     0,
   );
 
-  return new EmbedBuilder()
-    .setColor(COLORS.MUSIC)
-    .setTitle(`${ICONS.QUEUE} Music Queue`)
-    .setDescription(description)
-    .addFields({
-      name: `${ICONS.INFO} Queue Stats`,
-      value: `**Songs:** \`${queue.songs.length}\` ${ICONS.DOT} **Duration:** \`${formatDuration(totalDuration)}\` ${ICONS.DOT} **Page:** \`${page + 1}/${totalPages}\``,
-      inline: false,
-    })
-    .setFooter({
-      text: `Remani Music ${ICONS.DOT} Page ${page + 1} of ${totalPages}`,
-    })
-    .setTimestamp();
+  const container = new ContainerBuilder().setAccentColor(COLORS.MUSIC);
+  const content = `### ${ICONS.QUEUE} Music Queue\n${description}\n\n**${ICONS.INFO} Queue Stats**\n**Songs:** \`${queue.songs.length}\` ${ICONS.DOT} **Duration:** \`${formatDuration(totalDuration)}\` ${ICONS.DOT} **Page:** \`${page + 1}/${totalPages}\``;
+  
+  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 /**
@@ -385,32 +322,23 @@ function playlistEmbed(playlist, isSpotify = false) {
   const icon = isSpotify ? ICONS.SPOTIFY : ICONS.YOUTUBE;
   const platform = isSpotify ? "Spotify" : "YouTube";
 
-  return new EmbedBuilder()
-    .setColor(color)
-    .setTitle(`${ICONS.SUCCESS} Added ${platform} Playlist`)
-    .setDescription(`**[${playlist.name}](${playlist.url})**`)
-    .addFields(
-      {
-        name: `${ICONS.MUSIC_NOTE} Songs`,
-        value: `\`${playlist.songs.length}\``,
-        inline: true,
-      },
-      {
-        name: `${ICONS.USER} Requested by`,
-        value: `${playlist.user}`,
-        inline: true,
-      },
-      {
-        name: `${icon} Platform`,
-        value: `\`${platform}\``,
-        inline: true,
-      },
-    )
-    .setThumbnail(playlist.thumbnail)
-    .setFooter({
-      text: `${platform} Playlist ${ICONS.DOT} ${playlist.songs.length} tracks added`,
-    })
-    .setTimestamp();
+  const container = new ContainerBuilder().setAccentColor(color);
+  
+  let description = `### ${ICONS.SUCCESS} Added ${platform} Playlist\n**[${playlist.name}](${playlist.url})**\n\n`;
+  description += `**${ICONS.MUSIC_NOTE} Songs:** \`${playlist.songs.length}\`\n`;
+  description += `**${ICONS.USER} Requested by:** ${playlist.user}\n`;
+  description += `**${icon} Platform:** \`${platform}\``;
+
+  if (playlist.thumbnail && typeof playlist.thumbnail === "string") {
+    const { ThumbnailBuilder } = require("discord.js");
+    const section = new SectionBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(description))
+      .setThumbnailAccessory(new ThumbnailBuilder().setURL(playlist.thumbnail));
+    container.addSectionComponents(section);
+  } else {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(description));
+  }
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 module.exports = {
@@ -426,4 +354,5 @@ module.exports = {
   playlistEmbed,
   formatDuration,
   createProgressBar,
+  addFooter,
 };

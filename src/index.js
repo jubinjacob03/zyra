@@ -34,6 +34,9 @@ process.on("unhandledRejection", (reason) => {
     if (reason.command && reason.command.includes("yt-dlp")) {
       return;
     }
+    if (reason.message && reason.message.includes("Cannot perform IP discovery - socket closed")) {
+      return;
+    }
     if (reason.code === 10008 || reason.code === 10062) {
       console.log(
         `Discord API: ${reason.code === 10008 ? "Message deleted" : "Interaction expired"}`,
@@ -188,7 +191,10 @@ class MusicQueue {
         console.log("ℹ️ Message suppressed (no interaction):", content);
       }
     } else {
-      await this.textChannel.send(content).catch(console.error);
+      const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+      const container = new ContainerBuilder().setAccentColor(0x00ffff);
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+      await this.textChannel.send({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
     }
   }
 
@@ -278,7 +284,9 @@ class MusicQueue {
       const ytdlpProcess = youtubedl.exec(song.url, ytdlpOpts);
       this.currentProcess = ytdlpProcess;
 
-      ytdlpProcess.stderr?.on("data", () => {});
+      ytdlpProcess.stderr?.on("data", (data) => {
+        console.log(`[yt-dlp stderr] ${data.toString()}`);
+      });
 
       ytdlpProcess.once("close", () => {
         if (this.currentProcess === ytdlpProcess) {
@@ -294,14 +302,14 @@ class MusicQueue {
 
       streamTimeout = setTimeout(() => {
         if (!this.streamStarted) {
-          console.error("❌ Audio stream failed to start within 10 seconds");
+          console.error("❌ Audio stream failed to start within 15 seconds");
           this.stopCurrentProcess();
           this.sendMessage(
             `${e("ERROR")} Failed to start audio stream. The video might be unavailable or region-locked.`,
           ).catch(console.error);
           this.processQueue();
         }
-      }, 10000);
+      }, 15000);
 
       this.currentResource = createAudioResource(ytdlpProcess.stdout, {
         metadata: song,
@@ -360,7 +368,7 @@ class MusicQueue {
       }
 
       if (!message) {
-        message = await this.textChannel.send(controller);
+        message = await this.textChannel.send({ components: controller.components, flags: controller.flags });
       }
 
       if (message?.id && message?.channelId) {
@@ -407,9 +415,10 @@ class MusicQueue {
         if (!this.persistent) {
           this.playing = false;
           this.stopProgressUpdates();
-          this.textChannel.send(
-            `${e("MUSIC")} Queue finished. Add more songs to keep the party going!`,
-          );
+          const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+          const container = new ContainerBuilder().setAccentColor(0x00ffff);
+          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} Queue finished. Add more songs to keep the party going!`));
+          this.textChannel.send({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
           this.stop();
         } else {
           this.playing = false;
@@ -1237,11 +1246,10 @@ async function processSpotifyPlaylistBackground(
         convertedCount++;
 
         if (convertedCount % 10 === 0) {
-          textChannel
-            .send(
-              `🎵 **Spotify Converter**: Added ${convertedCount}/${remainingTracks.length} tracks to queue`,
-            )
-            .catch(console.error);
+          const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+          const container = new ContainerBuilder().setAccentColor(0x1db954);
+          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`🎵 **Spotify Converter**: Added ${convertedCount}/${remainingTracks.length} tracks to queue`));
+          textChannel.send({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
         }
       } else {
         failedCount++;
@@ -1258,11 +1266,10 @@ async function processSpotifyPlaylistBackground(
   }
 
   if (convertedCount > 0) {
-    textChannel
-      .send(
-        `✅ **Spotify Converter Complete**: Added ${convertedCount} tracks, ${failedCount} failed`,
-      )
-      .catch(console.error);
+    const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+    const container = new ContainerBuilder().setAccentColor(0x1db954);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`✅ **Spotify Converter Complete**: Added ${convertedCount} tracks, ${failedCount} failed`));
+    textChannel.send({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
   }
 }
 
@@ -1392,43 +1399,47 @@ async function handleButtonInteraction(interaction, client) {
       case "music_pause":
         if (queue.paused) {
           queue.resume();
-          await interaction.editReply({ content: "▶️ Resumed the music." });
+          await interaction.followUp({ ephemeral: true, content: "▶️ Resumed the music." });
         } else {
           queue.pause();
-          await interaction.editReply({ content: "⏸️ Paused the music." });
+          await interaction.followUp({ ephemeral: true, content: "⏸️ Paused the music." });
         }
         break;
 
       case "music_skip":
         queue.skip();
-        await interaction.editReply({
+        await interaction.followUp({
+          ephemeral: true,
           content: "⏭️ Skipped the current song.",
         });
         break;
 
       case "music_stop":
         queue.stop();
-        await interaction.editReply({
+        await interaction.followUp({
+          ephemeral: true,
           content: "⏹️ Stopped the music and cleared the queue.",
         });
         break;
 
       case "music_shuffle":
         queue.shuffle();
-        await interaction.editReply({ content: "🔀 Shuffled the queue." });
+        await interaction.followUp({ ephemeral: true, content: "🔀 Shuffled the queue." });
         break;
 
       case "music_loop":
         const modes = ["Off", "Song", "Queue"];
         const nextMode = (queue.repeatMode + 1) % 3;
         queue.setRepeatMode(nextMode);
-        await interaction.editReply({
+        await interaction.followUp({
+          ephemeral: true,
           content: `🔁 Loop mode: **${modes[nextMode]}**`,
         });
         break;
 
       case "music_previous":
-        await interaction.editReply({
+        await interaction.followUp({
+          ephemeral: true,
           content: "⏮️ Previous track not available.",
         });
         break;
@@ -1441,7 +1452,8 @@ async function handleButtonInteraction(interaction, client) {
               `${i === 0 ? "**▶️ Now:**" : `**${i}.**`} [${song.name}](${song.url}) - \`${song.formattedDuration}\``,
           )
           .join("\n");
-        await interaction.editReply({
+        await interaction.followUp({
+          ephemeral: true,
           content: `📋 **Queue** (${queue.songs.length} songs)\n\n${queueList}`,
         });
         break;
@@ -1449,7 +1461,8 @@ async function handleButtonInteraction(interaction, client) {
       case "music_voldown":
         const newVolDown = Math.max(0, queue.volume - 10);
         queue.setVolume(newVolDown);
-        await interaction.editReply({
+        await interaction.followUp({
+          ephemeral: true,
           content: `🔉 Volume: **${newVolDown}%**`,
         });
         break;
@@ -1457,7 +1470,7 @@ async function handleButtonInteraction(interaction, client) {
       case "music_volup":
         const newVolUp = Math.min(100, queue.volume + 10);
         queue.setVolume(newVolUp);
-        await interaction.editReply({ content: `🔊 Volume: **${newVolUp}%**` });
+        await interaction.followUp({ ephemeral: true, content: `🔊 Volume: **${newVolUp}%**` });
         break;
 
       case "music_refresh":
@@ -1507,6 +1520,7 @@ async function updateMusicController(interaction, queue) {
       await interaction.message.edit({
         embeds: controller.embeds,
         components: controller.components,
+        flags: controller.flags,
       });
     }
   } catch (error) {

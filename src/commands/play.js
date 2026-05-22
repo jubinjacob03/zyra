@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, SectionBuilder, MessageFlags } = require("discord.js");
 const { errorEmbed, COLORS } = require("../utils/embed");
 const { createCompleteMusicController } = require("../utils/componentsV2");
 const { e } = require("../utils/customEmoji");
@@ -20,21 +20,21 @@ module.exports = {
     const voiceChannel = member.voice.channel;
 
     if (!voiceChannel) {
+      const container = new ContainerBuilder().setAccentColor(0xff4444);
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} You need to be in a voice channel!`));
       return interaction.reply({
-        embeds: [errorEmbed("You need to be in a voice channel!")],
-        ephemeral: true,
+        components: [container],
+        flags: MessageFlags.IsComponentsV2 | 64,
       });
     }
 
     const permissions = voiceChannel.permissionsFor(interaction.client.user);
     if (!permissions.has("Connect") || !permissions.has("Speak")) {
+      const container = new ContainerBuilder().setAccentColor(0xff4444);
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} I need permissions to join and speak in your voice channel!`));
       return interaction.reply({
-        embeds: [
-          errorEmbed(
-            "I need permissions to join and speak in your voice channel!",
-          ),
-        ],
-        ephemeral: true,
+        components: [container],
+        flags: MessageFlags.IsComponentsV2 | 64,
       });
     }
 
@@ -56,7 +56,7 @@ module.exports = {
                   "Operation timeout - please try a simpler query or direct YouTube link",
                 ),
               ),
-            30000,
+            60000,
           ),
         ),
       ]);
@@ -64,8 +64,11 @@ module.exports = {
       console.log(`✅ Search completed in ${Date.now() - searchStart}ms`);
 
       if (!result) {
+        const container = new ContainerBuilder().setAccentColor(0xff4444);
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} No results found for your query.`));
         return interaction.editReply({
-          embeds: [errorEmbed("No results found for your query.")],
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
         });
       }
 
@@ -89,13 +92,13 @@ module.exports = {
           try {
             msg = await interaction.editReply({
               content: null,
-              embeds: controller.embeds,
               components: controller.components,
+              flags: controller.flags,
             });
           } catch (editError) {
             msg = await interaction.channel.send({
-              embeds: controller.embeds,
               components: controller.components,
+              flags: controller.flags,
             });
           }
           client.musicPanels.set(interaction.guildId, {
@@ -105,18 +108,16 @@ module.exports = {
           });
           await queue.play();
         } else {
-          const addedEmbed = new EmbedBuilder()
-            .setColor(0x0e0e12)
-            .setDescription(
-              `${e("MUSIC")} **${result.songs.length} songs** from playlist added to queue`,
-            );
+          const container = new ContainerBuilder().setAccentColor(0x0e0e12);
+          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} **${result.songs.length} songs** from playlist added to queue`));
           try {
             await interaction.editReply({
               content: null,
-              embeds: [addedEmbed],
+              components: [container],
+              flags: MessageFlags.IsComponentsV2,
             });
           } catch {
-            await interaction.channel.send({ embeds: [addedEmbed] });
+            await interaction.channel.send({ components: [container], flags: MessageFlags.IsComponentsV2 });
           }
         }
       } else {
@@ -128,13 +129,13 @@ module.exports = {
           try {
             msg = await interaction.editReply({
               content: null,
-              embeds: controller.embeds,
               components: controller.components,
+              flags: controller.flags,
             });
           } catch (editError) {
             msg = await interaction.channel.send({
-              embeds: controller.embeds,
               components: controller.components,
+              flags: controller.flags,
             });
           }
           client.musicPanels.set(interaction.guildId, {
@@ -145,18 +146,16 @@ module.exports = {
           await queue.play();
         } else {
           const position = queue.songs.length;
-          const addedEmbed = new EmbedBuilder()
-            .setColor(0x0e0e12)
-            .setDescription(
-              `${e("MUSIC")} **${result.name}** added to queue at position **${position}**`,
-            );
+          const container = new ContainerBuilder().setAccentColor(0x0e0e12);
+          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} **${result.name}** added to queue at position **${position}**`));
           try {
             await interaction.editReply({
               content: null,
-              embeds: [addedEmbed],
+              components: [container],
+              flags: MessageFlags.IsComponentsV2,
             });
           } catch {
-            await interaction.channel.send({ embeds: [addedEmbed] });
+            await interaction.channel.send({ components: [container], flags: MessageFlags.IsComponentsV2 });
           }
         }
       }
@@ -164,70 +163,56 @@ module.exports = {
       console.error("Play error:", error);
 
       if (error.message.includes("Mix playlists are not supported")) {
-        const embed = new EmbedBuilder()
-          .setColor("#E74C3C")
-          .setTitle(`${e("ERROR")} YouTube Mix Playlists Not Supported`)
-          .setDescription(
-            "Mix playlists are personalized and user-specific - they cannot be accessed by bots.",
-          )
-          .addFields(
-            {
-              name: "💡 Alternatives",
-              value:
-                "• Use a regular YouTube playlist instead\n• Search for individual songs\n• Create a custom playlist with your favorite tracks",
-              inline: false,
-            },
-            {
-              name: "🔍 How to identify Mix playlists",
-              value:
-                "URLs containing `RD`, `RDMM`, `RDAMPL`, or `RDCLAK` in the playlist ID",
-              inline: false,
-            },
-          )
-          .setFooter({
-            text: "Try using a regular playlist or search for songs individually",
-          })
-          .setTimestamp();
+        const container = new ContainerBuilder().setAccentColor(0xE74C3C);
+        let description = `### ${e("ERROR")} YouTube Mix Playlists Not Supported\n`;
+        description += `Mix playlists are personalized and user-specific - they cannot be accessed by bots.\n\n`;
+        description += `**💡 Alternatives**\n• Use a regular YouTube playlist instead\n• Search for individual songs\n• Create a custom playlist with your favorite tracks\n\n`;
+        description += `**🔍 How to identify Mix playlists**\nURLs containing \`RD\`, \`RDMM\`, \`RDAMPL\`, or \`RDCLAK\` in the playlist ID`;
+
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(description)
+        );
 
         try {
           return await interaction.editReply({
             content: null,
-            embeds: [embed],
+            components: [container],
+            flags: MessageFlags.IsComponentsV2,
           });
         } catch {
-          return await interaction.channel.send({ embeds: [embed] });
+          return await interaction.channel.send({ components: [container], flags: MessageFlags.IsComponentsV2 });
         }
       }
 
       if (error.message.includes("timeout")) {
+        const container = new ContainerBuilder().setAccentColor(0xE74C3C);
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("TIME")} Search took too long. Please try a simpler query or check your internet connection.`));
         try {
           return await interaction.editReply({
             content: null,
-            embeds: [
-              errorEmbed(
-                `${e("TIME")} Search took too long. Please try a simpler query or check your internet connection.`,
-              ),
-            ],
+            components: [container],
+            flags: MessageFlags.IsComponentsV2,
           });
         } catch {
           return await interaction.channel.send({
-            embeds: [
-              errorEmbed(
-                `${e("TIME")} Search took too long. Please try a simpler query or check your internet connection.`,
-              ),
-            ],
+            components: [container],
+            flags: MessageFlags.IsComponentsV2,
           });
         }
       }
 
+      const container = new ContainerBuilder().setAccentColor(0xE74C3C);
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} Could not play: ${error.message}`));
       try {
         await interaction.editReply({
           content: null,
-          embeds: [errorEmbed(`Could not play: ${error.message}`)],
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
         });
       } catch {
         await interaction.channel.send({
-          embeds: [errorEmbed(`Could not play: ${error.message}`)],
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
         });
       }
     }

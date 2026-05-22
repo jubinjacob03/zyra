@@ -44,13 +44,13 @@ const createPanelChannel = (baseChannel) => {
   const allowPanelPayload = (payload) => {
     if (!payload || typeof payload === "string") return false;
     if (payload.content) return false;
-    if (payload.embeds && payload.components) return true;
+    if (payload.components || payload.flags) return true;
     return false;
   };
 
   return {
     send: async (payload) => {
-      if (!baseChannel || !allowPanelPayload(payload)) {
+      if (!baseChannel) {
         return silentMessage;
       }
       return baseChannel.send(payload);
@@ -64,6 +64,7 @@ const createPanelChannel = (baseChannel) => {
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
     if (reason.command && reason.command.includes("yt-dlp")) return;
+    if (reason.message && reason.message.includes("Cannot perform IP discovery - socket closed")) return;
     if (reason.code === 10008 || reason.code === 10062) {
       console.log(
         `Discord API: ${reason.code === 10008 ? "Message deleted" : "Interaction expired"}`,
@@ -368,9 +369,10 @@ function startInstance(config, instanceIndex) {
       const voiceChannel = member?.voice?.channel;
 
       if (!voiceChannel) {
-        return interaction.reply(
-          asEphemeral({ content: "❌ You need to be in a voice channel!" }),
-        );
+        const { errorEmbed } = require("./utils/embed");
+        const payload = errorEmbed("You need to be in a voice channel!");
+        payload.flags = payload.flags | 64;
+        return interaction.reply(payload);
       }
 
       await interaction.deferReply({ flags: 64 });
@@ -386,9 +388,8 @@ function startInstance(config, instanceIndex) {
         ]);
 
         if (!result) {
-          return interaction.editReply(
-            asEphemeral({ content: "❌ No results found for your query." }),
-          );
+          const { errorEmbed } = require("./utils/embed");
+          return interaction.editReply(errorEmbed("No results found for your query."));
         }
 
         let queue = client.getQueue(interaction.guildId);
@@ -406,11 +407,8 @@ function startInstance(config, instanceIndex) {
 
         if (result.type === "playlist") {
           queue.addSongs(result.tracks);
-          await interaction.editReply(
-            asEphemeral({
-              content: `✅ Added ${result.tracks.length} songs`,
-            }),
-          );
+          const { successEmbed } = require("./utils/embed");
+          await interaction.editReply(successEmbed(`Added ${result.tracks.length} songs`));
 
           if (result.backgroundProcessing) {
             client
@@ -419,9 +417,8 @@ function startInstance(config, instanceIndex) {
           }
         } else {
           queue.addSong(result);
-          await interaction.editReply(
-            asEphemeral({ content: "✅ Added to queue" }),
-          );
+          const { successEmbed } = require("./utils/embed");
+          await interaction.editReply(successEmbed("Added to queue"));
         }
 
         if (!queue.playing) {
@@ -429,9 +426,8 @@ function startInstance(config, instanceIndex) {
         }
       } catch (error) {
         console.error("Modal play error:", error);
-        await interaction.editReply(
-          asEphemeral({ content: `❌ ${error.message || "Failed to play"}` }),
-        );
+        const { errorEmbed } = require("./utils/embed");
+        await interaction.editReply(errorEmbed(`${error.message || "Failed to play"}`));
       }
     }
   });

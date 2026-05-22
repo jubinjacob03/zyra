@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { successEmbed, errorEmbed } = require('../utils/embed');
 
 module.exports = {
@@ -10,14 +10,14 @@ module.exports = {
         const queue = client.getQueue(interaction.guildId);
 
         if (!queue) {
-            return interaction.reply({ embeds: [errorEmbed('Nothing is playing right now.')], flags: 64 });
+            return interaction.reply({ ...errorEmbed('Nothing is playing right now.'), flags: 64 });
         }
 
         if (queue.paused) {
-            return interaction.reply({ embeds: [errorEmbed('The music is already paused.')], flags: 64 });
+            return interaction.reply({ ...errorEmbed('The music is already paused.'), flags: 64 });
         }
 
         queue.pause();
-        await interaction.reply({ embeds: [successEmbed('Paused the music.')] });
+        await interaction.reply({ ...successEmbed('Paused the music.') });
     },
 };

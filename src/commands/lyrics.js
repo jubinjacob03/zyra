@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, SectionBuilder, MessageFlags } = require('discord.js');
 const { errorEmbed } = require('../utils/embed');
 const Genius = require('genius-lyrics');
 const genius = new Genius.Client();
@@ -17,49 +17,50 @@ module.exports = {
         if (!searchQuery) {
             const queue = client.getQueue(interaction.guildId);
             if (!queue || !queue.songs[0]) {
-                return interaction.reply({ embeds: [errorEmbed('No song playing. Please provide a search query.')], ephemeral: true });
+                const container = new ContainerBuilder().setAccentColor(0xff4444);
+                container.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ No song playing. Please provide a search query.'));
+                return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 | 64 });
             }
             searchQuery = queue.songs[0].name;
         }
 
-        await interaction.reply({ content: '🔍 Searching for lyrics...' });
+        await interaction.reply({ content: '🔍 Searching for lyrics...', flags: 64 });
 
         try {
             const searches = await genius.songs.search(searchQuery);
 
             if (!searches.length) {
-                return interaction.editReply({ embeds: [errorEmbed('No lyrics found for this song.')] });
+                const container = new ContainerBuilder().setAccentColor(0xff4444);
+                container.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ No lyrics found for this song.'));
+                return interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
             }
 
             const song = searches[0];
             const lyrics = await song.lyrics();
 
             if (!lyrics) {
-                return interaction.editReply({ embeds: [errorEmbed('No lyrics found for this song.')] });
+                const container = new ContainerBuilder().setAccentColor(0xff4444);
+                container.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ No lyrics found for this song.'));
+                return interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
             }
 
-            const chunks = lyrics.match(/[\s\S]{1,4000}/g) || [];
+            const container = new ContainerBuilder().setAccentColor(0x9B59B6);
+            let description = `### 🎤 [${song.title}](${song.url})\n*Artist: ${song.artist.name}*\n\n`;
+            
+            const lyricsText = lyrics.length > 3800 ? lyrics.substring(0, 3800) + '...\n\n*(Lyrics truncated due to length)*' : lyrics;
+            description += lyricsText;
 
-            const embed = new EmbedBuilder()
-                .setColor('#9B59B6')
-                .setTitle(`🎤 ${song.title}`)
-                .setURL(song.url)
-                .setThumbnail(song.thumbnail)
-                .setDescription(chunks[0])
-                .setFooter({ text: `Artist: ${song.artist.name} • Powered by Genius` })
-                .setTimestamp();
+            container.addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(description)
+            );
 
-            await interaction.editReply({ embeds: [embed] });
+            await interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
 
-            for (let i = 1; i < chunks.length; i++) {
-                const followUpEmbed = new EmbedBuilder()
-                    .setColor('#9B59B6')
-                    .setDescription(chunks[i]);
-                await interaction.followUp({ embeds: [followUpEmbed] });
-            }
         } catch (error) {
             console.error('Lyrics error:', error);
-            await interaction.editReply({ embeds: [errorEmbed('Failed to fetch lyrics.')] });
+            const container = new ContainerBuilder().setAccentColor(0xff4444);
+            container.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ Failed to fetch lyrics.'));
+            await interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
         }
     },
 };

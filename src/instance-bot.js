@@ -4,10 +4,13 @@ const {
   GatewayIntentBits,
   Events,
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
 } = require("discord.js");
+const { btn } = require("./utils/customEmoji");
 const {
   joinVoiceChannel,
   createAudioPlayer,
@@ -122,7 +125,9 @@ class PersistentMusicQueue {
       };
 
       const ytdlpProcess = youtubedl.exec(song.url, ytdlpOpts);
-      ytdlpProcess.stderr?.on("data", () => {});
+      ytdlpProcess.stderr?.on("data", (data) => {
+        console.log(`[yt-dlp stderr] ${data.toString()}`);
+      });
 
       const resource = createAudioResource(ytdlpProcess.stdout, {
         inputType: StreamType.Arbitrary,
@@ -176,61 +181,63 @@ class PersistentMusicQueue {
       const song = this.songs[0];
       if (!song) return;
 
-      const embed = new EmbedBuilder()
-        .setColor(0x0e0e12)
-        .setDescription(
-          `🎵 **${song.name}**\n\n` +
-            `by **${song.author || "Unknown"}**\n\n` +
-            `🔴 YouTube • ${song.formattedDuration}`,
-        )
-        .setThumbnail(song.thumbnail);
+      const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+      const container = new ContainerBuilder().setAccentColor(0x0e0e12);
+      
+      const description = `🎵 **${song.name}**\n\nby **${song.author || "Unknown"}**\n\n🔴 YouTube • ${song.formattedDuration}`;
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(description)
+      );
 
       const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("shuffle")
-          .setLabel("Shuffle")
+          .setEmoji(btn("SHUFFLE"))
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("previous")
-          .setLabel("Previous")
+          .setEmoji(btn("PREVIOUS"))
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(true),
         new ButtonBuilder()
           .setCustomId("pause")
-          .setLabel(this.paused ? "Play" : "Pause")
+          .setEmoji(this.paused ? btn("PLAY") : btn("PAUSE"))
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("skip")
-          .setLabel("Skip")
+          .setEmoji(btn("SKIP"))
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("stop")
-          .setLabel("Stop")
+          .setEmoji(btn("STOP"))
           .setStyle(ButtonStyle.Danger),
       );
 
       const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("voldown")
-          .setLabel("Vol −")
+          .setEmoji(btn("VOLDOWN"))
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("volup")
-          .setLabel("Vol +")
+          .setEmoji(btn("VOLUP"))
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("loop")
-          .setLabel("Loop")
+          .setEmoji(btn("LOOP"))
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("queue")
-          .setLabel("Queue")
+          .setEmoji(btn("QUEUE"))
           .setStyle(ButtonStyle.Secondary),
       );
 
+      container.addActionRowComponents(row1);
+      container.addActionRowComponents(row2);
+
       await this.controllerMessage.edit({
-        embeds: [embed],
-        components: [row1, row2],
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
       });
     } catch (error) {
       console.log("Could not update controller:", error.message);
@@ -340,9 +347,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // Handle music control buttons
     const member = interaction.member;
     if (!member.voice.channel || member.voice.channel.id !== voiceChannelId) {
+      const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+      const container = new ContainerBuilder().setAccentColor(0xff4444);
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("❌ You need to be in the voice channel!"));
       return interaction.reply({
-        content: "❌ You need to be in the voice channel!",
-        flags: 64,
+        components: [container],
+        flags: MessageFlags.IsComponentsV2 | 64,
       });
     }
 
@@ -382,9 +392,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const member = interaction.member;
 
     if (!member.voice.channel || member.voice.channel.id !== voiceChannelId) {
+      const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+      const container = new ContainerBuilder().setAccentColor(0xff4444);
+      container.addTextDisplayComponents(new TextDisplayBuilder().setContent("❌ You need to be in the voice channel!"));
       return interaction.reply({
-        content: "❌ You need to be in the voice channel!",
-        flags: 64,
+        components: [container],
+        flags: MessageFlags.IsComponentsV2 | 64,
       });
     }
 

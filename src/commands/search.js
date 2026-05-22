@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, SectionBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
 const { errorEmbed } = require('../utils/embed');
 const play = require('play-dl');
 
@@ -17,7 +17,9 @@ module.exports = {
         const voiceChannel = member.voice.channel;
 
         if (!voiceChannel) {
-            return interaction.reply({ embeds: [errorEmbed('You need to be in a voice channel!')], flags: 64 });
+            const container = new ContainerBuilder().setAccentColor(0xff4444);
+            container.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ You need to be in a voice channel!'));
+            return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 | 64 });
         }
 
         await interaction.reply({ content: '🔍 Searching...' });
@@ -26,15 +28,19 @@ module.exports = {
             const results = await play.search(query, { limit: 10 });
 
             if (!results.length) {
-                return interaction.editReply({ embeds: [errorEmbed('No results found.')] });
+                const container = new ContainerBuilder().setAccentColor(0xff4444);
+                container.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ No results found.'));
+                return interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
             }
 
-            const embed = new EmbedBuilder()
-                .setColor('#9B59B6')
-                .setTitle('🔍 Search Results')
-                .setDescription(results.map((r, i) => `**${i + 1}.** [${r.title}](${r.url}) - \`${client.formatDuration(r.durationInSec)}\``).join('\n'))
-                .setFooter({ text: 'Select a song from the dropdown below' })
-                .setTimestamp();
+            const container = new ContainerBuilder().setAccentColor(0x9B59B6);
+            let description = `### 🔍 Search Results\n\n`;
+            description += results.map((r, i) => `**${i + 1}.** [${r.title}](${r.url}) - \`${client.formatDuration(r.durationInSec)}\``).join('\n');
+            description += `\n\n*Select a song from the dropdown below*`;
+
+            container.addTextDisplayComponents(
+                new TextDisplayBuilder().setContent(description)
+            );
 
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('search_select')
@@ -46,8 +52,9 @@ module.exports = {
                 })));
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
+            container.addActionRowComponents(row);
 
-            const response = await interaction.editReply({ embeds: [embed], components: [row] });
+            const response = await interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
 
             const collector = response.createMessageComponentCollector({
                 filter: i => i.user.id === interaction.user.id,
@@ -75,18 +82,24 @@ module.exports = {
                     
                     await interaction.deleteReply();
                 } catch (error) {
-                    await interaction.editReply({ embeds: [errorEmbed(`Failed to play: ${error.message}`)], components: [] });
+                    const errContainer = new ContainerBuilder().setAccentColor(0xff4444);
+                    errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`❌ Failed to play: ${error.message}`));
+                    await interaction.editReply({ components: [errContainer], flags: MessageFlags.IsComponentsV2 });
                 }
             });
 
             collector.on('end', async (collected, reason) => {
                 if (reason === 'time') {
-                    await interaction.editReply({ components: [] }).catch(() => {});
+                    const timeoutContainer = new ContainerBuilder().setAccentColor(0xffbb33);
+                    timeoutContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚠️ Search timed out.`));
+                    await interaction.editReply({ components: [timeoutContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
                 }
             });
         } catch (error) {
             console.error('Search error:', error);
-            await interaction.editReply({ embeds: [errorEmbed('Search failed.')] });
+            const errContainer = new ContainerBuilder().setAccentColor(0xff4444);
+            errContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent('❌ Search failed.'));
+            await interaction.editReply({ content: null, components: [errContainer], flags: MessageFlags.IsComponentsV2 });
         }
     },
 };

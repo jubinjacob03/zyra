@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { successEmbed, errorEmbed } = require("../utils/embed");
 const { e } = require("../utils/customEmoji");
 
@@ -12,16 +12,14 @@ module.exports = {
 
     if (!queue) {
       return interaction.reply({
-        embeds: [errorEmbed("Nothing is playing right now.")],
+        ...errorEmbed("Nothing is playing right now."),
         flags: 64,
       });
     }
 
     queue.stop();
     await interaction.reply({
-      embeds: [
-        successEmbed(`${e("STOP")} Stopped the music and cleared the queue.`),
-      ],
+      ...successEmbed(`${e("STOP")} Stopped the music and cleared the queue.`),
     });
   },
 };

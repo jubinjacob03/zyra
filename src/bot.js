@@ -63,8 +63,8 @@ client.shoukaku = new Shoukaku(new Connectors.DiscordJS(client), Nodes, {
   moveOnDisconnect: false,
   resume: false,
   resumeByLibrary: true,
-  reconnectTries: 3,
-  restTimeout: 10000,
+  reconnectTries: 5,
+  restTimeout: 60000,
 });
 
 client.shoukaku.on("error", (_, error) => console.error("❌ Shoukaku Error:", error));

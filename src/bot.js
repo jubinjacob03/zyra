@@ -180,7 +180,7 @@ player.events.on('playerStart', async (queue, track) => {
 
   if (message && isEditableByClient(message, client.user?.id)) {
     try {
-      await message.edit({ components: controller.components, flags: controller.flags });
+      await message.edit({ embeds: [], components: controller.components, flags: controller.flags });
     } catch (error) {
       message = await textChannel.send({ components: controller.components, flags: controller.flags });
     }
@@ -215,7 +215,7 @@ player.events.on('disconnect', async (queue) => {
         if (message && isEditableByClient(message, client.user?.id)) {
           const { createIdleMusicController } = require("./utils/componentsV2");
           const payload = createIdleMusicController("Disconnected. Add more songs to keep the party going!");
-          await message.edit(payload).catch(() => {});
+          await message.edit({ embeds: [], components: payload.components, flags: payload.flags }).catch(() => {});
         }
       } catch (e) {}
     }
@@ -235,7 +235,7 @@ player.events.on('emptyQueue', async (queue) => {
         if (message && isEditableByClient(message, client.user?.id)) {
           const { createIdleMusicController } = require("./utils/componentsV2");
           const payload = createIdleMusicController("Queue finished. Add more songs to keep the party going!");
-          await message.edit(payload).catch(() => {});
+          await message.edit({ embeds: [], components: payload.components, flags: payload.flags }).catch(() => {});
         }
       } catch (e) {}
     }

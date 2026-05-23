@@ -51,7 +51,7 @@ client.musicPanels = new Map();
 const Nodes = [
   {
     name: "Lavalink",
-    url: process.env.LAVALINK_URL || "lavalink:2333",
+    url: (process.env.LAVALINK_URL || "lavalink:2333").replace(/^https?:\/\//, ''),
     auth: process.env.LAVALINK_PASSWORD || "youshallnotpass",
   },
 ];
@@ -570,7 +570,7 @@ client.createQueue = async function (
     player = await this.shoukaku.joinVoiceChannel({
       guildId: guildId,
       channelId: voiceChannel.id,
-      shardId: 0,
+      shardId: voiceChannel.guild.shardId || 0,
       deaf: true,
     });
   } catch (error) {
@@ -597,7 +597,7 @@ client.createQueue = async function (
         const newPlayer = await this.shoukaku.joinVoiceChannel({
           guildId: guildId,
           channelId: voiceChannel.id,
-          shardId: 0,
+          shardId: voiceChannel.guild.shardId || 0,
           deaf: true,
         });
         queue.player = newPlayer;

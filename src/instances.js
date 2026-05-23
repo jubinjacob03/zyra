@@ -140,7 +140,7 @@ function startInstance(config, instanceIndex) {
   const Nodes = [
     {
       name: "Lavalink",
-      url: process.env.LAVALINK_URL || "lavalink:2333",
+      url: (process.env.LAVALINK_URL || "lavalink:2333").replace(/^https?:\/\//, ''),
       auth: process.env.LAVALINK_PASSWORD || "youshallnotpass",
     },
   ];
@@ -195,7 +195,7 @@ function startInstance(config, instanceIndex) {
       player = await this.shoukaku.joinVoiceChannel({
         guildId: guildId,
         channelId: voiceChannel.id,
-        shardId: 0,
+        shardId: voiceChannel.guild.shardId || 0,
         deaf: true,
       });
     } catch (error) {
@@ -220,7 +220,7 @@ function startInstance(config, instanceIndex) {
         const newPlayer = await this.shoukaku.joinVoiceChannel({
           guildId: guildId,
           channelId: voiceChannel.id,
-          shardId: 0,
+          shardId: voiceChannel.guild.shardId || 0,
           deaf: true,
         });
         queue.player = newPlayer;
@@ -258,26 +258,12 @@ function startInstance(config, instanceIndex) {
       const player = await client.shoukaku.joinVoiceChannel({
         guildId: guild.id,
         channelId: voiceChannel.id,
-        shardId: 0,
+        shardId: guild.shardId || 0,
         deaf: true,
       });
 
       console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
 
-      player.on("closed", async () => {
-        console.log(`⚠️ ${INSTANCE_NAME} disconnected - attempting immediate rejoin...`);
-        try {
-          await client.shoukaku.joinVoiceChannel({
-            guildId: guild.id,
-            channelId: voiceChannel.id,
-            shardId: 0,
-            deaf: true,
-          });
-          console.log(`✅ ${INSTANCE_NAME} rejoined successfully`);
-        } catch (error) {
-          console.error(`❌ ${INSTANCE_NAME} rejoin failed:`, error.message);
-        }
-      });
 
       try {
         await ensurePlayMusicPanel(voiceChannel, INSTANCE_NAME, c.user.id);

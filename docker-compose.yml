@@ -11,12 +11,6 @@ services:
       - _JAVA_OPTIONS=-Xmx256m -Xms128m
     networks:
       - zyra-network
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:2333/version || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
 
   zyra-bot:
     image: zyra-bot
@@ -24,8 +18,7 @@ services:
     container_name: zyra-bot
     restart: unless-stopped
     depends_on:
-      lavalink:
-        condition: service_healthy
+      - lavalink
     networks:
       - zyra-network
     env_file:

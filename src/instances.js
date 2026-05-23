@@ -254,7 +254,7 @@ function startInstance(config, instanceIndex) {
       process.exit(1);
     }
 
-    const joinVoice = async () => {
+    const attemptJoin = async () => {
       try {
         const player = await client.shoukaku.joinVoiceChannel({
           guildId: guild.id,
@@ -270,17 +270,32 @@ function startInstance(config, instanceIndex) {
         } catch (error) {
           console.log("Could not post play panel:", error.message || error);
         }
+        return true;
       } catch (error) {
-        console.error(`Failed to join VC for ${INSTANCE_NAME}:`, error);
+        if (error.message && (error.message.includes("Can't find any nodes") || error.message.includes("No ideal node"))) {
+          return false;
+        }
+        console.error(`❌ Failed to join VC for ${INSTANCE_NAME}:`, error.message || error);
+        return false;
       }
     };
 
-    // Wait for Lavalink to be ready before joining
-    if (client.shoukaku.getIdealNode()) {
-      joinVoice();
-    } else {
-      client.shoukaku.once("ready", joinVoice);
-    }
+    const connectAndJoin = async () => {
+      const success = await attemptJoin();
+      if (!success) {
+        console.log(`⏳ Node connection rejected for ${INSTANCE_NAME}. Waiting for node confirmation...`);
+        client.shoukaku.once("ready", async (name) => {
+          console.log(`✅ Node ${name} confirmed ready for ${INSTANCE_NAME}. Joining VC...`);
+          await new Promise(r => setTimeout(r, 1500)); // Crucial delay to allow Shoukaku internal maps to sync
+          const finalSuccess = await attemptJoin();
+          if (!finalSuccess) {
+            console.error(`❌ Final failure joining VC for ${INSTANCE_NAME} even after node ready confirmation.`);
+          }
+        });
+      }
+    };
+
+    connectAndJoin();
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {

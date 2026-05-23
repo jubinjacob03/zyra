@@ -20,7 +20,7 @@ plugins:
       - WEBEMBEDDED
       - TVHTML5
     oauth:
-      enabled: false
+      enabled: true
       refreshToken: "${GOOGLE_REFRESH_TOKEN}"
       skipInitialization: true
     pot:

@@ -8,10 +8,12 @@ plugins:
     allowSearch: true
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
+    clients:
+      - "IOS"
+      - "ANDROID_TESTSUITE"
+      - "TVHTML5_SIMPLY"
     oauth:
-      enabled: true
-      refreshToken: "${GOOGLE_REFRESH_TOKEN}"
-      skipInitialization: false
+      enabled: false
 
 lavalink:
   plugins:

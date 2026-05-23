@@ -36,6 +36,9 @@ process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
 });
 
+// Configure DNS to prefer IPv4 (fixes Node 22 Docker routing hangs)
+require('dns').setDefaultResultOrder('ipv4first');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -56,10 +59,18 @@ const Nodes = [
   },
 ];
 
-client.shoukaku = new Shoukaku(new Connectors.DiscordJS(client), Nodes);
+client.shoukaku = new Shoukaku(new Connectors.DiscordJS(client), Nodes, {
+  moveOnDisconnect: false,
+  resume: false,
+  resumeByLibrary: true,
+  reconnectTries: 3,
+  restTimeout: 10000,
+});
 
-client.shoukaku.on("error", (_, error) => console.error("Shoukaku Error:", error));
+client.shoukaku.on("error", (_, error) => console.error("❌ Shoukaku Error:", error));
+client.shoukaku.on("closed", (name, code, reason) => console.warn(`⚠️ Shoukaku Node ${name} closed: ${code} ${reason}`));
 client.shoukaku.on("ready", (name) => console.log(`✅ Lavalink Node ${name} is ready!`));
+client.shoukaku.on("debug", (name, info) => console.log(`🐛 Shoukaku Debug [${name}]:`, info));
 
 let spotifyAPI = null;
 if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {

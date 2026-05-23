@@ -132,6 +132,9 @@ function startInstance(config, instanceIndex) {
   });
 
   client.commands = new Collection();
+  // Configure DNS to prefer IPv4 (fixes Node 22 Docker routing hangs)
+  require('dns').setDefaultResultOrder('ipv4first');
+
   client.queues = new Map();
   client.musicPanels = new Map();
   client.INSTANCE_NAME = INSTANCE_NAME;
@@ -145,9 +148,18 @@ function startInstance(config, instanceIndex) {
     },
   ];
 
-  client.shoukaku = new Shoukaku(new Connectors.DiscordJS(client), Nodes);
-  client.shoukaku.on("error", (_, error) => console.error("Shoukaku Error:", error));
+  client.shoukaku = new Shoukaku(new Connectors.DiscordJS(client), Nodes, {
+    moveOnDisconnect: false,
+    resume: false,
+    resumeByLibrary: true,
+    reconnectTries: 3,
+    restTimeout: 10000,
+  });
+
+  client.shoukaku.on("error", (_, error) => console.error(`❌ Shoukaku Error (${INSTANCE_NAME}):`, error));
+  client.shoukaku.on("closed", (name, code, reason) => console.warn(`⚠️ Shoukaku Node ${name} closed in ${INSTANCE_NAME}: ${code} ${reason}`));
   client.shoukaku.on("ready", (name) => console.log(`✅ Lavalink Node ${name} is ready for ${INSTANCE_NAME}!`));
+  client.shoukaku.on("debug", (name, info) => console.log(`🐛 Shoukaku Debug [${INSTANCE_NAME}]:`, info));
 
   client.on("error", console.error);
 

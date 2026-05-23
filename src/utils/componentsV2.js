@@ -10,9 +10,10 @@ const {
 const { e, btn } = require("./customEmoji");
 
 const COLORS = {
-  PLAYING: 0xff0000,
-  PAUSED: 0xaa0000,
+  PLAYING: 0x00ffff,
+  PAUSED: 0x00aaaa,
   SPOTIFY: 0x1db954,
+  SOUNDCLOUD: 0xff0000,
 };
 
 /**
@@ -54,12 +55,15 @@ function createNowPlayingEmbed(queue) {
   if (!song) return null;
 
   const isSpotify = song.source === 'spotify';
+  const isSoundCloud = song.source === 'soundcloud';
   const isPaused = queue.node.isPaused();
   const color = isSpotify
     ? COLORS.SPOTIFY
-    : isPaused
-      ? COLORS.PAUSED
-      : COLORS.PLAYING;
+    : isSoundCloud
+      ? COLORS.SOUNDCLOUD
+      : isPaused
+        ? COLORS.PAUSED
+        : COLORS.PLAYING;
 
   const platformIcon = isSpotify ? e("SPOTIFY") || "🟢" : e("YOUTUBE") || "🔴";
   const platformName = isSpotify ? "Spotify" : song.source === 'soundcloud' ? "SoundCloud" : "YouTube";

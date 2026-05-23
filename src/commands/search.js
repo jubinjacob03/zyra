@@ -45,7 +45,7 @@ module.exports = {
 
             const results = searchResult.tracks.slice(0, 10);
 
-            const container = new ContainerBuilder().setAccentColor(0x9B59B6);
+            const container = new ContainerBuilder().setAccentColor(0x00ffff);
             let description = `### ${e("INFO")} Search Results\n\n`;
             description += results.map((r, i) => `**${i + 1}.** [${r.title}](${r.url}) - \`${r.duration}\``).join('\n');
             description += `\n\n*Select a song from the dropdown below*`;
@@ -102,7 +102,7 @@ module.exports = {
 
             collector.on('end', async (collected, reason) => {
                 if (reason === 'time') {
-                    const timeoutContainer = new ContainerBuilder().setAccentColor(0xffbb33);
+                    const timeoutContainer = new ContainerBuilder().setAccentColor(0x00ffff);
                     timeoutContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("WARNING")} Search timed out.`));
                     await interaction.editReply({ components: [timeoutContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
                 }

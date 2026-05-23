@@ -135,9 +135,10 @@ function createMusicPanel(queue) {
 
   const progressBar = createProgressBar(queue.node.getTimestamp()?.current.value || 0, song.durationMS || 100, 15);
   const isSpotify = song.source === 'spotify';
-  const color = isSpotify ? COLORS.SPOTIFY : COLORS.PRIMARY;
+  const isSoundCloud = song.source === 'soundcloud';
+  const color = isSpotify ? COLORS.SPOTIFY : isSoundCloud ? COLORS.SOUNDCLOUD : COLORS.PRIMARY;
   const platformIcon = isSpotify ? ICONS.SPOTIFY : ICONS.LIVE;
-  const platformName = isSpotify ? "SPOTIFY" : "NOW PLAYING";
+  const platformName = isSpotify ? "SPOTIFY" : isSoundCloud ? "SOUNDCLOUD" : "NOW PLAYING";
 
   const container = new ContainerBuilder().setAccentColor(color);
   
@@ -227,7 +228,9 @@ function createNowPlayingEmbed(song, queue, type = "playing") {
     ? COLORS.SUCCESS
     : song.source === 'spotify'
       ? COLORS.SPOTIFY
-      : COLORS.PRIMARY;
+      : song.source === 'soundcloud'
+        ? COLORS.SOUNDCLOUD
+        : COLORS.PRIMARY;
 
   const container = new ContainerBuilder().setAccentColor(color);
   

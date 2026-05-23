@@ -54,7 +54,7 @@ module.exports = {
                 return interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
             }
 
-            const container = new ContainerBuilder().setAccentColor(0x9B59B6);
+            const container = new ContainerBuilder().setAccentColor(0x00ffff);
             let description = `### ${e("AUTHOR")} [${song.title}](${song.url})\n*Artist: ${song.artist.name}*\n\n`;
             
             const lyricsText = lyrics.length > 3800 ? lyrics.substring(0, 3800) + '...\n\n*(Lyrics truncated due to length)*' : lyrics;

@@ -68,7 +68,7 @@ module.exports = {
         },
       });
 
-      const container = new ContainerBuilder().setAccentColor(0x0e0e12);
+      const container = new ContainerBuilder().setAccentColor(0x00ffff);
       if (result.hasPlaylist()) {
         container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} **${result.playlist.tracks.length} songs** from playlist added to queue`));
       } else {

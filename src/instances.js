@@ -210,9 +210,9 @@ function startInstance(config, instanceIndex) {
 
         const songInput = new TextInputBuilder()
           .setCustomId("song_query")
-          .setLabel("Song name, YouTube or Spotify link")
+          .setLabel("Song name, Spotify or SoundCloud link")
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder("e.g., royalty, https://youtu.be/...")
+          .setPlaceholder("e.g., sao paulo, https://open.spotify.com/...")
           .setRequired(true);
 
         const row = new ActionRowBuilder().addComponents(songInput);
@@ -245,8 +245,13 @@ function startInstance(config, instanceIndex) {
       try {
         console.log(`🔍 Modal search for: "${query}"`);
 
+        const { QueryType } = require("discord-player");
+        const isUrl = query.startsWith("http://") || query.startsWith("https://");
+        const searchEngine = isUrl ? QueryType.AUTO : QueryType.SPOTIFY_SEARCH;
+
         const result = await client.player.search(query, {
           requestedBy: interaction.user,
+          searchEngine: searchEngine,
         });
 
         if (!result || result.isEmpty()) {

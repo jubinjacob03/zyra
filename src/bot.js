@@ -178,6 +178,12 @@ player.events.on('playerStart', async (queue, track) => {
     message = await findExistingMusicPanel(textChannel, client.user?.id);
   }
 
+  if (!message) {
+    const { createIdleMusicController } = require("./utils/componentsV2");
+    const payload = createIdleMusicController("Loading player...");
+    message = await textChannel.send({ components: payload.components, flags: payload.flags });
+  }
+
   if (message && isEditableByClient(message, client.user?.id)) {
     try {
       await message.edit({ embeds: [], components: controller.components, flags: controller.flags });

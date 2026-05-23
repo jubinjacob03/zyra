@@ -9,7 +9,7 @@ module.exports = {
       option
         .setName("query")
         .setDescription("Song name, Spotify URL, or SoundCloud URL")
-        .setRequired(true),
+        .setRequired(true)
     ),
 
   async execute(interaction, client) {
@@ -43,8 +43,13 @@ module.exports = {
     try {
       console.log(`🔍 Starting search for: "${query}"`);
 
+      const { QueryType } = require("discord-player");
+      const isUrl = query.startsWith("http://") || query.startsWith("https://");
+      const searchEngine = isUrl ? QueryType.AUTO : QueryType.SPOTIFY_SEARCH;
+
       const result = await client.player.search(query, {
         requestedBy: interaction.user,
+        searchEngine: searchEngine,
       });
 
       if (!result || result.isEmpty()) {

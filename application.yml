@@ -9,16 +9,17 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
+      - "WEB"
       - "IOS"
-      - "ANDROID_TESTSUITE"
       - "TVHTML5_SIMPLY"
     oauth:
-      enabled: false
+      enabled: true
+      refreshToken: "${GOOGLE_REFRESH_TOKEN}"
 
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
-      snapshot: false
+    - dependency: "dev.lavalink.youtube:youtube-plugin:9d4dbeeb51f16d53078486d69d27654d4acfa7fb"
+      repository: "https://maven.lavalink.dev/snapshots"
   server:
     password: "youshallnotpass"
     sources:

@@ -310,7 +310,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
           if (!node) return send(res, 500, { error: "Lavalink node not ready" });
 
           const maxResults = Math.min(Number(limit) || 10, 25);
-          const searchPrefix = `scsearch:${query}`;
+          const searchPrefix = `ytsearch:${query}`;
           const searchResults = await node.rest.resolve(searchPrefix);
 
           if (!searchResults || searchResults.loadType === "empty" || searchResults.loadType === "error") {

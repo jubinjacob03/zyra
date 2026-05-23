@@ -172,7 +172,6 @@ function startInstance(config, instanceIndex) {
       }
     };
 
-    // Force join on startup
     forceJoinVC();
 
     // Auto-rejoin if disconnected
@@ -306,6 +305,12 @@ function startInstance(config, instanceIndex) {
   return client;
 }
 
+/**
+ * Starts all configured instances or a specific instance by index.
+ * @param {Object} options - Options object.
+ * @param {number} [options.index] - The specific instance index to start.
+ * @returns {Array<Promise<import('discord.js').Client>>} Array of promises resolving to the started clients.
+ */
 function startInstances({ index } = {}) {
   const instances = instanceConfig.instances || [];
 

@@ -72,6 +72,9 @@ client.player = player;
 
 /**
  * Checks if a message is editable by the client.
+ * @param {import('discord.js').Message} message - The message to check.
+ * @param {string} clientUserId - The client's user ID.
+ * @returns {boolean} True if editable.
  */
 const isEditableByClient = (message, clientUserId) => {
   if (!message) return false;
@@ -82,6 +85,9 @@ const isEditableByClient = (message, clientUserId) => {
 
 /**
  * Finds an existing music panel message in the given channel.
+ * @param {import('discord.js').TextChannel} channel - The text channel to search.
+ * @param {string} clientUserId - The client's user ID.
+ * @returns {Promise<import('discord.js').Message|null>} The found message or null.
  */
 async function findExistingMusicPanel(channel, clientUserId) {
   if (!channel || !channel.messages || !channel.messages.fetch) return null;
@@ -108,6 +114,9 @@ async function findExistingMusicPanel(channel, clientUserId) {
 
 /**
  * Resolves a stored music panel message from the channel ID.
+ * @param {import('discord.js').Client} client - The Discord client.
+ * @param {string} channelId - The ID of the channel.
+ * @returns {Promise<import('discord.js').Message|null>} The resolved message or null.
  */
 async function resolveStoredMusicPanel(client, channelId) {
   if (!channelId) return null;
@@ -139,7 +148,6 @@ async function resolveStoredMusicPanel(client, channelId) {
   return null;
 }
 
-// Player Events
 player.events.on('playerStart', async (queue, track) => {
   const { createCompleteMusicController } = require("./utils/componentsV2");
   const { getControllerPanel, setControllerPanel } = require("./utils/panelStore");
@@ -430,7 +438,6 @@ async function updateMusicController(interaction, queue) {
 
 client.on("error", console.error);
 
-// Load all slash commands from commands directory
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs
   .readdirSync(commandsPath)

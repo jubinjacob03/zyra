@@ -29,8 +29,6 @@ if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
-// Intercept console.log to write to unified log file if needed, but Docker
-// handles stdout capturing perfectly fine for containers.
 console.log(colorize(COLORS.bold, "🚀 Starting Zyra Bot (Unified Process Mode)"));
 
 const instances = Array.isArray(config.instances) ? config.instances : [];
@@ -84,7 +82,6 @@ for (let i = 0; i < boxes.length; i += BOXES_PER_ROW) {
   renderBoxesRow(boxes.slice(i, i + BOXES_PER_ROW));
 }
 
-// Start everything sequentially
 (async () => {
   try {
     console.log(colorize(COLORS.dim, "Starting main bot..."));
@@ -93,7 +90,6 @@ for (let i = 0; i < boxes.length; i += BOXES_PER_ROW) {
     for (let i = 0; i < instances.length; i++) {
       console.log(colorize(COLORS.dim, `Starting instance ${i + 1}...`));
       await startInstances({ index: i });
-      // Small delay between instance starts to avoid rate limits
       await new Promise(r => setTimeout(r, 2000));
     }
     console.log(colorize(COLORS.bold, "✅ All bots successfully started in single process!"));

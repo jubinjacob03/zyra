@@ -254,24 +254,32 @@ function startInstance(config, instanceIndex) {
       process.exit(1);
     }
 
-    try {
-      const player = await client.shoukaku.joinVoiceChannel({
-        guildId: guild.id,
-        channelId: voiceChannel.id,
-        shardId: guild.shardId || 0,
-        deaf: true,
-      });
-
-      console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
-
-
+    const joinVoice = async () => {
       try {
-        await ensurePlayMusicPanel(voiceChannel, INSTANCE_NAME, c.user.id);
+        const player = await client.shoukaku.joinVoiceChannel({
+          guildId: guild.id,
+          channelId: voiceChannel.id,
+          shardId: guild.shardId || 0,
+          deaf: true,
+        });
+
+        console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
+
+        try {
+          await ensurePlayMusicPanel(voiceChannel, INSTANCE_NAME, c.user.id);
+        } catch (error) {
+          console.log("Could not post play panel:", error.message || error);
+        }
       } catch (error) {
-        console.log("Could not post play panel:", error.message || error);
+        console.error(`Failed to join VC for ${INSTANCE_NAME}:`, error);
       }
-    } catch (error) {
-      console.error("Failed to join VC:", error);
+    };
+
+    // Wait for Lavalink to be ready before joining
+    if (client.shoukaku.getIdealNode()) {
+      joinVoice();
+    } else {
+      client.shoukaku.once("ready", joinVoice);
     }
   });
 

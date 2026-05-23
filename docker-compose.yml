@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "2333:2333"
+      - "2333:2333/udp"
     volumes:
       - ./application.yml:/opt/Lavalink/application.yml
     environment:
@@ -21,6 +22,9 @@ services:
       - lavalink
     networks:
       - zyra-network
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     env_file:
       - .env
     volumes:

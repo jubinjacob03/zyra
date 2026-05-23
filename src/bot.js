@@ -133,35 +133,46 @@ async function resolveStoredMusicPanel(client, channelId) {
 // Player Events
 player.events.on('playerStart', async (queue, track) => {
   const { createCompleteMusicController } = require("./utils/componentsV2");
-  const { getPlayPanel } = require("./utils/panelStore");
+  const { getControllerPanel, setControllerPanel } = require("./utils/panelStore");
   const controller = createCompleteMusicController(queue);
 
   const textChannel = queue.metadata?.channel;
   if (!textChannel) return;
 
   let message = null;
-  const storedId = getPlayPanel(textChannel.id);
+  const existingPanel = client.musicPanels.get(queue.guild.id);
+  
+  if (existingPanel?.message) {
+    message = existingPanel.message;
+  }
 
-  if (storedId) {
-    try {
-      message = await textChannel.messages.fetch(storedId);
-      if (message && isEditableByClient(message, client.user?.id)) {
-        await message.edit({ components: controller.components, flags: controller.flags });
-      } else {
+  if (!message) {
+    const storedId = getControllerPanel(textChannel.id);
+    if (storedId) {
+      try {
+        message = await textChannel.messages.fetch(storedId);
+      } catch (error) {
         message = null;
       }
-    } catch (error) {
-      message = null;
     }
   }
 
   if (!message) {
-    // Fallback if the panel was deleted
-    const { ensurePlayMusicPanel } = require("./utils/playPanel");
-    message = await ensurePlayMusicPanel(textChannel, client.INSTANCE_NAME || "Remani", client.user?.id);
-    if (message) {
+    message = await findExistingMusicPanel(textChannel, client.user?.id);
+  }
+
+  if (message && isEditableByClient(message, client.user?.id)) {
+    try {
       await message.edit({ components: controller.components, flags: controller.flags });
+    } catch (error) {
+      message = await textChannel.send({ components: controller.components, flags: controller.flags });
     }
+  } else {
+    message = await textChannel.send({ components: controller.components, flags: controller.flags });
+  }
+
+  if (message?.id && message?.channelId) {
+    setControllerPanel(message.channelId, message.id);
   }
 
   client.musicPanels.set(queue.guild.id, {
@@ -179,8 +190,19 @@ player.events.on('audioTrackAdd', (queue, track) => {
 player.events.on('disconnect', async (queue) => {
   const textChannel = queue.metadata?.channel;
   if (textChannel) {
-    const { ensurePlayMusicPanel } = require("./utils/playPanel");
-    await ensurePlayMusicPanel(textChannel, client.INSTANCE_NAME || "Remani", client.user?.id);
+    const { getControllerPanel } = require("./utils/panelStore");
+    const storedId = getControllerPanel(textChannel.id);
+    if (storedId) {
+      try {
+        const message = await textChannel.messages.fetch(storedId);
+        if (message && isEditableByClient(message, client.user?.id)) {
+          const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+          const container = new ContainerBuilder().setAccentColor(0x00ffff);
+          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} Disconnected. Add more songs to keep the party going!`));
+          await message.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        }
+      } catch (e) {}
+    }
   }
   client.musicPanels.delete(queue.guild.id);
 });
@@ -189,8 +211,19 @@ player.events.on('emptyQueue', async (queue) => {
   console.log("🎵 Queue finished");
   const textChannel = queue.metadata?.channel;
   if (textChannel) {
-    const { ensurePlayMusicPanel } = require("./utils/playPanel");
-    await ensurePlayMusicPanel(textChannel, client.INSTANCE_NAME || "Remani", client.user?.id);
+    const { getControllerPanel } = require("./utils/panelStore");
+    const storedId = getControllerPanel(textChannel.id);
+    if (storedId) {
+      try {
+        const message = await textChannel.messages.fetch(storedId);
+        if (message && isEditableByClient(message, client.user?.id)) {
+          const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+          const container = new ContainerBuilder().setAccentColor(0x00ffff);
+          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} Queue finished. Add more songs to keep the party going!`));
+          await message.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        }
+      } catch (e) {}
+    }
   }
   client.musicPanels.delete(queue.guild.id);
 });

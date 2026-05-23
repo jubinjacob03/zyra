@@ -27,6 +27,8 @@ const { youtubedl } = require("./utils/media");
 const { initRuntimeLogger } = require("./utils/runtimeLogger");
 const { getControllerPanel, setControllerPanel } = require("./utils/panelStore");
 
+require('dns').setDefaultResultOrder('ipv4first');
+
 initRuntimeLogger({ label: process.env.RUNTIME_LOGGER_LABEL || "main" });
 
 process.on("unhandledRejection", (reason) => {
@@ -294,7 +296,7 @@ class MusicQueue {
           "referer:youtube.com",
           "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         ],
-        extractorArgs: "youtube:player_client=android",
+        extractorArgs: "youtube:player_client=ios,android,web",
         ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
         ...(process.env.YOUTUBE_PROXY && { proxy: process.env.YOUTUBE_PROXY }),
       };
@@ -349,10 +351,9 @@ class MusicQueue {
 
       if (message) {
         try {
-          await message.edit(controller);
-        } catch {
-          message = null;
-        }
+          await message.delete();
+        } catch {}
+        message = null;
       }
 
       if (!message) {
@@ -362,11 +363,9 @@ class MusicQueue {
         );
         if (stored) {
           try {
-            await stored.edit(controller);
-            message = stored;
-          } catch {
-            message = null;
-          }
+            await stored.delete();
+          } catch {}
+          message = null;
         }
       }
 
@@ -377,11 +376,9 @@ class MusicQueue {
         );
         if (reused) {
           try {
-            await reused.edit(controller);
-            message = reused;
-          } catch {
-            message = null;
-          }
+            await reused.delete();
+          } catch {}
+          message = null;
         }
       }
 
@@ -799,6 +796,7 @@ async function searchSongInternal(query, user) {
       "Sec-Fetch-Mode:navigate",
       "Sec-Fetch-Dest:document",
     ],
+    extractorArgs: "youtube:player_client=ios,android,web",
     ...(process.env.YOUTUBE_PROXY && { proxy: process.env.YOUTUBE_PROXY }),
   };
 

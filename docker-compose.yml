@@ -13,19 +13,12 @@ services:
       - NODE_ENV=production
       - TZ=UTC
       - YTDL_NO_UPDATE=1
+      - NODE_OPTIONS=--max-old-space-size=256
     ports:
       - "8000:8000"
       - "8001:8001"
       - "8002:8002"
       - "8003:8003"
-    deploy:
-      resources:
-        limits:
-          cpus: "2"
-          memory: 1G
-        reservations:
-          cpus: "0.5"
-          memory: 512M
     # Health check
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'node src/index.js' || exit 1"]

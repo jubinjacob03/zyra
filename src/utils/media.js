@@ -24,13 +24,26 @@ if (os.platform() === "win32") {
     console.log("Using bundled yt-dlp");
   }
 } else {
-  const systemYtdlp = "/root/.nix-profile/bin/yt-dlp";
-  if (fs.existsSync(systemYtdlp)) {
-    youtubedl = youtubedlExec.create(systemYtdlp);
+  const nixYtdlp = "/root/.nix-profile/bin/yt-dlp";
+  const dockerYtdlp = "/usr/bin/yt-dlp";
+  const localYtdlp = "/usr/local/bin/yt-dlp";
+  if (fs.existsSync(nixYtdlp)) {
+    youtubedl = youtubedlExec.create(nixYtdlp);
     console.log("Using system yt-dlp (Nix)");
+  } else if (fs.existsSync(dockerYtdlp)) {
+    youtubedl = youtubedlExec.create(dockerYtdlp);
+    console.log("Using system yt-dlp (Docker)");
+  } else if (fs.existsSync(localYtdlp)) {
+    youtubedl = youtubedlExec.create(localYtdlp);
+    console.log("Using system yt-dlp (Local)");
   } else {
-    youtubedl = youtubedlExec;
-    console.log("Using bundled yt-dlp (Linux/Mac)");
+    try {
+      youtubedl = youtubedlExec.create("yt-dlp");
+      console.log("Using system yt-dlp from PATH");
+    } catch {
+      youtubedl = youtubedlExec;
+      console.log("Using bundled yt-dlp (Linux/Mac)");
+    }
   }
 }
 

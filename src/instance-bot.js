@@ -333,7 +333,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const modal = new ModalBuilder()
         .setCustomId("song_input_modal")
-        .setTitle(`${e("MUSIC")} Play Music`);
+        .setTitle(`🎵 Play Music`);
 
       const songInput = new TextInputBuilder()
         .setCustomId("song_query")

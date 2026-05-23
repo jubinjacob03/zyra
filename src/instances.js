@@ -17,6 +17,8 @@ let processSpotifyPlaylistBackground;
 let formatDuration;
 let spotifyAPI;
 
+require('dns').setDefaultResultOrder('ipv4first');
+
 const instanceConfig = require("../config.json");
 
 const asEphemeral = (payload) => ({
@@ -89,11 +91,12 @@ process.on("uncaughtException", (error) => {
  * @returns {Promise<import('@discordjs/voice').VoiceConnection>} The established voice connection.
  * @throws {Error} If the connection fails or times out.
  */
-async function connectVoice({ voiceChannel, guildId, timeoutMs = 30000 }) {
+async function connectVoice({ voiceChannel, guildId, group, timeoutMs = 30000 }) {
   const connection = joinVoiceChannel({
     channelId: voiceChannel.id,
     guildId: guildId,
     adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+    group: group,
   });
 
   try {
@@ -116,7 +119,7 @@ async function connectVoice({ voiceChannel, guildId, timeoutMs = 30000 }) {
  * @param {string} options.label - A label for logging purposes.
  * @returns {Object} An object containing `attach` and `startRetry` methods.
  */
-function createRejoiner({ voiceChannel, guildId, queue, label }) {
+function createRejoiner({ voiceChannel, guildId, group, queue, label }) {
   let retryTimer = null;
   let retrying = false;
 
@@ -125,7 +128,7 @@ function createRejoiner({ voiceChannel, guildId, queue, label }) {
     retrying = true;
 
     try {
-      const newConnection = await connectVoice({ voiceChannel, guildId });
+      const newConnection = await connectVoice({ voiceChannel, guildId, group });
 
       if (queue) {
         queue.connection = newConnection;
@@ -271,6 +274,7 @@ function startInstance(config, instanceIndex) {
       channelId: voiceChannel.id,
       guildId: guildId,
       adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+      group: this.user.id,
     });
 
     try {
@@ -297,6 +301,7 @@ function startInstance(config, instanceIndex) {
     const queueRejoiner = createRejoiner({
       voiceChannel,
       guildId,
+      group: this.user.id,
       queue,
       label: `${INSTANCE_NAME} queue`,
     });
@@ -328,6 +333,7 @@ function startInstance(config, instanceIndex) {
     const autoRejoiner = createRejoiner({
       voiceChannel,
       guildId: guild.id,
+      group: c.user.id,
       label: `${INSTANCE_NAME} auto-join`,
     });
 
@@ -335,6 +341,7 @@ function startInstance(config, instanceIndex) {
       const connection = await connectVoice({
         voiceChannel,
         guildId: guild.id,
+        group: c.user.id,
       });
 
       console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
@@ -366,7 +373,7 @@ function startInstance(config, instanceIndex) {
 
         const modal = new ModalBuilder()
           .setCustomId("song_input_modal")
-          .setTitle(`${e("MUSIC")} Play Music`);
+          .setTitle(`🎵 Play Music`);
 
         const songInput = new TextInputBuilder()
           .setCustomId("song_query")

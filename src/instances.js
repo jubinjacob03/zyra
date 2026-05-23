@@ -328,7 +328,7 @@ function startInstances({ index } = {}) {
     return [startInstance(instances[index], index)];
   }
 
-  return [startInstance(instances[0], 0)];
+  return instances.map((instance, i) => startInstance(instance, i));
 }
 
 if (require.main === module) {

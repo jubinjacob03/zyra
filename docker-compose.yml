@@ -17,6 +17,14 @@ services:
       - 1.1.1.1
     networks:
       - zyra-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 400M
+        reservations:
+          cpus: "0.2"
+          memory: 256M
 
   zyra-bot:
     image: zyra-bot

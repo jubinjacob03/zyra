@@ -29,8 +29,8 @@ module.exports = {
 
         const position = interaction.options.getInteger('position');
 
-        if (position > queue.songs.length) {
-            return interaction.reply({ ...errorEmbed(`Invalid position. Queue has ${queue.songs.length} songs.`), flags: 64 });
+        if (position >= queue.songs.length) {
+            return interaction.reply({ ...errorEmbed(`Invalid position. Queue has ${queue.songs.length - 1} upcoming songs.`), flags: 64 });
         }
 
         const removed = queue.songs.splice(position, 1)[0];

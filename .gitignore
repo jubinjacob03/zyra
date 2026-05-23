@@ -45,3 +45,6 @@ windows**/
 # Audio cache (if any)
 cache/
 downloads/
+
+# Java/Lavalink
+*.jar

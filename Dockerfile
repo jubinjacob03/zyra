@@ -1,18 +1,6 @@
 # Use Node.js 22 Alpine for smaller image size
 FROM node:22-alpine
 
-# Install system dependencies
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    ffmpeg \
-    curl \
-    wget \
-    ca-certificates \
-    && pip3 install --no-cache-dir --break-system-packages yt-dlp \
-    && yt-dlp --version \
-    && ffmpeg -version
-
 # Create app directory
 WORKDIR /app
 
@@ -29,12 +17,8 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p /app/logs /app/cache/audio
 
-# Ensure yt-dlp is accessible
-RUN yt-dlp --version || (echo "yt-dlp installation failed" && exit 1)
-
 # Set environment
-ENV NODE_ENV=production \
-    YTDL_NO_UPDATE=1
+ENV NODE_ENV=production
 
 # Expose API port (if using the music API)
 EXPOSE 8000

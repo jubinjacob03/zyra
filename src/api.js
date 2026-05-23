@@ -1,5 +1,4 @@
 const http = require("node:http");
-const ytdl = require("youtube-dl-exec");
 
 /**
  * Attaches the Music API server to the Discord client.
@@ -138,7 +137,6 @@ module.exports = function attachMusicApi(client, customPort = null) {
         });
       }
 
-      // ── Legacy generic control (kept for backward compat) ────────────────
       if (req.method === "POST" && path === "/control") {
         const { guildId, action, value } = await parseBody(req);
         const queue = client.getQueue(guildId);
@@ -184,7 +182,6 @@ module.exports = function attachMusicApi(client, customPort = null) {
         return send(res, 200, { success: true, action });
       }
 
-      // ── Direct per-action endpoints (zero-overhead, no switch dispatch) ──
       if (req.method === "POST") {
         const directActions = [
           "/skip",
@@ -276,8 +273,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
             queueLength: 0,
           });
 
-        // Note: Direct yt-dlp streaming doesn't track elapsed time
-        const elapsed = 0;
+        const elapsed = Math.floor((queue.player?.position || 0) / 1000);
 
         return send(res, 200, {
           playing: queue.playing && !queue.paused,
@@ -310,33 +306,36 @@ module.exports = function attachMusicApi(client, customPort = null) {
         if (!query) return send(res, 400, { error: "query is required" });
 
         try {
-          const maxResults = Math.min(Number(limit) || 10, 25);
-          const searchPrefix = `ytsearch${maxResults}:${query}`;
-          const searchResults = await ytdl(searchPrefix, {
-            dumpSingleJson: true,
-            noWarnings: true,
-            noCallHome: true,
-            noCheckCertificate: true,
-            preferFreeFormats: true,
-            youtubeSkipDashManifest: true,
-            flatPlaylist: true,
-          });
+          const node = client.shoukaku.getIdealNode();
+          if (!node) return send(res, 500, { error: "Lavalink node not ready" });
 
-          const entries = searchResults?.entries || [];
-          if (!entries.length) {
+          const maxResults = Math.min(Number(limit) || 10, 25);
+          const searchPrefix = `ytsearch:${query}`;
+          const searchResults = await node.rest.resolve(searchPrefix);
+
+          if (!searchResults || searchResults.loadType === "empty" || searchResults.loadType === "error") {
             return send(res, 200, { results: [] });
           }
 
-          // Filter out YouTube Shorts (videos under 61 seconds)
-          const results = entries
-            .filter((video) => (video.duration || 0) >= 61)
-            .map((video) => ({
-              title: video.title || "Untitled",
-              author: video.uploader || video.channel || "Unknown",
-              duration: Math.floor(video.duration || 0),
-              url: `https://www.youtube.com/watch?v=${video.id}`,
-              thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`,
-              id: video.id || "",
+          let tracks = [];
+          if (searchResults.loadType === "playlist") {
+            tracks = searchResults.data.tracks;
+          } else if (searchResults.loadType === "search") {
+            tracks = searchResults.data;
+          } else if (searchResults.loadType === "track") {
+            tracks = [searchResults.data];
+          }
+
+          const results = tracks
+            .filter((track) => (track.info.length || 0) >= 61000)
+            .slice(0, maxResults)
+            .map((track) => ({
+              title: track.info.title || "Untitled",
+              author: track.info.author || "Unknown",
+              duration: Math.floor((track.info.length || 0) / 1000),
+              url: track.info.uri,
+              thumbnail: track.info.artworkUrl,
+              id: track.info.identifier || "",
             }));
 
           return send(res, 200, { results });

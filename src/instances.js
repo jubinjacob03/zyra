@@ -1,13 +1,8 @@
 require("dotenv").config();
 const { Client, GatewayIntentBits, Collection, Events } = require("discord.js");
-const {
-  joinVoiceChannel,
-  VoiceConnectionStatus,
-  entersState,
-} = require("@discordjs/voice");
+const { Shoukaku, Connectors } = require("shoukaku");
 const { initEmojis } = require("./utils/customEmoji");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
-const { youtubedl } = require("./utils/media");
 
 let MusicQueue;
 let searchSong;
@@ -63,7 +58,6 @@ const createPanelChannel = (baseChannel) => {
 
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
-    if (reason.command && reason.command.includes("yt-dlp")) return;
     if (reason.message && reason.message.includes("Cannot perform IP discovery - socket closed")) return;
     if (reason.code === 10008 || reason.code === 10062) {
       console.log(
@@ -76,90 +70,8 @@ process.on("unhandledRejection", (reason) => {
 });
 
 process.on("uncaughtException", (error) => {
-  if (error.message && error.message.includes("yt-dlp")) return;
   console.error("Uncaught exception:", error);
 });
-
-/**
- * Connects to a voice channel.
- * @param {Object} options - Connection options.
- * @param {import('discord.js').VoiceChannel} options.voiceChannel - The voice channel to join.
- * @param {string} options.guildId - The ID of the guild.
- * @param {number} [options.timeoutMs=30000] - Timeout in milliseconds.
- * @returns {Promise<import('@discordjs/voice').VoiceConnection>} The established voice connection.
- * @throws {Error} If the connection fails or times out.
- */
-async function connectVoice({ voiceChannel, guildId, timeoutMs = 30000 }) {
-  const connection = joinVoiceChannel({
-    channelId: voiceChannel.id,
-    guildId: guildId,
-    adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-  });
-
-  try {
-    await entersState(connection, VoiceConnectionStatus.Ready, timeoutMs);
-    return connection;
-  } catch (error) {
-    if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-      connection.destroy();
-    }
-    throw error;
-  }
-}
-
-/**
- * Creates a rejoiner utility to automatically reconnect to a voice channel if disconnected.
- * @param {Object} options - Rejoiner options.
- * @param {import('discord.js').VoiceChannel} options.voiceChannel - The voice channel to rejoin.
- * @param {string} options.guildId - The ID of the guild.
- * @param {Object} options.queue - The music queue associated with the connection.
- * @param {string} options.label - A label for logging purposes.
- * @returns {Object} An object containing `attach` and `startRetry` methods.
- */
-function createRejoiner({ voiceChannel, guildId, queue, label }) {
-  let retryTimer = null;
-  let retrying = false;
-
-  const attempt = async () => {
-    if (retrying) return;
-    retrying = true;
-
-    try {
-      const newConnection = await connectVoice({ voiceChannel, guildId });
-
-      if (queue) {
-        queue.connection = newConnection;
-        newConnection.subscribe(queue.player);
-      }
-
-      if (retryTimer) {
-        clearInterval(retryTimer);
-        retryTimer = null;
-      }
-
-      attach(newConnection);
-      console.log(`Rejoined ${label}`);
-    } catch (error) {
-      const message = error && error.message ? error.message : String(error);
-      console.log(`Rejoin failed for ${label}: ${message}`);
-    } finally {
-      retrying = false;
-    }
-  };
-
-  const startRetry = () => {
-    if (retryTimer) return;
-    retryTimer = setInterval(attempt, 5000);
-    attempt();
-  };
-
-  const attach = (connection) => {
-    connection.on(VoiceConnectionStatus.Disconnected, startRetry);
-    connection.on(VoiceConnectionStatus.Destroyed, startRetry);
-  };
-
-  return { attach, startRetry };
-}
 
 /**
  * Starts a new music bot instance based on the provided configuration.
@@ -222,9 +134,20 @@ function startInstance(config, instanceIndex) {
   client.commands = new Collection();
   client.queues = new Map();
   client.musicPanels = new Map();
-  client.youtubedl = youtubedl;
   client.INSTANCE_NAME = INSTANCE_NAME;
   client.INSTANCE_VOICE_CHANNEL_ID = INSTANCE_VOICE_CHANNEL_ID;
+
+  const Nodes = [
+    {
+      name: "Lavalink",
+      url: process.env.LAVALINK_URL || "lavalink:2333",
+      auth: process.env.LAVALINK_PASSWORD || "youshallnotpass",
+    },
+  ];
+
+  client.shoukaku = new Shoukaku(new Connectors.DiscordJS(client), Nodes);
+  client.shoukaku.on("error", (_, error) => console.error("Shoukaku Error:", error));
+  client.shoukaku.on("ready", (name) => console.log(`✅ Lavalink Node ${name} is ready for ${INSTANCE_NAME}!`));
 
   client.on("error", console.error);
 
@@ -233,7 +156,7 @@ function startInstance(config, instanceIndex) {
   }
 
   client.MusicQueue = MusicQueue;
-  client.searchSong = searchSong;
+  client.searchSong = (query, user) => searchSong(query, user, client);
   client.updateMusicController = updateMusicController;
   const silentChannel = createSilentChannel();
   client.processSpotifyPlaylistBackground = (tracks, queue) =>
@@ -267,18 +190,15 @@ function startInstance(config, instanceIndex) {
     voiceChannel,
     persistent = true,
   ) {
-    const connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId: guildId,
-      adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-    });
-
+    let player;
     try {
-      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+      player = await this.shoukaku.joinVoiceChannel({
+        guildId: guildId,
+        channelId: voiceChannel.id,
+        shardId: 0,
+        deaf: true,
+      });
     } catch (error) {
-      if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-        connection.destroy();
-      }
       console.error("Voice connection failed:", error);
       throw new Error("Failed to connect to voice channel");
     }
@@ -289,18 +209,27 @@ function startInstance(config, instanceIndex) {
       guildId,
       panelChannel,
       voiceChannel,
-      connection,
+      player,
       persistent,
     );
     this.queues.set(guildId, queue);
 
-    const queueRejoiner = createRejoiner({
-      voiceChannel,
-      guildId,
-      queue,
-      label: `${INSTANCE_NAME} queue`,
+    player.on("closed", async () => {
+      console.log(`⚠️ ${INSTANCE_NAME} disconnected - attempting immediate rejoin...`);
+      try {
+        const newPlayer = await this.shoukaku.joinVoiceChannel({
+          guildId: guildId,
+          channelId: voiceChannel.id,
+          shardId: 0,
+          deaf: true,
+        });
+        queue.player = newPlayer;
+        queue.setupPlayerEvents();
+        console.log(`✅ ${INSTANCE_NAME} rejoined successfully`);
+      } catch (error) {
+        console.error(`❌ ${INSTANCE_NAME} rejoin failed:`, error.message);
+      }
     });
-    queueRejoiner.attach(connection);
 
     return queue;
   };
@@ -325,21 +254,31 @@ function startInstance(config, instanceIndex) {
       process.exit(1);
     }
 
-    const autoRejoiner = createRejoiner({
-      voiceChannel,
-      guildId: guild.id,
-      label: `${INSTANCE_NAME} auto-join`,
-    });
-
     try {
-      const connection = await connectVoice({
-        voiceChannel,
+      const player = await client.shoukaku.joinVoiceChannel({
         guildId: guild.id,
+        channelId: voiceChannel.id,
+        shardId: 0,
+        deaf: true,
       });
 
       console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
 
-      autoRejoiner.attach(connection);
+      player.on("closed", async () => {
+        console.log(`⚠️ ${INSTANCE_NAME} disconnected - attempting immediate rejoin...`);
+        try {
+          await client.shoukaku.joinVoiceChannel({
+            guildId: guild.id,
+            channelId: voiceChannel.id,
+            shardId: 0,
+            deaf: true,
+          });
+          console.log(`✅ ${INSTANCE_NAME} rejoined successfully`);
+        } catch (error) {
+          console.error(`❌ ${INSTANCE_NAME} rejoin failed:`, error.message);
+        }
+      });
+
       try {
         await ensurePlayMusicPanel(voiceChannel, INSTANCE_NAME, c.user.id);
       } catch (error) {
@@ -347,7 +286,6 @@ function startInstance(config, instanceIndex) {
       }
     } catch (error) {
       console.error("Failed to join VC:", error);
-      autoRejoiner.startRetry();
     }
   });
 
@@ -366,7 +304,7 @@ function startInstance(config, instanceIndex) {
 
         const modal = new ModalBuilder()
           .setCustomId("song_input_modal")
-          .setTitle(`${e("MUSIC")} Play Music`);
+          .setTitle(`🎵 Play Music`);
 
         const songInput = new TextInputBuilder()
           .setCustomId("song_query")
@@ -431,13 +369,13 @@ function startInstance(config, instanceIndex) {
         queue.lastInteraction = interaction;
 
         if (result.type === "playlist") {
-          queue.addSongs(result.tracks);
+          queue.addSongs(result.songs);
           const { successEmbed } = require("./utils/embed");
-          await interaction.editReply(successEmbed(`Added ${result.tracks.length} songs`));
+          await interaction.editReply(successEmbed(`Added ${result.songs.length} songs`));
 
-          if (result.backgroundProcessing) {
+          if (result.spotifyData?.remainingTracks) {
             client
-              .processSpotifyPlaylistBackground(result.tracks, queue)
+              .processSpotifyPlaylistBackground(result.spotifyData.remainingTracks, queue)
               .catch(console.error);
           }
         } else {
@@ -484,6 +422,12 @@ function startInstance(config, instanceIndex) {
   return client;
 }
 
+/**
+ * Starts multiple instances based on the configuration.
+ * @param {Object} options - Options for starting instances.
+ * @param {number} [options.index] - Specific instance index to start.
+ * @returns {Array<import('discord.js').Client>} Array of started clients.
+ */
 function startInstances({ index } = {}) {
   const instances = instanceConfig.instances || [];
 

@@ -1,74 +1,74 @@
 # Remani Music Bot 🎵
 
-A powerful Discord music bot with YouTube streaming using yt-dlp.
+A powerful Discord music bot with YouTube and Spotify streaming, powered by Lavalink v4 and Shoukaku.
 
 **Created by:** God BlazXx
 
 ## ✨ Features
 
-- 🎥 YouTube streaming (videos, playlists, search)
+- 🎥 YouTube streaming (videos, playlists, search) with OAuth bypass for anti-bot blocks
 - 🎧 Spotify integration (tracks, playlists, albums)
 - 📋 Queue management, shuffle, repeat modes
 - 🔊 Volume control, interactive music panels
 - 🎮 18 slash commands
 - 🌐 Web dashboard & API
+- 🚀 Master/Slave architecture for persistent voice connections
 
 ## 🛠️ Stack
 
-- **Audio Engine**: yt-dlp (direct streaming, no Lavalink)
-- **Bot Framework**: Discord.js 14 + @discordjs/voice
+- **Audio Engine**: Lavalink v4.2.2 (Java)
+- **Bot Framework**: Discord.js 14 + Shoukaku v4.3.0
 - **Runtime**: Node.js 22+ (Alpine Linux in Docker)
-- **Streaming**: youtube-dl-exec + play-dl fallback
-- **Dependencies**: Python3, ffmpeg, yt-dlp
+- **Orchestration**: Docker Compose
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 22+ (or Docker)
-- Python 3 + yt-dlp
-- ffmpeg
+- Docker and Docker Compose
+- A Discord Bot Token
+- A Spotify Developer Account (Optional but recommended)
 
 ### Setup
 
+1. Clone the repository:
 ```bash
-# Clone and install
+git clone https://github.com/jubinjacob03/zyra.git
+cd zyra
+git checkout lavalink-dev
+```
+
+2. Configure Environment Variables:
+```bash
 cp .env.example .env
-# Edit .env with your DISCORD_TOKEN and CLIENT_ID
-npm install
-
-# Deploy commands
-node src/deploy-commands.js
-
-# Start bot
-node src/index.js
+# Edit .env with your DISCORD_TOKEN, CLIENT_ID, and SPOTIFY credentials
 ```
 
-## 🐳 Docker Deployment
-
-### Local Testing
-
+3. Start the Bot and Lavalink:
 ```bash
-docker-compose up -d --build
-docker-compose logs -f remani-bot
+docker-compose up -d
 ```
 
-### GitHub Container Registry (Auto-Build)
-
-Push to `dev` branch to trigger automatic Docker image build:
-
+4. **IMPORTANT: YouTube OAuth Authentication**
+To bypass YouTube's "Sign in to confirm you're not a bot" block on VPS/Datacenter IPs, you must authenticate Lavalink with a burner Google account.
 ```bash
-git push origin dev
+# Check the Lavalink logs for the OAuth code
+docker logs lavalink | grep OAUTH
 ```
+- Go to `https://www.google.com/device`
+- Enter the code shown in the logs.
+- Log in with a **burner Google account**.
+- Once authenticated, Lavalink will save the `refreshToken` in `application.yml` and you won't have to do this again.
 
-Image will be published to: `ghcr.io/<your-username>/zyra:dev`
+## 🐳 Docker Deployment (Remote VPS)
 
-### Pull and Run
+To deploy this on a remote VPS (like Oracle Cloud, DigitalOcean, etc.):
 
-```bash
-docker pull ghcr.io/<your-username>/zyra:dev
-docker run -d --name remani-bot --env-file .env -p 8000:8000 ghcr.io/<your-username>/zyra:dev
-```
+1. SSH into your VPS.
+2. Clone the repository and checkout the `lavalink-dev` branch.
+3. Copy your `.env` file to the VPS.
+4. Run `docker-compose up -d`.
+5. Check `docker logs lavalink` for the OAuth code and authenticate using your local browser.
 
 ## 📝 Environment Variables
 
@@ -77,16 +77,20 @@ Create a `.env` file:
 ```env
 # Required
 DISCORD_TOKEN=your_discord_bot_token
-DISCORD_CLIENT_ID=your_client_id
+CLIENT_ID=your_client_id
+GUILD_ID=your_guild_id
 
 # Optional (enhances features)
-GENIUS_API_KEY=your_genius_key
 SPOTIFY_CLIENT_ID=your_spotify_id
 SPOTIFY_CLIENT_SECRET=your_spotify_secret
 
 # API (optional)
 MUSIC_API_PORT=8000
 MUSIC_API_KEY=your_api_key
+
+# Lavalink
+LAVALINK_URL=lavalink:2333
+LAVALINK_PASSWORD=youshallnotpass
 ```
 
 ## 🎮 Commands
@@ -113,34 +117,23 @@ MUSIC_API_KEY=your_api_key
 | `/join`       | Join your voice channel      |
 | `/help`       | Show help                    |
 
-## 🔧 Deployment Notes
+## 🔧 Architecture Notes
 
-- **yt-dlp**: Direct YouTube streaming without Lavalink (avoids rate limits)
-- **No Java required**: Pure Node.js bot with Python for yt-dlp
-- **Auto-builds**: Push to `dev` branch triggers GitHub Actions to build and publish Docker image
-- **Cache**: Audio metadata cached in `./cache` for faster repeated plays
-- **Logs**: Automatically rotated (10MB max, 3 files kept)
-
-## 📊 Resource Requirements
-
-- **CPU**: 0.5-2 cores
-- **RAM**: 512MB - 1GB
-- **Storage**: 1-5GB (for cache)
+- **Lavalink**: Handles all audio downloading, encoding, and streaming. This completely replaces `yt-dlp` and `@discordjs/voice`.
+- **Shoukaku**: The Lavalink wrapper used in the Node.js bot to communicate with the Lavalink server via WebSockets and REST.
+- **Master/Slave**: `index.js` acts as a process manager, spawning the main bot (`bot.js`) and persistent instances (`instances.js`).
 
 ## 🔍 Troubleshooting
 
 ```bash
-# View logs
-docker-compose logs -f remani-bot
+# View bot logs
+docker logs -f zyra-bot
 
-# Restart bot
+# View Lavalink logs
+docker logs -f lavalink
+
+# Restart everything
 docker-compose restart
-
-# Check yt-dlp version
-docker exec -it remani-bot yt-dlp --version
-
-# Enter container shell
-docker exec -it remani-bot /bin/sh
 ```
 
 ---

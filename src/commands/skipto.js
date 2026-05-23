@@ -29,11 +29,11 @@ module.exports = {
 
         const position = interaction.options.getInteger('position');
 
-        if (position > queue.songs.length) {
-            return interaction.reply({ ...errorEmbed(`Invalid position. Queue has ${queue.songs.length} songs.`), flags: 64 });
+        if (position >= queue.songs.length) {
+            return interaction.reply({ ...errorEmbed(`Invalid position. Queue has ${queue.songs.length - 1} upcoming songs.`), flags: 64 });
         }
 
-        queue.songs.splice(0, position - 1);
+        queue.songs.splice(1, position - 1);
         queue.skip();
         await interaction.reply({ ...successEmbed(`Skipped to position **${position}**`) });
     },

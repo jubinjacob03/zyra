@@ -35,8 +35,8 @@ module.exports = {
         const from = interaction.options.getInteger('from');
         const to = interaction.options.getInteger('to');
 
-        if (from > queue.songs.length || to > queue.songs.length) {
-            return interaction.reply({ ...errorEmbed(`Invalid positions. Queue has ${queue.songs.length} songs.`), flags: 64 });
+        if (from >= queue.songs.length || to >= queue.songs.length) {
+            return interaction.reply({ ...errorEmbed(`Invalid positions. Queue has ${queue.songs.length - 1} upcoming songs.`), flags: 64 });
         }
 
         const song = queue.songs.splice(from, 1)[0];

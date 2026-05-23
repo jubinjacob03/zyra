@@ -1,9 +1,26 @@
 services:
+  lavalink:
+    image: fredboat/lavalink:master
+    container_name: lavalink
+    restart: unless-stopped
+    ports:
+      - "2333:2333"
+    volumes:
+      - ./application.yml:/opt/Lavalink/application.yml
+    environment:
+      - _JAVA_OPTIONS=-Xmx256m -Xms128m
+    networks:
+      - zyra-network
+
   zyra-bot:
     image: zyra-bot
     build: .
     container_name: zyra-bot
     restart: unless-stopped
+    depends_on:
+      - lavalink
+    networks:
+      - zyra-network
     env_file:
       - .env
     volumes:
@@ -12,7 +29,7 @@ services:
     environment:
       - NODE_ENV=production
       - TZ=UTC
-      - YTDL_NO_UPDATE=1
+      - NODE_OPTIONS=--max-old-space-size=256
     ports:
       - "8000:8000"
       - "8001:8001"
@@ -33,11 +50,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    # Network mode
-    network_mode: bridge
     # Logging
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  zyra-network:
+    driver: bridge

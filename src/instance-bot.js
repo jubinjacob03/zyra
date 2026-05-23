@@ -11,21 +11,10 @@ const {
   TextInputStyle,
 } = require("discord.js");
 const { btn } = require("./utils/customEmoji");
-const {
-  joinVoiceChannel,
-  createAudioPlayer,
-  createAudioResource,
-  AudioPlayerStatus,
-  VoiceConnectionStatus,
-  entersState,
-  NoSubscriberBehavior,
-  StreamType,
-} = require("@discordjs/voice");
+const { Shoukaku, Connectors } = require("shoukaku");
 const fs = require("fs");
-const { youtubedl } = require("./utils/media");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
 
-// Load instance configuration
 const instanceIndex = parseInt(process.argv[2]) - 1;
 const instanceConfig = require("../config.json");
 const config = instanceConfig.instances[instanceIndex];
@@ -48,7 +37,6 @@ console.log(`   Guild: ${guildId}`);
 console.log(`   Voice Channel: ${voiceChannelId}`);
 console.log(`   API Port: ${apiPort}`);
 
-// Import search function from master
 const { searchSong, formatDuration } = require("./bot");
 
 const client = new Client({
@@ -59,38 +47,44 @@ const client = new Client({
   ],
 });
 
+const Nodes = [
+  {
+    name: "Lavalink",
+    url: process.env.LAVALINK_URL || "lavalink:2333",
+    auth: process.env.LAVALINK_PASSWORD || "youshallnotpass",
+  },
+];
+
+client.shoukaku = new Shoukaku(new Connectors.DiscordJS(client), Nodes);
+
+client.shoukaku.on("error", (_, error) => console.error("Shoukaku Error:", error));
+client.shoukaku.on("ready", (name) => console.log(`✅ Lavalink Node ${name} is ready!`));
+
 /**
  * A persistent music queue that remains in the voice channel even when idle.
  * Handles audio playback, queue management, and controller updates.
  */
 class PersistentMusicQueue {
-  constructor(connection, voiceChannel, textChannel) {
-    this.connection = connection;
+  constructor(player, voiceChannel, textChannel) {
+    this.player = player;
     this.voiceChannel = voiceChannel;
     this.textChannel = textChannel;
     this.songs = [];
     this.playing = false;
     this.paused = false;
     this.volume = 70;
+    this.repeatMode = 0;
     this.lastInteraction = null;
 
-    this.player = createAudioPlayer({
-      behaviors: {
-        noSubscriber: NoSubscriberBehavior.Play,
-        maxMissedFrames: Math.round(10000 / 20),
-      },
-    });
-
-    this.connection.subscribe(this.player);
-
-    this.player.on(AudioPlayerStatus.Idle, () => {
+    this.player.on("end", (reason) => {
+      if (reason.reason === "replaced") return;
       if (this.playing) {
         this.processQueue();
       }
     });
 
-    this.player.on("error", (error) => {
-      console.error("Player error:", error.message);
+    this.player.on("exception", (error) => {
+      console.error("Player exception:", error.exception?.message || "Unknown error");
       this.processQueue();
     });
   }
@@ -111,35 +105,8 @@ class PersistentMusicQueue {
     this.paused = false;
 
     try {
-      const ytdlpOpts = {
-        output: "-",
-        quiet: true,
-        noWarnings: true,
-        format: "bestaudio/best",
-        noPlaylist: true,
-        geoBypass: true,
-        noCheckCertificates: true,
-        addHeader: [
-          "referer:youtube.com",
-          "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        ],
-        extractorArgs: "youtube:player_client=android",
-        ...(fs.existsSync("./cookies.txt") && { cookies: "./cookies.txt" }),
-      };
-
-      const ytdlpProcess = youtubedl.exec(song.url, ytdlpOpts);
-      ytdlpProcess.stderr?.on("data", (data) => {
-        console.log(`[yt-dlp stderr] ${data.toString()}`);
-      });
-
-      const resource = createAudioResource(ytdlpProcess.stdout, {
-        inputType: StreamType.Arbitrary,
-        inlineVolume: true,
-        highWaterMark: 1 << 25,
-      });
-
-      resource.volume.setVolume(this.volume / 100);
-      this.player.play(resource);
+      await this.player.playTrack({ track: { encoded: song.track } });
+      await this.player.setGlobalVolume(this.volume);
 
       console.log(`🎵 Now playing: ${song.name}`);
 
@@ -153,28 +120,70 @@ class PersistentMusicQueue {
   }
 
   processQueue() {
-    this.songs.shift();
-
-    if (this.songs.length === 0) {
-      this.playing = false;
-      console.log("⚪ Instance idle - staying in VC");
-    } else {
+    if (this.repeatMode === 1) {
       this.play();
+    } else {
+      if (this.repeatMode === 2 && this.songs.length > 0) {
+        this.songs.push(this.songs.shift());
+      } else {
+        this.songs.shift();
+      }
+
+      if (this.songs.length === 0) {
+        this.playing = false;
+        console.log("⚪ Instance idle - staying in VC");
+      } else {
+        this.play();
+      }
     }
   }
 
   pause() {
-    this.player.pause();
+    this.player.setPaused(true);
     this.paused = true;
   }
 
   resume() {
-    this.player.unpause();
+    this.player.setPaused(false);
     this.paused = false;
   }
 
   skip() {
-    this.player.stop();
+    this.player.stopTrack();
+  }
+
+  stop() {
+    this.songs = [];
+    this.player.stopTrack();
+    this.playing = false;
+    this.paused = false;
+  }
+
+  shuffle() {
+    if (this.songs.length > 1) {
+      const current = this.songs.shift();
+      for (let i = this.songs.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [this.songs[i], this.songs[j]] = [this.songs[j], this.songs[i]];
+      }
+      this.songs.unshift(current);
+    }
+  }
+
+  setRepeatMode(mode) {
+    this.repeatMode = mode;
+  }
+
+  setVolume(vol) {
+    this.volume = vol;
+    this.player.setGlobalVolume(vol);
+  }
+
+  remove(index) {
+    if (index > 0 && index < this.songs.length) {
+      return this.songs.splice(index, 1)[0];
+    }
+    return null;
   }
 
   async updateController() {
@@ -187,7 +196,8 @@ class PersistentMusicQueue {
       const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
       const container = new ContainerBuilder().setAccentColor(0x0e0e12);
       
-      const description = `🎵 **${song.name}**\n\nby **${song.author || "Unknown"}**\n\n🔴 YouTube • ${song.formattedDuration}`;
+      const loopModes = ["Off", "Song", "Queue"];
+      const description = `🎵 **${song.name}**\n\nby **${song.author || "Unknown"}**\n\n🔴 YouTube • ${song.formattedDuration}\n🔊 Volume: ${this.volume}% • 🔁 Loop: ${loopModes[this.repeatMode]}`;
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(description)
       );
@@ -228,7 +238,7 @@ class PersistentMusicQueue {
         new ButtonBuilder()
           .setCustomId("loop")
           .setEmoji(btn("LOOP"))
-          .setStyle(ButtonStyle.Secondary),
+          .setStyle(this.repeatMode > 0 ? ButtonStyle.Success : ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("queue")
           .setEmoji(btn("QUEUE"))
@@ -253,7 +263,6 @@ let queue = null;
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Instance ready: ${readyClient.user.tag}`);
 
-  // Auto-join voice channel
   const guild = client.guilds.cache.get(guildId);
   if (!guild) {
     console.error("❌ Guild not found");
@@ -269,43 +278,30 @@ client.once(Events.ClientReady, async (readyClient) => {
   const textChannel = voiceChannel;
 
   try {
-    // Join and NEVER leave
-    const connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
+    const player = await client.shoukaku.joinVoiceChannel({
       guildId: guild.id,
-      adapterCreator: guild.voiceAdapterCreator,
+      channelId: voiceChannel.id,
+      shardId: 0,
+      deaf: true,
     });
 
-    await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
     console.log(`✅ Permanently joined: ${voiceChannel.name}`);
 
-    // Create persistent queue
-    queue = new PersistentMusicQueue(connection, voiceChannel, textChannel);
+    queue = new PersistentMusicQueue(player, voiceChannel, textChannel);
 
-    // Handle disconnects - auto-rejoin immediately
-    connection.on(VoiceConnectionStatus.Disconnected, async () => {
+    player.on("closed", async () => {
       console.log("⚠️ Disconnected - attempting immediate rejoin...");
       try {
-        await Promise.race([
-          entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
-          entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
-        ]);
-      } catch {
-        // Force rejoin
-        try {
-          const newConnection = joinVoiceChannel({
-            channelId: voiceChannel.id,
-            guildId: guild.id,
-            adapterCreator: guild.voiceAdapterCreator,
-          });
-
-          await entersState(newConnection, VoiceConnectionStatus.Ready, 10_000);
-          queue.connection = newConnection;
-          newConnection.subscribe(queue.player);
-          console.log("✅ Rejoined successfully");
-        } catch (error) {
-          console.error("❌ Rejoin failed:", error.message);
-        }
+        const newPlayer = await client.shoukaku.joinVoiceChannel({
+          guildId: guild.id,
+          channelId: voiceChannel.id,
+          shardId: 0,
+          deaf: true,
+        });
+        queue.player = newPlayer;
+        console.log("✅ Rejoined successfully");
+      } catch (error) {
+        console.error("❌ Rejoin failed:", error.message);
       }
     });
 
@@ -323,7 +319,6 @@ client.once(Events.ClientReady, async (readyClient) => {
   }
 });
 
-// Handle button interactions
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!queue) return;
 
@@ -333,7 +328,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const modal = new ModalBuilder()
         .setCustomId("song_input_modal")
-        .setTitle(`${e("MUSIC")} Play Music`);
+        .setTitle(`🎵 Play Music`);
 
       const songInput = new TextInputBuilder()
         .setCustomId("song_query")
@@ -349,7 +344,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    // Handle music control buttons
     const member = interaction.member;
     if (!member.voice.channel || member.voice.channel.id !== voiceChannelId) {
       const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
@@ -377,27 +371,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
         queue.skip();
         break;
       case "stop":
-        queue.songs = [];
-        queue.player.stop();
-        queue.playing = false;
+        queue.stop();
         break;
       case "voldown":
-        queue.volume = Math.max(0, queue.volume - 10);
+        queue.setVolume(Math.max(0, queue.volume - 10));
+        await queue.updateController();
         break;
       case "volup":
-        queue.volume = Math.min(100, queue.volume + 10);
+        queue.setVolume(Math.min(100, queue.volume + 10));
+        await queue.updateController();
         break;
       case "shuffle":
-        if (queue.songs.length > 1) {
-          const current = queue.songs.shift();
-          for (let i = queue.songs.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [queue.songs[i], queue.songs[j]] = [queue.songs[j], queue.songs[i]];
-          }
-          queue.songs.unshift(current);
-        }
+        queue.shuffle();
+        await queue.updateController();
         break;
       case "loop":
+        queue.setRepeatMode((queue.repeatMode + 1) % 3);
+        await queue.updateController();
         break;
       case "previous":
         const { e } = require("./utils/customEmoji");
@@ -446,7 +436,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     try {
       const result = await Promise.race([
-        searchSong(query, member),
+        searchSong(query, member, client),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Timeout")), 30000),
         ),
@@ -484,7 +474,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 client.login(botToken);
 
-// API server on instance-specific port
-setTimeout(() => {
-  require("./api")(client, apiPort);
-}, 3000);
+  setTimeout(() => {
+    require("./api")(client, apiPort);
+  }, 3000);

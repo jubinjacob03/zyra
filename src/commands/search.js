@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, SectionBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
 const { errorEmbed } = require('../utils/embed');
 const { e } = require('../utils/customEmoji');
-const play = require('play-dl');
 
 /**
  * Search command module.
@@ -35,17 +34,31 @@ module.exports = {
         await interaction.reply({ content: `${e("INFO")} Searching...` });
 
         try {
-            const results = await play.search(query, { limit: 10 });
+            const node = client.shoukaku.getIdealNode();
+            if (!node) throw new Error("Lavalink node is not ready");
 
-            if (!results.length) {
+            const searchResult = await node.rest.resolve(`ytsearch:${query}`);
+            
+            if (!searchResult || searchResult.loadType === "empty" || searchResult.loadType === "error") {
                 const container = new ContainerBuilder().setAccentColor(0xff4444);
                 container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} No results found.`));
                 return interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
             }
 
+            let tracks = [];
+            if (searchResult.loadType === "playlist") {
+                tracks = searchResult.data.tracks;
+            } else if (searchResult.loadType === "search") {
+                tracks = searchResult.data;
+            } else if (searchResult.loadType === "track") {
+                tracks = [searchResult.data];
+            }
+
+            const results = tracks.slice(0, 10);
+
             const container = new ContainerBuilder().setAccentColor(0x9B59B6);
             let description = `### ${e("INFO")} Search Results\n\n`;
-            description += results.map((r, i) => `**${i + 1}.** [${r.title}](${r.url}) - \`${client.formatDuration(r.durationInSec)}\``).join('\n');
+            description += results.map((r, i) => `**${i + 1}.** [${r.info.title}](${r.info.uri}) - \`${client.formatDuration(Math.round(r.info.length / 1000))}\``).join('\n');
             description += `\n\n*Select a song from the dropdown below*`;
 
             container.addTextDisplayComponents(
@@ -56,9 +69,9 @@ module.exports = {
                 .setCustomId('search_select')
                 .setPlaceholder('Select a song to play')
                 .addOptions(results.map((r, i) => ({
-                    label: r.title.slice(0, 100),
-                    description: `${client.formatDuration(r.durationInSec)} • ${r.channel?.name || 'Unknown'}`.slice(0, 100),
-                    value: r.url,
+                    label: r.info.title.slice(0, 100),
+                    description: `${client.formatDuration(Math.round(r.info.length / 1000))} • ${r.info.author || 'Unknown'}`.slice(0, 100),
+                    value: r.info.uri,
                 })));
 
             const row = new ActionRowBuilder().addComponents(selectMenu);

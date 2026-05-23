@@ -171,7 +171,7 @@ module.exports = {
     } catch (error) {
       console.error("Play error:", error);
 
-      if (error.message.includes("Mix playlists are not supported")) {
+      if (error.message?.includes("Mix playlists are not supported")) {
         const container = new ContainerBuilder().setAccentColor(0xE74C3C);
         let description = `### ${e("ERROR")} YouTube Mix Playlists Not Supported\n`;
         description += `Mix playlists are personalized and user-specific - they cannot be accessed by bots.\n\n`;
@@ -193,7 +193,7 @@ module.exports = {
         }
       }
 
-      if (error.message.includes("timeout")) {
+      if (error.message?.includes("timeout")) {
         const container = new ContainerBuilder().setAccentColor(0xE74C3C);
         container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("TIME")} Search took too long. Please try a simpler query or check your internet connection.`));
         try {

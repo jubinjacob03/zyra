@@ -25,13 +25,13 @@ module.exports = {
         let searchQuery = interaction.options.getString('query');
 
         if (!searchQuery) {
-            const queue = client.getQueue(interaction.guildId);
-            if (!queue || !queue.songs[0]) {
+            const queue = client.player.nodes.get(interaction.guildId);
+            if (!queue || !queue.currentTrack) {
                 const container = new ContainerBuilder().setAccentColor(0xff4444);
                 container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} No song playing. Please provide a search query.`));
                 return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 | 64 });
             }
-            searchQuery = queue.songs[0].name;
+            searchQuery = queue.currentTrack.title;
         }
 
         await interaction.reply({ content: `${e("INFO")} Searching for lyrics...`, flags: 64 });

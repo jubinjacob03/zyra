@@ -21,7 +21,7 @@ module.exports = {
      * @param {import('discord.js').Client} client - The Discord client.
      */
     async execute(interaction, client) {
-        const queue = client.getQueue(interaction.guildId);
+        const queue = client.player.nodes.get(interaction.guildId);
 
         if (!queue) {
             return interaction.reply({ ...errorEmbed('Nothing is playing right now.'), flags: 64 });
@@ -29,11 +29,11 @@ module.exports = {
 
         const position = interaction.options.getInteger('position');
 
-        if (position > queue.songs.length) {
-            return interaction.reply({ ...errorEmbed(`Invalid position. Queue has ${queue.songs.length} songs.`), flags: 64 });
+        if (position > queue.tracks.size) {
+            return interaction.reply({ ...errorEmbed(`Invalid position. Queue has ${queue.tracks.size} songs.`), flags: 64 });
         }
 
-        const removed = queue.songs.splice(position, 1)[0];
-        await interaction.reply({ ...successEmbed(`Removed **${removed.name}** from the queue.`) });
+        const removed = queue.tracks.removeOne(position - 1);
+        await interaction.reply({ ...successEmbed(`Removed **${removed.title}** from the queue.`) });
     },
 };

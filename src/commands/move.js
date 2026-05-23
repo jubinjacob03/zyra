@@ -26,22 +26,22 @@ module.exports = {
      * @param {import('discord.js').Client} client - The Discord client.
      */
     async execute(interaction, client) {
-        const queue = client.getQueue(interaction.guildId);
+        const queue = client.player.nodes.get(interaction.guildId);
 
         if (!queue) {
             return interaction.reply({ ...errorEmbed('Nothing is playing right now.'), flags: 64 });
         }
 
-        const from = interaction.options.getInteger('from');
-        const to = interaction.options.getInteger('to');
+        const from = interaction.options.getInteger('from') - 1;
+        const to = interaction.options.getInteger('to') - 1;
 
-        if (from > queue.songs.length || to > queue.songs.length) {
-            return interaction.reply({ ...errorEmbed(`Invalid positions. Queue has ${queue.songs.length} songs.`), flags: 64 });
+        if (from >= queue.tracks.size || to >= queue.tracks.size) {
+            return interaction.reply({ ...errorEmbed(`Invalid positions. Queue has ${queue.tracks.size} songs.`), flags: 64 });
         }
 
-        const song = queue.songs.splice(from, 1)[0];
-        queue.songs.splice(to, 0, song);
+        const song = queue.tracks.toArray()[from];
+        queue.node.move(from, to);
 
-        await interaction.reply({ ...successEmbed(`Moved **${song.name}** from position ${from} to ${to}`) });
+        await interaction.reply({ ...successEmbed(`Moved **${song.title}** from position ${from + 1} to ${to + 1}`) });
     },
 };

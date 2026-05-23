@@ -1,21 +1,13 @@
 require("dotenv").config();
 const { Client, GatewayIntentBits, Collection, Events } = require("discord.js");
-const {
-  joinVoiceChannel,
-  VoiceConnectionStatus,
-  entersState,
-} = require("@discordjs/voice");
+const { Player } = require("discord-player");
+const { DefaultExtractors } = require("@discord-player/extractor");
 const { initEmojis } = require("./utils/customEmoji");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
-const { youtubedl } = require("./utils/media");
 
-let MusicQueue;
-let searchSong;
 let handleButtonInteraction;
 let updateMusicController;
-let processSpotifyPlaylistBackground;
 let formatDuration;
-let spotifyAPI;
 
 require('dns').setDefaultResultOrder('ipv4first');
 
@@ -26,47 +18,8 @@ const asEphemeral = (payload) => ({
   flags: 64,
 });
 
-const createSilentChannel = () => {
-  const silentMessage = {
-    edit: async () => {},
-    fetch: async () => {},
-  };
-
-  return {
-    send: async () => silentMessage,
-  };
-};
-
-const createPanelChannel = (baseChannel) => {
-  const silentMessage = {
-    edit: async () => {},
-    fetch: async () => {},
-  };
-
-  const allowPanelPayload = (payload) => {
-    if (!payload || typeof payload === "string") return false;
-    if (payload.content) return false;
-    if (payload.components || payload.flags) return true;
-    return false;
-  };
-
-  return {
-    send: async (payload) => {
-      if (!baseChannel) {
-        return silentMessage;
-      }
-      return baseChannel.send(payload);
-    },
-    messages: baseChannel?.messages,
-    id: baseChannel?.id,
-    guildId: baseChannel?.guildId,
-  };
-};
-
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
-    if (reason.command && reason.command.includes("yt-dlp")) return;
-    if (reason.message && reason.message.includes("Cannot perform IP discovery - socket closed")) return;
     if (reason.code === 10008 || reason.code === 10062) {
       console.log(
         `Discord API: ${reason.code === 10008 ? "Message deleted" : "Interaction expired"}`,
@@ -78,91 +31,8 @@ process.on("unhandledRejection", (reason) => {
 });
 
 process.on("uncaughtException", (error) => {
-  if (error.message && error.message.includes("yt-dlp")) return;
   console.error("Uncaught exception:", error);
 });
-
-/**
- * Connects to a voice channel.
- * @param {Object} options - Connection options.
- * @param {import('discord.js').VoiceChannel} options.voiceChannel - The voice channel to join.
- * @param {string} options.guildId - The ID of the guild.
- * @param {number} [options.timeoutMs=30000] - Timeout in milliseconds.
- * @returns {Promise<import('@discordjs/voice').VoiceConnection>} The established voice connection.
- * @throws {Error} If the connection fails or times out.
- */
-async function connectVoice({ voiceChannel, guildId, group, timeoutMs = 30000 }) {
-  const connection = joinVoiceChannel({
-    channelId: voiceChannel.id,
-    guildId: guildId,
-    adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-    group: group,
-  });
-
-  try {
-    await entersState(connection, VoiceConnectionStatus.Ready, timeoutMs);
-    return connection;
-  } catch (error) {
-    if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-      connection.destroy();
-    }
-    throw error;
-  }
-}
-
-/**
- * Creates a rejoiner utility to automatically reconnect to a voice channel if disconnected.
- * @param {Object} options - Rejoiner options.
- * @param {import('discord.js').VoiceChannel} options.voiceChannel - The voice channel to rejoin.
- * @param {string} options.guildId - The ID of the guild.
- * @param {Object} options.queue - The music queue associated with the connection.
- * @param {string} options.label - A label for logging purposes.
- * @returns {Object} An object containing `attach` and `startRetry` methods.
- */
-function createRejoiner({ voiceChannel, guildId, group, queue, label }) {
-  let retryTimer = null;
-  let retrying = false;
-
-  const attempt = async () => {
-    if (retrying) return;
-    retrying = true;
-
-    try {
-      const newConnection = await connectVoice({ voiceChannel, guildId, group });
-
-      if (queue) {
-        queue.connection = newConnection;
-        newConnection.subscribe(queue.player);
-      }
-
-      if (retryTimer) {
-        clearInterval(retryTimer);
-        retryTimer = null;
-      }
-
-      attach(newConnection);
-      console.log(`Rejoined ${label}`);
-    } catch (error) {
-      const message = error && error.message ? error.message : String(error);
-      console.log(`Rejoin failed for ${label}: ${message}`);
-    } finally {
-      retrying = false;
-    }
-  };
-
-  const startRetry = () => {
-    if (retryTimer) return;
-    retryTimer = setInterval(attempt, 5000);
-    attempt();
-  };
-
-  const attach = (connection) => {
-    connection.on(VoiceConnectionStatus.Disconnected, startRetry);
-    connection.on(VoiceConnectionStatus.Destroyed, startRetry);
-  };
-
-  return { attach, startRetry };
-}
 
 /**
  * Starts a new music bot instance based on the provided configuration.
@@ -176,15 +46,11 @@ function startInstance(config, instanceIndex) {
     process.env.RUNTIME_LOGGER_LABEL = label;
   }
 
-  if (!MusicQueue) {
+  if (!handleButtonInteraction) {
     ({
-      MusicQueue,
-      searchSong,
       handleButtonInteraction,
       updateMusicController,
-      processSpotifyPlaylistBackground,
       formatDuration,
-      spotifyAPI,
     } = require("./bot"));
   }
 
@@ -223,24 +89,25 @@ function startInstance(config, instanceIndex) {
   });
 
   client.commands = new Collection();
-  client.queues = new Map();
   client.musicPanels = new Map();
-  client.youtubedl = youtubedl;
   client.INSTANCE_NAME = INSTANCE_NAME;
   client.INSTANCE_VOICE_CHANNEL_ID = INSTANCE_VOICE_CHANNEL_ID;
 
   client.on("error", console.error);
 
-  if (spotifyAPI) {
-    client.spotifyAPI = spotifyAPI;
-  }
+  const player = new Player(client, {
+    blockExtractors: ['YouTubeExtractor', 'YoutubeExtractor'],
+    blockStreamFrom: ['YouTubeExtractor', 'YoutubeExtractor'],
+    ytdlOptions: {
+      quality: 'highestaudio',
+      highWaterMark: 1 << 25
+    }
+  });
 
-  client.MusicQueue = MusicQueue;
-  client.searchSong = searchSong;
+  player.extractors.loadMulti(DefaultExtractors);
+  client.player = player;
+
   client.updateMusicController = updateMusicController;
-  const silentChannel = createSilentChannel();
-  client.processSpotifyPlaylistBackground = (tracks, queue) =>
-    processSpotifyPlaylistBackground(queue, tracks, silentChannel);
   client.formatDuration = formatDuration;
 
   const originalHandleButtonInteraction = handleButtonInteraction;
@@ -258,56 +125,6 @@ function startInstance(config, instanceIndex) {
     }
 
     return originalHandleButtonInteraction(interaction, client);
-  };
-
-  client.getQueue = function (guildId) {
-    return this.queues.get(guildId);
-  };
-
-  client.createQueue = async function (
-    guildId,
-    textChannel,
-    voiceChannel,
-    persistent = true,
-  ) {
-    const connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId: guildId,
-      adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-      group: this.user.id,
-    });
-
-    try {
-      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
-    } catch (error) {
-      if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-        connection.destroy();
-      }
-      console.error("Voice connection failed:", error);
-      throw new Error("Failed to connect to voice channel");
-    }
-
-    const panelChannel = createPanelChannel(voiceChannel);
-    const queue = new MusicQueue(
-      this,
-      guildId,
-      panelChannel,
-      voiceChannel,
-      connection,
-      persistent,
-    );
-    this.queues.set(guildId, queue);
-
-    const queueRejoiner = createRejoiner({
-      voiceChannel,
-      guildId,
-      group: this.user.id,
-      queue,
-      label: `${INSTANCE_NAME} queue`,
-    });
-    queueRejoiner.attach(connection);
-
-    return queue;
   };
 
   console.log(
@@ -330,31 +147,10 @@ function startInstance(config, instanceIndex) {
       process.exit(1);
     }
 
-    const autoRejoiner = createRejoiner({
-      voiceChannel,
-      guildId: guild.id,
-      group: c.user.id,
-      label: `${INSTANCE_NAME} auto-join`,
-    });
-
     try {
-      const connection = await connectVoice({
-        voiceChannel,
-        guildId: guild.id,
-        group: c.user.id,
-      });
-
-      console.log(`✅ Auto-joined voice channel: ${voiceChannel.name}`);
-
-      autoRejoiner.attach(connection);
-      try {
-        await ensurePlayMusicPanel(voiceChannel, INSTANCE_NAME, c.user.id);
-      } catch (error) {
-        console.log("Could not post play panel:", error.message || error);
-      }
+      await ensurePlayMusicPanel(voiceChannel, INSTANCE_NAME, c.user.id);
     } catch (error) {
-      console.error("Failed to join VC:", error);
-      autoRejoiner.startRetry();
+      console.log("Could not post play panel:", error.message || error);
     }
   });
 
@@ -412,49 +208,31 @@ function startInstance(config, instanceIndex) {
       try {
         console.log(`🔍 Modal search for: "${query}"`);
 
-        const result = await Promise.race([
-          client.searchSong(query, member),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Operation timeout")), 30000),
-          ),
-        ]);
+        const result = await client.player.search(query, {
+          requestedBy: interaction.user,
+        });
 
-        if (!result) {
+        if (!result || result.isEmpty()) {
           const { errorEmbed } = require("./utils/embed");
           return interaction.editReply(errorEmbed("No results found for your query."));
         }
 
-        let queue = client.getQueue(interaction.guildId);
+        await client.player.play(voiceChannel, result, {
+          nodeOptions: {
+            metadata: {
+              channel: interaction.channel,
+            },
+            leaveOnEmpty: true,
+            leaveOnEmptyCooldown: 300000,
+            leaveOnEnd: false,
+          },
+        });
 
-        if (!queue) {
-          queue = await client.createQueue(
-            interaction.guildId,
-            interaction.channel,
-            voiceChannel,
-            true,
-          );
-        }
-
-        queue.lastInteraction = interaction;
-
-        if (result.type === "playlist") {
-          queue.addSongs(result.tracks);
-          const { successEmbed } = require("./utils/embed");
-          await interaction.editReply(successEmbed(`Added ${result.tracks.length} songs`));
-
-          if (result.backgroundProcessing) {
-            client
-              .processSpotifyPlaylistBackground(result.tracks, queue)
-              .catch(console.error);
-          }
+        const { successEmbed } = require("./utils/embed");
+        if (result.hasPlaylist()) {
+          await interaction.editReply(successEmbed(`Added ${result.playlist.tracks.length} songs`));
         } else {
-          queue.addSong(result);
-          const { successEmbed } = require("./utils/embed");
           await interaction.editReply(successEmbed("Added to queue"));
-        }
-
-        if (!queue.playing) {
-          queue.play();
         }
       } catch (error) {
         console.error("Modal play error:", error);

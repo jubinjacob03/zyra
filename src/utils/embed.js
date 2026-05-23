@@ -113,37 +113,38 @@ function formatDuration(seconds) {
 /**
  * Creates a beautiful, Material Design inspired music panel embed.
  * This will be the main interactive controller within Discord.
- * @param {Object} queue - The music queue object.
+ * @param {import('discord-player').GuildQueue} queue - The music queue object.
  * @returns {Object|null} The message payload containing the components and flags, or null if no song is playing.
  */
 function createMusicPanel(queue) {
-  const song = queue.songs[0];
+  const song = queue.currentTrack;
   if (!song) return null;
 
   const loopModes = [
     "Off",
     `${ICONS.REPEAT_ONE} Song`,
     `${ICONS.REPEAT} Queue`,
+    `${ICONS.REPEAT} Autoplay`,
   ];
   const volumeIcon =
-    queue.volume > 66
+    queue.node.volume > 66
       ? ICONS.VOLUME_HIGH
-      : queue.volume > 33
+      : queue.node.volume > 33
         ? ICONS.VOLUME_MID
         : ICONS.VOLUME_LOW;
 
-  const progressBar = createProgressBar(0, song.duration || 100, 15);
-  const isSpotify = song.spotifyData?.isSpotify;
+  const progressBar = createProgressBar(queue.node.getTimestamp()?.current.value || 0, song.durationMS || 100, 15);
+  const isSpotify = song.source === 'spotify';
   const color = isSpotify ? COLORS.SPOTIFY : COLORS.PRIMARY;
   const platformIcon = isSpotify ? ICONS.SPOTIFY : ICONS.LIVE;
   const platformName = isSpotify ? "SPOTIFY" : "NOW PLAYING";
 
   const container = new ContainerBuilder().setAccentColor(color);
   
-  let description = `### ${platformIcon} ${platformName}\n**[${song.name}](${song.url})**\n**${song.author || "Unknown Artist"}**\n\n`;
-  description += `${ICONS.TIME} \`${formatDuration(0)} ${progressBar} ${song.formattedDuration}\`\n`;
-  description += `${ICONS.USER} ${song.user?.displayName || song.user?.username || "Unknown"}\n`;
-  description += `${volumeIcon} \`${queue.volume}%\` ${ICONS.DOT} ${loopModes[queue.repeatMode]} ${ICONS.DOT} \`${queue.songs.length} songs\``;
+  let description = `### ${platformIcon} ${platformName}\n**[${song.title}](${song.url})**\n**${song.author || "Unknown Artist"}**\n\n`;
+  description += `${ICONS.TIME} \`${formatDuration(Math.floor((queue.node.getTimestamp()?.current.value || 0) / 1000))} ${progressBar} ${song.duration}\`\n`;
+  description += `${ICONS.USER} ${song.requestedBy?.displayName || song.requestedBy?.username || "Unknown"}\n`;
+  description += `${volumeIcon} \`${queue.node.volume}%\` ${ICONS.DOT} ${loopModes[queue.repeatMode]} ${ICONS.DOT} \`${queue.tracks.size} songs\``;
 
   if (song.thumbnail && typeof song.thumbnail === "string") {
     const { ThumbnailBuilder } = require("discord.js");
@@ -164,11 +165,11 @@ function createMusicPanel(queue) {
       .setCustomId("music_previous")
       .setEmoji(btn("PREVIOUS"))
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true),
+      .setDisabled(!queue.history.previousTrack),
     new ButtonBuilder()
       .setCustomId("music_pause")
-      .setEmoji(queue.paused ? btn("PLAY") : btn("PAUSE"))
-      .setStyle(queue.paused ? ButtonStyle.Success : ButtonStyle.Primary),
+      .setEmoji(queue.node.isPaused() ? btn("PLAY") : btn("PAUSE"))
+      .setStyle(queue.node.isPaused() ? ButtonStyle.Success : ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("music_skip")
       .setEmoji(btn("SKIP"))
@@ -212,8 +213,8 @@ function createMusicPanel(queue) {
 
 /**
  * Creates a clean "Now Playing" notification embed.
- * @param {Object} song - The song object.
- * @param {Object} queue - The music queue object.
+ * @param {import('discord-player').Track} song - The song object.
+ * @param {import('discord-player').GuildQueue} queue - The music queue object.
  * @param {string} [type="playing"] - The type of notification ("playing" or "added").
  * @returns {Object} The message payload containing the components and flags.
  */
@@ -224,16 +225,16 @@ function createNowPlayingEmbed(song, queue, type = "playing") {
     : `${ICONS.MUSIC_NOTE} Now Playing`;
   const color = isAdded
     ? COLORS.SUCCESS
-    : song.spotifyData?.isSpotify
+    : song.source === 'spotify'
       ? COLORS.SPOTIFY
       : COLORS.PRIMARY;
 
   const container = new ContainerBuilder().setAccentColor(color);
   
-  let description = `### ${title}\n**[${song.name}](${song.url})**\n*${song.author || "Unknown Artist"}*\n\n`;
-  description += `**${ICONS.TIME} Duration:** \`${song.formattedDuration}\`\n`;
-  description += `**${ICONS.USER} Requested:** ${song.user}\n`;
-  description += `**${ICONS.QUEUE} Position:** \`#${queue.songs.length}\``;
+  let description = `### ${title}\n**[${song.title}](${song.url})**\n*${song.author || "Unknown Artist"}*\n\n`;
+  description += `**${ICONS.TIME} Duration:** \`${song.duration}\`\n`;
+  description += `**${ICONS.USER} Requested:** ${song.requestedBy}\n`;
+  description += `**${ICONS.QUEUE} Position:** \`#${queue.tracks.size}\``;
 
   if (song.thumbnail && typeof song.thumbnail === "string") {
     const { ThumbnailBuilder } = require("discord.js");
@@ -299,39 +300,42 @@ function warningEmbed(description, title = null) {
  */
 function queueEmbed(queue, page = 0) {
   const songsPerPage = 8;
-  const totalPages = Math.ceil(queue.songs.length / songsPerPage) || 1;
+  const totalPages = Math.ceil(queue.tracks.size / songsPerPage) || 1;
   const start = page * songsPerPage;
-  const songs = queue.songs.slice(start, start + songsPerPage);
+  const songs = queue.tracks.toArray().slice(start, start + songsPerPage);
 
   let description = songs
     .map((song, i) => {
-      const position = start + i;
-      const prefix =
-        position === 0
-          ? `${ICONS.PLAY} **Now:**`
-          : `\`${position.toString().padStart(2, "0")}.\``;
+      const position = start + i + 1;
+      const prefix = `\`${position.toString().padStart(2, "0")}.\``;
 
-      const spotifyIcon = song.spotifyData?.isSpotify
+      const spotifyIcon = song.source === 'spotify'
         ? ` ${ICONS.SPOTIFY}`
         : "";
       return (
-        `${prefix} **[${song.name}](${song.url})**${spotifyIcon}\n` +
-        `${ICONS.DOT} *${song.author || "Unknown"}* ${ICONS.DOT} \`${song.formattedDuration}\``
+        `${prefix} **[${song.title}](${song.url})**${spotifyIcon}\n` +
+        `${ICONS.DOT} *${song.author || "Unknown"}* ${ICONS.DOT} \`${song.duration}\``
       );
     })
     .join("\n\n");
+
+  if (queue.currentTrack && page === 0) {
+    const current = queue.currentTrack;
+    const spotifyIcon = current.source === 'spotify' ? ` ${ICONS.SPOTIFY}` : "";
+    description = `${ICONS.PLAY} **Now:** **[${current.title}](${current.url})**${spotifyIcon}\n${ICONS.DOT} *${current.author || "Unknown"}* ${ICONS.DOT} \`${current.duration}\`\n\n` + description;
+  }
 
   if (!description) {
     description = `${ICONS.INFO} Queue is empty\n\nUse \`/play\` to add some music!`;
   }
 
-  const totalDuration = queue.songs.reduce(
-    (acc, song) => acc + (song.duration || 0),
+  const totalDuration = queue.tracks.toArray().reduce(
+    (acc, song) => acc + (song.durationMS || 0),
     0,
   );
 
   const container = new ContainerBuilder().setAccentColor(COLORS.MUSIC);
-  const content = `### ${ICONS.QUEUE} Music Queue\n${description}\n\n**${ICONS.INFO} Queue Stats**\n**Songs:** \`${queue.songs.length}\` ${ICONS.DOT} **Duration:** \`${formatDuration(totalDuration)}\` ${ICONS.DOT} **Page:** \`${page + 1}/${totalPages}\``;
+  const content = `### ${ICONS.QUEUE} Music Queue\n${description}\n\n**${ICONS.INFO} Queue Stats**\n**Songs:** \`${queue.tracks.size}\` ${ICONS.DOT} **Duration:** \`${formatDuration(Math.floor(totalDuration / 1000))}\` ${ICONS.DOT} **Page:** \`${page + 1}/${totalPages}\``;
   
   container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -347,9 +351,9 @@ function playlistEmbed(playlist, isSpotify = false) {
 
   const container = new ContainerBuilder().setAccentColor(color);
   
-  let description = `### ${ICONS.SUCCESS} Added ${platform} Playlist\n**[${playlist.name}](${playlist.url})**\n\n`;
-  description += `**${ICONS.MUSIC_NOTE} Songs:** \`${playlist.songs.length}\`\n`;
-  description += `**${ICONS.USER} Requested by:** ${playlist.user}\n`;
+  let description = `### ${ICONS.SUCCESS} Added ${platform} Playlist\n**[${playlist.title}](${playlist.url})**\n\n`;
+  description += `**${ICONS.MUSIC_NOTE} Songs:** \`${playlist.tracks.length}\`\n`;
+  description += `**${ICONS.USER} Requested by:** ${playlist.tracks[0]?.requestedBy}\n`;
   description += `**${icon} Platform:** \`${platform}\``;
 
   if (playlist.thumbnail && typeof playlist.thumbnail === "string") {

@@ -22,14 +22,14 @@ module.exports = {
      * @param {import('discord.js').Client} client - The Discord client.
      */
     async execute(interaction, client) {
-        const queue = client.getQueue(interaction.guildId);
+        const queue = client.player.nodes.get(interaction.guildId);
 
         if (!queue) {
             return interaction.reply({ ...errorEmbed('Nothing is playing right now.'), flags: 64 });
         }
 
         const volume = interaction.options.getInteger('level');
-        await queue.setVolume(volume);
+        await queue.node.setVolume(volume);
         await interaction.reply({ ...successEmbed(`Volume set to **${volume}%**`) });
     },
 };

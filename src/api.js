@@ -1,5 +1,4 @@
 const http = require("node:http");
-const ytdl = require("youtube-dl-exec");
 
 /**
  * Attaches the Music API server to the Discord client.
@@ -102,37 +101,39 @@ module.exports = function attachMusicApi(client, customPort = null) {
           username: username || "api",
         };
 
-        const result = await client.searchSong(query, fakeUser);
+        const result = await client.player.search(query, {
+          requestedBy: fakeUser,
+        });
 
-        if (!result)
+        if (!result || result.isEmpty())
           return send(res, 404, { error: "No results found for query" });
 
-        let queue = client.getQueue(guildId);
+        const queue = client.player.nodes.get(guildId);
         const isNewQueue = !queue;
 
-        if (!queue)
-          queue = await client.createQueue(guildId, textChannel, voiceChannel);
-
-        if (result.type === "playlist") {
-          await queue.addSongs(result.songs);
-        } else {
-          await queue.addSong(result);
-        }
-
-        if (isNewQueue) await queue.play();
+        await client.player.play(voiceChannel, result, {
+          nodeOptions: {
+            metadata: {
+              channel: textChannel,
+            },
+            leaveOnEmpty: true,
+            leaveOnEmptyCooldown: 300000,
+            leaveOnEnd: false,
+          },
+        });
 
         return send(res, 200, {
           success: true,
           isNewQueue,
-          added: result.type === "playlist" ? result.songs.length : 1,
+          added: result.hasPlaylist() ? result.playlist.tracks.length : 1,
           song:
-            result.type !== "playlist"
+            !result.hasPlaylist()
               ? {
-                  name: result.name,
-                  url: result.url,
-                  thumbnail: result.thumbnail,
-                  formattedDuration: result.formattedDuration,
-                  author: result.author,
+                  name: result.tracks[0].title,
+                  url: result.tracks[0].url,
+                  thumbnail: result.tracks[0].thumbnail,
+                  formattedDuration: result.tracks[0].duration,
+                  author: result.tracks[0].author,
                 }
               : null,
         });
@@ -141,41 +142,41 @@ module.exports = function attachMusicApi(client, customPort = null) {
       // ── Legacy generic control (kept for backward compat) ────────────────
       if (req.method === "POST" && path === "/control") {
         const { guildId, action, value } = await parseBody(req);
-        const queue = client.getQueue(guildId);
+        const queue = client.player.nodes.get(guildId);
         if (!queue) return send(res, 404, { error: "Nothing is playing" });
         switch (action) {
           case "pause":
-            queue.pause();
+            queue.node.pause();
             break;
           case "resume":
-            queue.resume();
+            queue.node.resume();
             break;
           case "toggle":
-            queue.paused ? queue.resume() : queue.pause();
+            queue.node.isPaused() ? queue.node.resume() : queue.node.pause();
             break;
           case "skip":
-            queue.skip();
+            queue.node.skip();
             break;
           case "stop":
-            queue.stop();
+            queue.delete();
             break;
           case "shuffle":
-            queue.shuffle();
+            queue.tracks.shuffle();
             break;
           case "loop":
-            queue.setRepeatMode(value ?? (queue.repeatMode + 1) % 3);
+            queue.setRepeatMode(value ?? (queue.repeatMode + 1) % 4);
             break;
           case "volume":
-            queue.setVolume(Math.max(0, Math.min(100, Number(value) || 50)));
+            queue.node.setVolume(Math.max(0, Math.min(100, Number(value) || 50)));
             break;
           case "remove": {
-            const removed = queue.remove(Number(value) || 0);
+            const removed = queue.tracks.removeOne(Number(value) || 0);
             if (!removed)
               return send(res, 400, { error: "Invalid queue position" });
             return send(res, 200, {
               success: true,
               action,
-              removed: removed.name,
+              removed: removed.title,
             });
           }
           default:
@@ -200,46 +201,46 @@ module.exports = function attachMusicApi(client, customPort = null) {
         if (directActions.includes(path)) {
           const body = await parseBody(req);
           const guildId = body.guildId;
-          const queue = client.getQueue(guildId);
+          const queue = client.player.nodes.get(guildId);
           if (!queue) return send(res, 404, { error: "Nothing is playing" });
 
           switch (path) {
             case "/skip":
-              queue.skip();
+              queue.node.skip();
               break;
             case "/pause":
-              queue.pause();
+              queue.node.pause();
               break;
             case "/resume":
-              queue.resume();
+              queue.node.resume();
               break;
             case "/toggle":
-              queue.paused ? queue.resume() : queue.pause();
+              queue.node.isPaused() ? queue.node.resume() : queue.node.pause();
               break;
             case "/stop":
-              queue.stop();
+              queue.delete();
               break;
             case "/shuffle":
-              queue.shuffle();
+              queue.tracks.shuffle();
               break;
             case "/loop": {
               const mode =
                 body.value !== undefined
                   ? Number(body.value)
-                  : (queue.repeatMode + 1) % 3;
+                  : (queue.repeatMode + 1) % 4;
               queue.setRepeatMode(mode);
               break;
             }
             case "/volume": {
               const vol = Math.max(0, Math.min(100, Number(body.value) || 50));
-              queue.setVolume(vol);
+              queue.node.setVolume(vol);
               return send(res, 200, { success: true, volume: vol });
             }
             case "/remove": {
-              const removed = queue.remove(Number(body.value) || 0);
+              const removed = queue.tracks.removeOne(Number(body.value) || 0);
               if (!removed)
                 return send(res, 400, { error: "Invalid queue position" });
-              return send(res, 200, { success: true, removed: removed.name });
+              return send(res, 200, { success: true, removed: removed.title });
             }
           }
           return send(res, 200, { success: true });
@@ -248,26 +249,26 @@ module.exports = function attachMusicApi(client, customPort = null) {
 
       if (req.method === "GET" && path === "/queue") {
         const guildId = url.searchParams.get("guildId");
-        const queue = client.getQueue(guildId);
+        const queue = client.player.nodes.get(guildId);
         if (!queue) return send(res, 200, { queue: [], queueLength: 0 });
         return send(res, 200, {
-          queue: queue.songs.map((s, i) => ({
+          queue: queue.tracks.toArray().map((s, i) => ({
             index: i,
-            name: s.name,
+            name: s.title,
             url: s.url,
             thumbnail: s.thumbnail,
-            formattedDuration: s.formattedDuration,
+            formattedDuration: s.duration,
             author: s.author,
           })),
-          queueLength: queue.songs.length,
+          queueLength: queue.tracks.size,
         });
       }
 
       if (req.method === "GET" && path === "/status") {
         const guildId = url.searchParams.get("guildId");
-        const queue = client.getQueue(guildId);
+        const queue = client.player.nodes.get(guildId);
 
-        if (!queue || !queue.songs.length)
+        if (!queue || !queue.currentTrack)
           return send(res, 200, {
             playing: false,
             paused: false,
@@ -276,32 +277,31 @@ module.exports = function attachMusicApi(client, customPort = null) {
             queueLength: 0,
           });
 
-        // Note: Direct yt-dlp streaming doesn't track elapsed time
-        const elapsed = 0;
+        const elapsed = queue.node.getTimestamp()?.current.value || 0;
 
         return send(res, 200, {
-          playing: queue.playing && !queue.paused,
-          paused: queue.paused,
+          playing: queue.isPlaying() && !queue.node.isPaused(),
+          paused: queue.node.isPaused(),
           repeatMode: queue.repeatMode,
-          volume: queue.volume,
+          volume: queue.node.volume,
           elapsed,
           song: {
-            name: queue.songs[0].name,
-            url: queue.songs[0].url,
-            thumbnail: queue.songs[0].thumbnail,
-            duration: queue.songs[0].duration || 0,
-            formattedDuration: queue.songs[0].formattedDuration,
-            author: queue.songs[0].author || "Unknown Artist",
+            name: queue.currentTrack.title,
+            url: queue.currentTrack.url,
+            thumbnail: queue.currentTrack.thumbnail,
+            duration: queue.currentTrack.durationMS || 0,
+            formattedDuration: queue.currentTrack.duration,
+            author: queue.currentTrack.author || "Unknown Artist",
           },
-          queue: queue.songs.slice(1, 10).map((s, i) => ({
+          queue: queue.tracks.toArray().slice(0, 10).map((s, i) => ({
             index: i + 1,
-            name: s.name,
+            name: s.title,
             url: s.url,
             thumbnail: s.thumbnail,
-            formattedDuration: s.formattedDuration,
+            formattedDuration: s.duration,
             author: s.author,
           })),
-          queueLength: queue.songs.length,
+          queueLength: queue.tracks.size,
         });
       }
 
@@ -310,34 +310,21 @@ module.exports = function attachMusicApi(client, customPort = null) {
         if (!query) return send(res, 400, { error: "query is required" });
 
         try {
-          const maxResults = Math.min(Number(limit) || 10, 25);
-          const searchPrefix = `ytsearch${maxResults}:${query}`;
-          const searchResults = await ytdl(searchPrefix, {
-            dumpSingleJson: true,
-            noWarnings: true,
-            noCallHome: true,
-            noCheckCertificate: true,
-            preferFreeFormats: true,
-            youtubeSkipDashManifest: true,
-            flatPlaylist: true,
-          });
-
-          const entries = searchResults?.entries || [];
-          if (!entries.length) {
+          const searchResult = await client.player.search(query);
+          
+          if (!searchResult || searchResult.isEmpty()) {
             return send(res, 200, { results: [] });
           }
 
-          // Filter out YouTube Shorts (videos under 61 seconds)
-          const results = entries
-            .filter((video) => (video.duration || 0) >= 61)
-            .map((video) => ({
-              title: video.title || "Untitled",
-              author: video.uploader || video.channel || "Unknown",
-              duration: Math.floor(video.duration || 0),
-              url: `https://www.youtube.com/watch?v=${video.id}`,
-              thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`,
-              id: video.id || "",
-            }));
+          const maxResults = Math.min(Number(limit) || 10, 25);
+          const results = searchResult.tracks.slice(0, maxResults).map((video) => ({
+            title: video.title || "Untitled",
+            author: video.author || "Unknown",
+            duration: Math.floor((video.durationMS || 0) / 1000),
+            url: video.url,
+            thumbnail: video.thumbnail,
+            id: video.id || "",
+          }));
 
           return send(res, 200, { results });
         } catch (error) {

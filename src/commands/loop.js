@@ -25,7 +25,7 @@ module.exports = {
      * @param {import('discord.js').Client} client - The Discord client.
      */
     async execute(interaction, client) {
-        const queue = client.getQueue(interaction.guildId);
+        const queue = client.player.nodes.get(interaction.guildId);
 
         if (!queue) {
             return interaction.reply({ ...errorEmbed('Nothing is playing right now.'), flags: 64 });

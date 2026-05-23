@@ -17,9 +17,9 @@ module.exports = {
      * @param {import('discord.js').Client} client - The Discord client.
      */
     async execute(interaction, client) {
-        const queue = client.getQueue(interaction.guildId);
+        const queue = client.player.nodes.get(interaction.guildId);
         
-        if (!queue || !queue.songs.length) {
+        if (!queue || !queue.currentTrack) {
             const container = new ContainerBuilder().setAccentColor(0xff4444);
             container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} Nothing is playing right now.`));
             return interaction.reply({ components: [container], flags: MessageFlags.IsComponentsV2 | 64 });

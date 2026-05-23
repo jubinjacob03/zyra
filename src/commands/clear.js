@@ -16,14 +16,14 @@ module.exports = {
      * @param {import('discord.js').Client} client - The Discord client.
      */
     async execute(interaction, client) {
-        const queue = client.getQueue(interaction.guildId);
+        const queue = client.player.nodes.get(interaction.guildId);
 
         if (!queue) {
             return interaction.reply({ ...errorEmbed('Nothing is playing right now.'), flags: 64 });
         }
 
-        const count = queue.songs.length - 1;
-        queue.songs.splice(1);
+        const count = queue.tracks.size;
+        queue.tracks.clear();
         await interaction.reply({ ...successEmbed(`Cleared **${count}** songs from the queue.`) });
     },
 };

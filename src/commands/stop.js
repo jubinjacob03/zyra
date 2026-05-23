@@ -17,7 +17,7 @@ module.exports = {
    * @param {import('discord.js').Client} client - The Discord client.
    */
   async execute(interaction, client) {
-    const queue = client.getQueue(interaction.guildId);
+    const queue = client.player.nodes.get(interaction.guildId);
 
     if (!queue) {
       return interaction.reply({
@@ -26,7 +26,7 @@ module.exports = {
       });
     }
 
-    queue.stop();
+    queue.delete();
     await interaction.reply({
       ...successEmbed(`${e("STOP")} Stopped the music and cleared the queue.`),
     });

@@ -40,7 +40,7 @@ module.exports = {
         });
       }
 
-      const queue = interaction.client.getQueue(interaction.guildId);
+      const queue = interaction.client.player.nodes.get(interaction.guildId);
 
       if (queue) {
         return interaction.reply({

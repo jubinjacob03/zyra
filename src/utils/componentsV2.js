@@ -46,15 +46,15 @@ function createProgressBar(current, total, length = 18) {
 
 /**
  * Creates a V2 container for the currently playing song.
- * @param {Object} queue - The music queue object.
+ * @param {import('discord-player').GuildQueue} queue - The music queue object.
  * @returns {import('discord.js').ContainerBuilder|null} The constructed container, or null if no song is playing.
  */
 function createNowPlayingEmbed(queue) {
-  const song = queue?.songs?.[0];
+  const song = queue?.currentTrack;
   if (!song) return null;
 
-  const isSpotify = song.spotifyData?.isSpotify;
-  const isPaused = queue.paused;
+  const isSpotify = song.source === 'spotify';
+  const isPaused = queue.node.isPaused();
   const color = isSpotify
     ? COLORS.SPOTIFY
     : isPaused
@@ -62,13 +62,13 @@ function createNowPlayingEmbed(queue) {
       : COLORS.PLAYING;
 
   const platformIcon = isSpotify ? e("SPOTIFY") || "🟢" : e("YOUTUBE") || "🔴";
-  const platformName = isSpotify ? "Spotify" : "YouTube";
-  const duration = song.formattedDuration || formatTime(song.duration || 0);
-  const requester = song.user?.displayName || song.user?.username || "Unknown";
+  const platformName = isSpotify ? "Spotify" : song.source === 'soundcloud' ? "SoundCloud" : "YouTube";
+  const duration = song.duration || formatTime(Math.floor(song.durationMS / 1000) || 0);
+  const requester = song.requestedBy?.displayName || song.requestedBy?.username || "Unknown";
   const authorIcon = e("AUTHOR");
   const titleIcon = e("PLAYLIST");
 
-  const description = `${titleIcon} **${song.name}**\n\nby **${song.author || "Unknown Artist"}**\n\n${platformIcon} ${platformName} • ${duration} • ${authorIcon} @${requester}`;
+  const description = `${titleIcon} **${song.title}**\n\nby **${song.author || "Unknown Artist"}**\n\n${platformIcon} ${platformName} • ${duration} • ${authorIcon} @${requester}`;
 
   const container = new ContainerBuilder().setAccentColor(color);
   
@@ -87,7 +87,7 @@ function createNowPlayingEmbed(queue) {
 
 /**
  * Creates the control buttons for the music panel.
- * @param {Object} queue - The music queue object.
+ * @param {import('discord-player').GuildQueue} queue - The music queue object.
  * @returns {import('discord.js').ActionRowBuilder[]} An array of action rows containing the buttons.
  */
 function createControlButtons(queue) {
@@ -100,10 +100,10 @@ function createControlButtons(queue) {
       .setCustomId("music_previous")
       .setEmoji(btn("PREVIOUS"))
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true),
+      .setDisabled(!queue?.history?.previousTrack),
     new ButtonBuilder()
       .setCustomId("music_pause")
-      .setEmoji(queue?.paused ? btn("PLAY") : btn("PAUSE"))
+      .setEmoji(queue?.node.isPaused() ? btn("PLAY") : btn("PAUSE"))
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("music_skip")
@@ -140,7 +140,7 @@ function createControlButtons(queue) {
 
 /**
  * Creates the complete music controller payload with V2 components.
- * @param {Object} queue - The music queue object.
+ * @param {import('discord-player').GuildQueue} queue - The music queue object.
  * @returns {Object|null} The message payload containing the components and flags, or null if no song is playing.
  */
 function createCompleteMusicController(queue) {

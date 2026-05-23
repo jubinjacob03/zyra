@@ -20,9 +20,9 @@ module.exports = {
      * @param {import('discord.js').Client} client - The Discord client.
      */
     async execute(interaction, client) {
-        const queue = client.getQueue(interaction.guildId);
+        const queue = client.player.nodes.get(interaction.guildId);
 
-        if (!queue || !queue.songs.length) {
+        if (!queue || !queue.tracks.size) {
             return interaction.reply({ ...errorEmbed('The queue is empty.'), flags: 64 });
         }
 

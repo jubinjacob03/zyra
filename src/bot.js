@@ -133,41 +133,35 @@ async function resolveStoredMusicPanel(client, channelId) {
 // Player Events
 player.events.on('playerStart', async (queue, track) => {
   const { createCompleteMusicController } = require("./utils/componentsV2");
+  const { getPlayPanel } = require("./utils/panelStore");
   const controller = createCompleteMusicController(queue);
 
   const textChannel = queue.metadata?.channel;
   if (!textChannel) return;
 
-  const existingPanel = client.musicPanels.get(queue.guild.id);
-  let message = existingPanel?.message || null;
+  let message = null;
+  const storedId = getPlayPanel(textChannel.id);
 
-  if (message) {
-    try { await message.delete(); } catch {}
-    message = null;
-  }
-
-  if (!message) {
-    const stored = await resolveStoredMusicPanel(client, textChannel.id);
-    if (stored) {
-      try { await stored.delete(); } catch {}
+  if (storedId) {
+    try {
+      message = await textChannel.messages.fetch(storedId);
+      if (message && isEditableByClient(message, client.user?.id)) {
+        await message.edit({ components: controller.components, flags: controller.flags });
+      } else {
+        message = null;
+      }
+    } catch (error) {
       message = null;
     }
   }
 
   if (!message) {
-    const reused = await findExistingMusicPanel(textChannel, client.user?.id);
-    if (reused) {
-      try { await reused.delete(); } catch {}
-      message = null;
+    // Fallback if the panel was deleted
+    const { ensurePlayMusicPanel } = require("./utils/playPanel");
+    message = await ensurePlayMusicPanel(textChannel, client.INSTANCE_NAME || "Remani", client.user?.id);
+    if (message) {
+      await message.edit({ components: controller.components, flags: controller.flags });
     }
-  }
-
-  if (!message) {
-    message = await textChannel.send({ components: controller.components, flags: controller.flags });
-  }
-
-  if (message?.id && message?.channelId) {
-    setControllerPanel(message.channelId, message.id);
   }
 
   client.musicPanels.set(queue.guild.id, {
@@ -182,18 +176,21 @@ player.events.on('audioTrackAdd', (queue, track) => {
   console.log(`🎵 Track added to queue: ${track.title}`);
 });
 
-player.events.on('disconnect', (queue) => {
+player.events.on('disconnect', async (queue) => {
+  const textChannel = queue.metadata?.channel;
+  if (textChannel) {
+    const { ensurePlayMusicPanel } = require("./utils/playPanel");
+    await ensurePlayMusicPanel(textChannel, client.INSTANCE_NAME || "Remani", client.user?.id);
+  }
   client.musicPanels.delete(queue.guild.id);
 });
 
-player.events.on('emptyQueue', (queue) => {
+player.events.on('emptyQueue', async (queue) => {
   console.log("🎵 Queue finished");
   const textChannel = queue.metadata?.channel;
   if (textChannel) {
-    const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
-    const container = new ContainerBuilder().setAccentColor(0x00ffff);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} Queue finished. Add more songs to keep the party going!`));
-    textChannel.send({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    const { ensurePlayMusicPanel } = require("./utils/playPanel");
+    await ensurePlayMusicPanel(textChannel, client.INSTANCE_NAME || "Remani", client.user?.id);
   }
   client.musicPanels.delete(queue.guild.id);
 });

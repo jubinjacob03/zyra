@@ -676,7 +676,7 @@ async function searchSongInternal(query, user, searchClient) {
     try {
       const trackId = SpotifyAPI.extractSpotifyId(query, "track");
       const spotifyTrack = await spotifyAPI.getTrack(trackId);
-      const fallbackQuery = `ytsearch:${spotifyTrack.name} ${spotifyTrack.artists[0]?.name}`;
+      const fallbackQuery = `scsearch:${spotifyTrack.name} ${spotifyTrack.artists[0]?.name}`;
       
       const result = await node.rest.resolve(fallbackQuery);
       if (!result || result.loadType === "empty" || result.loadType === "error") {
@@ -719,7 +719,7 @@ async function searchSongInternal(query, user, searchClient) {
 
       for (let i = 0; i < immediateConversions; i++) {
         const track = tracks[i].track;
-        const fallbackQuery = `ytsearch:${track.name} ${track.artists[0]?.name}`;
+        const fallbackQuery = `scsearch:${track.name} ${track.artists[0]?.name}`;
         try {
           const result = await node.rest.resolve(fallbackQuery);
           if (result && result.loadType !== "empty" && result.loadType !== "error") {
@@ -780,7 +780,7 @@ async function searchSongInternal(query, user, searchClient) {
       for (let i = 0; i < maxConversions; i++) {
         const track = tracks[i];
         const artists = track.artists.length > 0 ? track.artists : albumInfo.artists;
-        const fallbackQuery = `ytsearch:${track.name} ${artists[0]?.name}`;
+        const fallbackQuery = `scsearch:${track.name} ${artists[0]?.name}`;
         try {
           const result = await node.rest.resolve(fallbackQuery);
           if (result && result.loadType !== "empty" && result.loadType !== "error") {
@@ -826,7 +826,7 @@ async function searchSongInternal(query, user, searchClient) {
   }
 
   const isUrl = /^https?:\/\//.test(query);
-  const searchQuery = isUrl ? query : `ytsearch:${query}`;
+  const searchQuery = isUrl ? query : `scsearch:${query}`;
   
   const result = await node.rest.resolve(searchQuery);
   if (!result || result.loadType === "empty" || result.loadType === "error") {
@@ -894,7 +894,7 @@ async function processSpotifyPlaylistBackground(
     const track = remainingTracks[i].track;
 
     try {
-      const fallbackQuery = `ytsearch:${track.name} ${track.artists[0]?.name}`;
+      const fallbackQuery = `scsearch:${track.name} ${track.artists[0]?.name}`;
       const result = await node.rest.resolve(fallbackQuery);
       
       if (result && result.loadType !== "empty" && result.loadType !== "error") {

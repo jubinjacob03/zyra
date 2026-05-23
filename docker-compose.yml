@@ -12,6 +12,9 @@ services:
       - .env
     environment:
       - _JAVA_OPTIONS=-Xmx256m -Xms128m
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     networks:
       - zyra-network
 
@@ -24,6 +27,9 @@ services:
       - lavalink
     networks:
       - zyra-network
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     env_file:
       - .env
     volumes:

@@ -87,7 +87,8 @@ module.exports = {
                             },
                             leaveOnEmpty: true,
                             leaveOnEmptyCooldown: 300000,
-                            leaveOnEnd: false,
+                            leaveOnEnd: true,
+                            leaveOnStop: true,
                         },
                     });
                     

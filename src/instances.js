@@ -147,6 +147,31 @@ function startInstance(config, instanceIndex) {
       process.exit(1);
     }
 
+    const { joinVoiceChannel } = require('@discordjs/voice');
+    const forceJoinVC = () => {
+      try {
+        joinVoiceChannel({
+          channelId: INSTANCE_VOICE_CHANNEL_ID,
+          guildId: GUILD_ID,
+          adapterCreator: guild.voiceAdapterCreator,
+        });
+      } catch (e) {
+        console.error("Failed to force join VC:", e);
+      }
+    };
+
+    // Force join on startup
+    forceJoinVC();
+
+    // Auto-rejoin if disconnected
+    client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+      if (oldState.member.user.id === client.user.id) {
+        if (!newState.channelId || newState.channelId !== INSTANCE_VOICE_CHANNEL_ID) {
+          setTimeout(forceJoinVC, 1000);
+        }
+      }
+    });
+
     try {
       await ensurePlayMusicPanel(voiceChannel, INSTANCE_NAME, c.user.id);
     } catch (error) {
@@ -222,9 +247,9 @@ function startInstance(config, instanceIndex) {
             metadata: {
               channel: interaction.channel,
             },
-            leaveOnEmpty: true,
-            leaveOnEmptyCooldown: 300000,
+            leaveOnEmpty: false,
             leaveOnEnd: false,
+            leaveOnStop: false,
           },
         });
 

@@ -111,14 +111,17 @@ module.exports = function attachMusicApi(client, customPort = null) {
         const queue = client.player.nodes.get(guildId);
         const isNewQueue = !queue;
 
+        const isInstance = !!client.INSTANCE_NAME;
+
         await client.player.play(voiceChannel, result, {
           nodeOptions: {
             metadata: {
               channel: textChannel,
             },
-            leaveOnEmpty: true,
+            leaveOnEmpty: !isInstance,
             leaveOnEmptyCooldown: 300000,
-            leaveOnEnd: false,
+            leaveOnEnd: !isInstance,
+            leaveOnStop: !isInstance,
           },
         });
 

@@ -37,7 +37,7 @@ module.exports = {
     }
 
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.deferReply();
+      await interaction.deferReply({ ephemeral: true });
     }
 
     try {
@@ -63,7 +63,8 @@ module.exports = {
           },
           leaveOnEmpty: true,
           leaveOnEmptyCooldown: 300000,
-          leaveOnEnd: false,
+          leaveOnEnd: true,
+          leaveOnStop: true,
         },
       });
 

@@ -166,6 +166,7 @@ function startInstance(config, instanceIndex) {
           channelId: INSTANCE_VOICE_CHANNEL_ID,
           guildId: GUILD_ID,
           adapterCreator: guild.voiceAdapterCreator,
+          group: client.user.id,
         });
       } catch (e) {
         console.error("Failed to force join VC:", e);

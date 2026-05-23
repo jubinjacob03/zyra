@@ -1,16 +1,11 @@
-# Use Node.js 22 Alpine for smaller image size
+# Use Node.js 22 Alpine for a lightweight base image
 FROM node:22-alpine
 
-# Install system dependencies
+# Install system dependencies (only ffmpeg is required for discord-player)
 RUN apk add --no-cache \
-    python3 \
-    py3-pip \
     ffmpeg \
     curl \
-    wget \
     ca-certificates \
-    && pip3 install --no-cache-dir --break-system-packages yt-dlp \
-    && yt-dlp --version \
     && ffmpeg -version
 
 # Create app directory
@@ -29,15 +24,11 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p /app/logs /app/cache/audio
 
-# Ensure yt-dlp is accessible
-RUN yt-dlp --version || (echo "yt-dlp installation failed" && exit 1)
+# Set environment variables
+ENV NODE_ENV=production
 
-# Set environment
-ENV NODE_ENV=production \
-    YTDL_NO_UPDATE=1
-
-# Expose API port (if using the music API)
-EXPOSE 8000
+# Expose API ports
+EXPOSE 8000 8001 8002 8003
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

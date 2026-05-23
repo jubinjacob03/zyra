@@ -1,4 +1,11 @@
 require("dotenv").config();
+
+// Map Spotify credentials for discord-player extractor
+if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
+  process.env.DP_SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+  process.env.DP_SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+}
+
 const {
   Client,
   GatewayIntentBits,
@@ -46,19 +53,21 @@ const client = new Client({
 client.commands = new Collection();
 client.musicPanels = new Map();
 
-// Initialize Discord Player
+/**
+ * Initialize Discord Player with optimized settings for low-memory environments.
+ * Blocks YouTube extractors to bypass rate limits and forces fallback to SoundCloud/Spotify.
+ */
 const player = new Player(client, {
   blockExtractors: ['YouTubeExtractor', 'YoutubeExtractor'],
   blockStreamFrom: ['YouTubeExtractor', 'YoutubeExtractor'],
   ytdlOptions: {
     quality: 'highestaudio',
     highWaterMark: 1 << 25
-  }
+  },
+  skipFFmpeg: false, // Required for volume control and audio filters
 });
 
-// Load extractors (SoundCloud, Spotify, Apple Music, etc.)
 player.extractors.loadMulti(DefaultExtractors);
-
 client.player = player;
 
 /**
@@ -238,6 +247,8 @@ player.events.on('playerError', (queue, error) => {
 
 /**
  * Handles music panel button clicks.
+ * @param {import('discord.js').ButtonInteraction} interaction - The button interaction.
+ * @param {import('discord.js').Client} client - The Discord client.
  */
 async function handleButtonInteraction(interaction, client) {
   try {
@@ -384,7 +395,9 @@ async function handleButtonInteraction(interaction, client) {
 }
 
 /**
- * Update the music controller after button interactions
+ * Update the music controller after button interactions.
+ * @param {import('discord.js').ButtonInteraction} interaction - The button interaction.
+ * @param {import('discord-player').GuildQueue} queue - The music queue.
  */
 async function updateMusicController(interaction, queue) {
   try {

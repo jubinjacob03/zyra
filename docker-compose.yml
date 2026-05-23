@@ -12,13 +12,21 @@ services:
     environment:
       - NODE_ENV=production
       - TZ=UTC
-      - YTDL_NO_UPDATE=1
-      - NODE_OPTIONS=--max-old-space-size=256
+      # Optimize V8 garbage collection for 1GB RAM VPS
+      # 512MB gives Node.js enough room for audio buffering while leaving RAM for the OS
+      - NODE_OPTIONS=--max-old-space-size=512
     ports:
       - "8000:8000"
       - "8001:8001"
       - "8002:8002"
       - "8003:8003"
+    # Resource limits to prevent container from crashing the host
+    deploy:
+      resources:
+        limits:
+          memory: 800M
+        reservations:
+          memory: 256M
     # Health check
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'node src/index.js' || exit 1"]

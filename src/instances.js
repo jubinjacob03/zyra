@@ -1,4 +1,11 @@
 require("dotenv").config();
+
+// Map Spotify credentials for discord-player extractor
+if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
+  process.env.DP_SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+  process.env.DP_SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+}
+
 const { Client, GatewayIntentBits, Collection, Events } = require("discord.js");
 const { Player } = require("discord-player");
 const { DefaultExtractors } = require("@discord-player/extractor");
@@ -95,13 +102,18 @@ function startInstance(config, instanceIndex) {
 
   client.on("error", console.error);
 
+  /**
+   * Initialize Discord Player with optimized settings for low-memory environments.
+   * Blocks YouTube extractors to bypass rate limits and forces fallback to SoundCloud/Spotify.
+   */
   const player = new Player(client, {
     blockExtractors: ['YouTubeExtractor', 'YoutubeExtractor'],
     blockStreamFrom: ['YouTubeExtractor', 'YoutubeExtractor'],
     ytdlOptions: {
       quality: 'highestaudio',
       highWaterMark: 1 << 25
-    }
+    },
+    skipFFmpeg: false, // Required for volume control and audio filters
   });
 
   player.extractors.loadMulti(DefaultExtractors);

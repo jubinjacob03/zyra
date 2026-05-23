@@ -15,8 +15,12 @@ plugins:
       - MUSIC
       - ANDROID_VR
       - M_WEB
+      - ANDROID
+      - ANDROID_MUSIC
+      - WEBEMBEDDED
+      - TVHTML5
     oauth:
-      enabled: true
+      enabled: false
       refreshToken: "${GOOGLE_REFRESH_TOKEN}"
       skipInitialization: true
     pot:

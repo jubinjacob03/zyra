@@ -213,10 +213,9 @@ player.events.on('disconnect', async (queue) => {
       try {
         const message = await textChannel.messages.fetch(storedId);
         if (message && isEditableByClient(message, client.user?.id)) {
-          const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
-          const container = new ContainerBuilder().setAccentColor(0x00ffff);
-          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} Disconnected. Add more songs to keep the party going!`));
-          await message.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+          const { createIdleMusicController } = require("./utils/componentsV2");
+          const payload = createIdleMusicController("Disconnected. Add more songs to keep the party going!");
+          await message.edit(payload).catch(() => {});
         }
       } catch (e) {}
     }
@@ -234,10 +233,9 @@ player.events.on('emptyQueue', async (queue) => {
       try {
         const message = await textChannel.messages.fetch(storedId);
         if (message && isEditableByClient(message, client.user?.id)) {
-          const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
-          const container = new ContainerBuilder().setAccentColor(0x00ffff);
-          container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} Queue finished. Add more songs to keep the party going!`));
-          await message.edit({ components: [container], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+          const { createIdleMusicController } = require("./utils/componentsV2");
+          const payload = createIdleMusicController("Queue finished. Add more songs to keep the party going!");
+          await message.edit(payload).catch(() => {});
         }
       } catch (e) {}
     }

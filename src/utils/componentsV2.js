@@ -165,10 +165,30 @@ function createCompleteMusicController(queue) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
+/**
+ * Creates an idle music controller payload without buttons.
+ * @param {string} message - The idle message to display.
+ * @returns {Object} The message payload containing the components and flags.
+ */
+function createIdleMusicController(message) {
+  const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+  const container = new ContainerBuilder().setAccentColor(0x00ffff);
+  
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`${e("MUSIC")} ${message}`)
+  );
+  
+  const { addFooter } = require("./embed");
+  addFooter(container);
+
+  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+}
+
 module.exports = {
   createNowPlayingEmbed,
   createControlButtons,
   createCompleteMusicController,
+  createIdleMusicController,
   formatTime,
   createProgressBar,
 };

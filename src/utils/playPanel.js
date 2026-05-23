@@ -2,25 +2,13 @@ const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ButtonBuilder, But
 const { getPlayPanel, setPlayPanel } = require("./panelStore");
 
 /**
- * Checks if a custom ID belongs to a music panel button.
+ * Checks if a custom ID belongs to the play music panel button.
  * @param {string} customId - The custom ID to check.
- * @returns {boolean} True if it's a panel button.
+ * @returns {boolean} True if it's the play panel button.
  */
 const isPanelButton = (customId) => {
   if (!customId || typeof customId !== "string") return false;
-  if (customId === "play_song") return true;
-  if (customId.startsWith("music_")) return true;
-  return [
-    "pause",
-    "skip",
-    "stop",
-    "voldown",
-    "volup",
-    "loop",
-    "queue",
-    "shuffle",
-    "previous",
-  ].includes(customId);
+  return customId === "play_song";
 };
 
 /**

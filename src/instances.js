@@ -115,6 +115,20 @@ function startInstance(config, instanceIndex) {
       highWaterMark: 1 << 25
     },
     skipFFmpeg: false, // Required for volume control and audio filters
+    async onBeforeCreateStream(track, source, _fallback) {
+      if (track.source === 'spotify') {
+        try {
+          const query = track.title + ' ' + track.author;
+          const res = await player.search(query, { searchEngine: 'soundcloud' });
+          if (res.tracks.length > 0) {
+            return _fallback(res.tracks[0], 'soundcloud');
+          }
+        } catch (err) {
+          console.error("Custom bridge failed:", err);
+        }
+      }
+      return _fallback(track, source);
+    }
   });
 
   player.extractors.register(SpotifyExtractor, {

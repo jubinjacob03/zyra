@@ -71,7 +71,8 @@ const player = new Player(client, {
         const query = track.title + ' ' + track.author;
         const res = await player.search(query, { searchEngine: 'soundcloud' });
         if (res.tracks.length > 0) {
-          return _fallback(res.tracks[0], 'soundcloud');
+          const scTrack = res.tracks[0];
+          return await scTrack.extractor.stream(scTrack);
         }
       } catch (err) {
         console.error("Custom bridge failed:", err);

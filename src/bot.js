@@ -13,8 +13,32 @@ const {
   Events,
   ActivityType,
 } = require("discord.js");
-const { Player } = require("discord-player");
+const { Player, onBeforeCreateStream } = require("discord-player");
 const { DefaultExtractors, SpotifyExtractor, SoundCloudExtractor } = require("@discord-player/extractor");
+
+onBeforeCreateStream(async (track, queryType, queue) => {
+  if (track.source === 'spotify') {
+    try {
+      let q = track.title + ' ' + track.author;
+      let scRes = await queue.player.search(q, { searchEngine: 'soundcloud' });
+      
+      if (scRes.tracks.length === 0) {
+        scRes = await queue.player.search(track.title, { searchEngine: 'soundcloud' });
+      }
+
+      if (scRes.tracks.length > 0) {
+        const scTrack = scRes.tracks[0];
+        if (scTrack.thumbnail) {
+            track.thumbnail = scTrack.thumbnail;
+        }
+        return await scTrack.extractor.stream(scTrack);
+      }
+    } catch (e) {
+      // Silently catch errors to allow default bridge fallback if necessary
+    }
+  }
+  return null;
+});
 const fs = require("fs");
 const path = require("path");
 const { formatDuration } = require("./utils/embed");
@@ -64,22 +88,7 @@ const player = new Player(client, {
     quality: 'highestaudio',
     highWaterMark: 1 << 25
   },
-  skipFFmpeg: false, // Required for volume control and audio filters
-  async onBeforeCreateStream(track, source, _fallback) {
-    if (track.source === 'spotify') {
-      try {
-        const query = track.title + ' ' + track.author;
-        const res = await player.search(query, { searchEngine: 'soundcloud' });
-        if (res.tracks.length > 0) {
-          const scTrack = res.tracks[0];
-          return await scTrack.extractor.stream(scTrack);
-        }
-      } catch (err) {
-        console.error("Custom bridge failed:", err);
-      }
-    }
-    return _fallback(track, source);
-  }
+  skipFFmpeg: false // Required for volume control and audio filters
 });
 
 player.extractors.register(SpotifyExtractor, {

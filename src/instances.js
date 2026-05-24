@@ -234,6 +234,12 @@ function startInstance(config, instanceIndex) {
     }
 
     const { joinVoiceChannel } = require('@discordjs/voice');
+    /**
+     * Forces the bot instance to join its designated voice channel.
+     * Uses the discordjs/voice library to establish the connection adapter.
+     * @function forceJoinVC
+     * @returns {void}
+     */
     const forceJoinVC = () => {
       try {
         joinVoiceChannel({
@@ -248,6 +254,27 @@ function startInstance(config, instanceIndex) {
     };
 
     forceJoinVC();
+
+    /**
+     * Watchdog connection monitor.
+     * Aggressively polls the guild cache every 15 seconds to ensure
+     * the instance maintains an active voice channel connection.
+     * Re-establishes the connection if dropped.
+     */
+    setInterval(() => {
+      try {
+        const currentGuild = client.guilds.cache.get(GUILD_ID);
+        if (!currentGuild) return;
+        const me = currentGuild.members.me;
+        
+        if (!me || !me.voice || me.voice.channelId !== INSTANCE_VOICE_CHANNEL_ID) {
+          console.log(`[Watchdog] 🤖 Instance ${INSTANCE_NAME} disconnected! Attempting to reconnect...`);
+          forceJoinVC();
+        }
+      } catch (error) {
+        console.error(`[Watchdog Error] Instance ${INSTANCE_NAME}:`, error);
+      }
+    }, 15000);
 
     client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       if (oldState.member.user.id === client.user.id) {

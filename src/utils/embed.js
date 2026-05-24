@@ -36,6 +36,9 @@ const COLORS = {
   MUSIC: 0x00ffff,
   SPOTIFY: 0x1db954,
   YOUTUBE: 0xff0000,
+  SOUNDCLOUD: 0xff5500,
+  PLAYING: 0x00ffff,
+  PAUSED: 0x757575,
   ACCENT: 0x00ffff,
   MUTED: 0x757575,
 };

@@ -239,23 +239,27 @@ async function handleButtonInteraction(interaction, client) {
     return;
   }
 
+  const { e } = require("./utils/customEmoji");
+  const { COLORS } = require("./utils/embed");
+  const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+  
+  const sendEphemeralEmbed = async (color, message) => {
+    const container = new ContainerBuilder().setAccentColor(color);
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(message));
+    return interaction.followUp({ components: [container], flags: MessageFlags.IsComponentsV2 | 64 });
+  };
+
   const queue = client.player.nodes.get(interaction.guildId);
 
   if (!queue || !queue.isPlaying()) {
-    return interaction.followUp({
-      content: `${e("ERROR")} Nothing is playing right now.`,
-      ephemeral: true,
-    });
+    return sendEphemeralEmbed(COLORS.ERROR, `${e("ERROR")} Nothing is playing right now.`);
   }
 
   const member = interaction.member;
   const voiceChannel = member.voice.channel;
 
   if (!voiceChannel || voiceChannel.id !== queue.channel.id) {
-    return interaction.followUp({
-      content: `${e("ERROR")} You need to be in the same voice channel.`,
-      ephemeral: true,
-    });
+    return sendEphemeralEmbed(COLORS.ERROR, `${e("ERROR")} You need to be in the same voice channel.`);
   }
 
   try {
@@ -263,57 +267,42 @@ async function handleButtonInteraction(interaction, client) {
       case "music_pause":
         if (queue.node.isPaused()) {
           queue.node.resume();
-          await interaction.followUp({ ephemeral: true, content: `${e("PLAY")} Resumed the music.` });
+          await sendEphemeralEmbed(COLORS.INFO, `${e("PLAY")} Resumed the music.`);
         } else {
           queue.node.pause();
-          await interaction.followUp({ ephemeral: true, content: `${e("PAUSE")} Paused the music.` });
+          await sendEphemeralEmbed(COLORS.INFO, `${e("PAUSE")} Paused the music.`);
         }
         break;
 
       case "music_skip":
         queue.node.skip();
-        await interaction.followUp({
-          ephemeral: true,
-          content: `${e("SKIP")} Skipped the current song.`,
-        });
+        await sendEphemeralEmbed(COLORS.INFO, `${e("SKIP")} Skipped the current song.`);
         break;
 
       case "music_stop":
         client.musicPanels.delete(interaction.guildId);
         queue.delete();
-        await interaction.followUp({
-          ephemeral: true,
-          content: `${e("STOP")} Stopped the music and cleared the queue.`,
-        });
+        await sendEphemeralEmbed(COLORS.ERROR, `${e("STOP")} Stopped the music and cleared the queue.`);
         break;
 
       case "music_shuffle":
         queue.tracks.shuffle();
-        await interaction.followUp({ ephemeral: true, content: `${e("SHUFFLE")} Shuffled the queue.` });
+        await sendEphemeralEmbed(COLORS.INFO, `${e("SHUFFLE")} Shuffled the queue.`);
         break;
 
       case "music_loop":
         const modes = ["Off", "Track", "Queue", "Autoplay"];
         const nextMode = (queue.repeatMode + 1) % 4;
         queue.setRepeatMode(nextMode);
-        await interaction.followUp({
-          ephemeral: true,
-          content: `${e("LOOP")} Loop mode: **${modes[nextMode]}**`,
-        });
+        await sendEphemeralEmbed(COLORS.INFO, `${e("LOOP")} Loop mode: **${modes[nextMode]}**`);
         break;
 
       case "music_previous":
         if (queue.history.previousTrack) {
           await queue.history.previous();
-          await interaction.followUp({
-            ephemeral: true,
-            content: `${e("PREVIOUS")} Playing previous track.`,
-          });
+          await sendEphemeralEmbed(COLORS.INFO, `${e("PREVIOUS")} Playing previous track.`);
         } else {
-          await interaction.followUp({
-            ephemeral: true,
-            content: `${e("PREVIOUS")} Previous track not available.`,
-          });
+          await sendEphemeralEmbed(COLORS.ERROR, `${e("PREVIOUS")} Previous track not available.`);
         }
         break;
 
@@ -327,49 +316,34 @@ async function handleButtonInteraction(interaction, client) {
           .join("\n");
         const current = queue.currentTrack;
         const currentStr = current ? `**${e("PLAY")} Now:** [${current.title}](${current.url}) - \`${current.duration}\`\n\n` : "";
-        await interaction.followUp({
-          ephemeral: true,
-          content: `${e("QUEUE")} **Queue** (${queue.tracks.size} songs)\n\n${currentStr}${queueList}`,
-        });
+        await sendEphemeralEmbed(COLORS.INFO, `${e("QUEUE")} **Queue** (${queue.tracks.size} songs)\n\n${currentStr}${queueList}`);
         break;
 
       case "music_voldown":
         const newVolDown = Math.max(0, queue.node.volume - 10);
         queue.node.setVolume(newVolDown);
-        await interaction.followUp({
-          ephemeral: true,
-          content: `${e("VOLDOWN")} Volume: **${newVolDown}%**`,
-        });
+        await sendEphemeralEmbed(COLORS.INFO, `${e("VOLDOWN")} Volume: **${newVolDown}%**`);
         break;
 
       case "music_volup":
         const newVolUp = Math.min(100, queue.node.volume + 10);
         queue.node.setVolume(newVolUp);
-        await interaction.followUp({ ephemeral: true, content: `${e("VOLUP")} Volume: **${newVolUp}%**` });
+        await sendEphemeralEmbed(COLORS.INFO, `${e("VOLUP")} Volume: **${newVolUp}%**`);
         break;
 
       case "music_refresh":
-        await interaction.followUp({
-          content: `${e("REFRESH")} Music controller refreshed!`,
-          ephemeral: true,
-        });
+        await sendEphemeralEmbed(COLORS.INFO, `${e("REFRESH")} Music controller refreshed!`);
         break;
 
       default:
-        await interaction.followUp({
-          content: `${e("WARNING")} Unknown button action.`,
-          ephemeral: true,
-        });
+        await sendEphemeralEmbed(COLORS.ERROR, `${e("WARNING")} Unknown button action.`);
     }
 
     await updateMusicController(interaction, queue);
   } catch (error) {
     console.error("Button interaction error:", error);
     try {
-      await interaction.followUp({
-        content: `${e("ERROR")} An error occurred.`,
-        ephemeral: true,
-      });
+      await sendEphemeralEmbed(COLORS.ERROR, `${e("ERROR")} An error occurred.`);
     } catch (replyError) {
       console.error("Failed to send error message:", replyError);
     }
@@ -453,7 +427,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   setInterval(() => {
     const status = `✅ Bot alive | ${client.guilds.cache.size} servers | ${client.player.nodes.cache.size} active queues`;
     console.log(status);
-  }, 30000);
+  }, 900000);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

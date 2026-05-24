@@ -14,7 +14,7 @@ const {
   ActivityType,
 } = require("discord.js");
 const { Player } = require("discord-player");
-const { DefaultExtractors } = require("@discord-player/extractor");
+const { DefaultExtractors, SpotifyExtractor, SoundCloudExtractor } = require("@discord-player/extractor");
 const fs = require("fs");
 const path = require("path");
 const { formatDuration } = require("./utils/embed");
@@ -67,7 +67,14 @@ const player = new Player(client, {
   skipFFmpeg: false, // Required for volume control and audio filters
 });
 
-player.extractors.loadMulti(DefaultExtractors);
+player.extractors.register(SpotifyExtractor, {
+  clientId: process.env.SPOTIFY_CLIENT_ID,
+  clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+  bridgeProvider: SoundCloudExtractor,
+  bridgeQuery: (track) => `${track.author} ${track.title} official audio`
+}).then(() => {
+  player.extractors.loadMulti(DefaultExtractors);
+}).catch(console.error);
 client.player = player;
 
 /**

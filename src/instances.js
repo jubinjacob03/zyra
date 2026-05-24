@@ -8,7 +8,7 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
 
 const { Client, GatewayIntentBits, Collection, Events } = require("discord.js");
 const { Player } = require("discord-player");
-const { DefaultExtractors } = require("@discord-player/extractor");
+const { DefaultExtractors, SpotifyExtractor, SoundCloudExtractor } = require("@discord-player/extractor");
 const { initEmojis } = require("./utils/customEmoji");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
 
@@ -116,7 +116,14 @@ function startInstance(config, instanceIndex) {
     skipFFmpeg: false, // Required for volume control and audio filters
   });
 
-  player.extractors.loadMulti(DefaultExtractors);
+  player.extractors.register(SpotifyExtractor, {
+    clientId: process.env.SPOTIFY_CLIENT_ID,
+    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    bridgeProvider: SoundCloudExtractor,
+    bridgeQuery: (track) => `${track.author} ${track.title} official audio`
+  }).then(() => {
+    player.extractors.loadMulti(DefaultExtractors);
+  }).catch(console.error);
   client.player = player;
 
   client.updateMusicController = updateMusicController;

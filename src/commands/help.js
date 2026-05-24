@@ -39,7 +39,7 @@ module.exports = {
 
     const container = new ContainerBuilder().setAccentColor(0x9B59B6);
     
-    let description = `### ${e("MUSIC")} Remani Music Bot\nYour premium music experience\n\n`;
+    let description = `### ${e("MUSIC")} Remani Music Bot\nYour premium music experience\n*Supports Spotify, SoundCloud, and YouTube!*\n\n`;
     
     commands.forEach(cmd => {
       description += `**${cmd.name}** - ${cmd.desc}\n`;

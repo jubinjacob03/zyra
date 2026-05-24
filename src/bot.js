@@ -1,4 +1,5 @@
 require("dotenv").config();
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
   process.env.DP_SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
@@ -249,57 +250,56 @@ async function handleButtonInteraction(interaction, client) {
     return interaction.followUp({ components: [container], flags: MessageFlags.IsComponentsV2 | 64 });
   };
 
-  const queue = client.player.nodes.get(interaction.guildId);
-
-  if (!queue || !queue.isPlaying()) {
+  const DiscordPlayer = require("./utils/DiscordPlayer");
+  
+  const botVoiceChannelId = interaction.guild.members.me.voice.channelId;
+  if (!botVoiceChannelId || (!DiscordPlayer.isUsingLavalink(client, interaction.guildId) && !DiscordPlayer.isUsingDiscordPlayer(client, interaction.guildId))) {
     return sendEphemeralEmbed(COLORS.ERROR, `${e("ERROR")} Nothing is playing right now.`);
   }
 
   const member = interaction.member;
   const voiceChannel = member.voice.channel;
 
-  if (!voiceChannel || voiceChannel.id !== queue.channel.id) {
+  if (!voiceChannel || voiceChannel.id !== botVoiceChannelId) {
     return sendEphemeralEmbed(COLORS.ERROR, `${e("ERROR")} You need to be in the same voice channel.`);
   }
 
   try {
     switch (interaction.customId) {
       case "music_pause":
-        if (queue.node.isPaused()) {
-          queue.node.resume();
-          await sendEphemeralEmbed(COLORS.INFO, `${e("PLAY")} Resumed the music.`);
-        } else {
-          queue.node.pause();
+        const { isPaused } = await DiscordPlayer.pause(interaction.guildId, client);
+        if (isPaused) {
           await sendEphemeralEmbed(COLORS.INFO, `${e("PAUSE")} Paused the music.`);
+        } else {
+          await sendEphemeralEmbed(COLORS.INFO, `${e("PLAY")} Resumed the music.`);
         }
         break;
 
       case "music_skip":
-        queue.node.skip();
+        await DiscordPlayer.skip(interaction.guildId, client);
         await sendEphemeralEmbed(COLORS.INFO, `${e("SKIP")} Skipped the current song.`);
         break;
 
       case "music_stop":
         client.musicPanels.delete(interaction.guildId);
-        queue.delete();
+        await DiscordPlayer.stop(interaction.guildId, client);
         await sendEphemeralEmbed(COLORS.ERROR, `${e("STOP")} Stopped the music and cleared the queue.`);
         break;
 
       case "music_shuffle":
-        queue.tracks.shuffle();
+        await DiscordPlayer.shuffle(interaction.guildId, client);
         await sendEphemeralEmbed(COLORS.INFO, `${e("SHUFFLE")} Shuffled the queue.`);
         break;
 
       case "music_loop":
         const modes = ["Off", "Track", "Queue", "Autoplay"];
-        const nextMode = (queue.repeatMode + 1) % 4;
-        queue.setRepeatMode(nextMode);
+        const nextMode = await DiscordPlayer.loop(interaction.guildId, client);
         await sendEphemeralEmbed(COLORS.INFO, `${e("LOOP")} Loop mode: **${modes[nextMode]}**`);
         break;
 
       case "music_previous":
-        if (queue.history.previousTrack) {
-          await queue.history.previous();
+        const hasPrev = await DiscordPlayer.previous(interaction.guildId, client);
+        if (hasPrev) {
           await sendEphemeralEmbed(COLORS.INFO, `${e("PREVIOUS")} Playing previous track.`);
         } else {
           await sendEphemeralEmbed(COLORS.ERROR, `${e("PREVIOUS")} Previous track not available.`);
@@ -307,27 +307,22 @@ async function handleButtonInteraction(interaction, client) {
         break;
 
       case "music_queue":
-        const tracks = queue.tracks.toArray().slice(0, 10);
-        const queueList = tracks
-          .map(
-            (song, i) =>
-              `**${i + 1}.** [${song.title}](${song.url}) - \`${song.duration}\``,
-          )
+        const queueInfo = DiscordPlayer.getQueueInfo(interaction.guildId, client);
+        if (!queueInfo) break;
+        const queueList = queueInfo.tracks
+          .map((song, i) => `**${i + 1}.** [${song.title}](${song.url}) - \`${song.duration}\``)
           .join("\n");
-        const current = queue.currentTrack;
-        const currentStr = current ? `**${e("PLAY")} Now:** [${current.title}](${current.url}) - \`${current.duration}\`\n\n` : "";
-        await sendEphemeralEmbed(COLORS.INFO, `${e("QUEUE")} **Queue** (${queue.tracks.size} songs)\n\n${currentStr}${queueList}`);
+        const currentStr = queueInfo.current ? `**${e("PLAY")} Now:** [${queueInfo.current.title}](${queueInfo.current.url}) - \`${queueInfo.current.duration}\`\n\n` : "";
+        await sendEphemeralEmbed(COLORS.INFO, `${e("QUEUE")} **Queue** (${queueInfo.size} songs)\n\n${currentStr}${queueList}`);
         break;
 
       case "music_voldown":
-        const newVolDown = Math.max(0, queue.node.volume - 10);
-        queue.node.setVolume(newVolDown);
+        const newVolDown = await DiscordPlayer.adjustVolume(interaction.guildId, client, -10);
         await sendEphemeralEmbed(COLORS.INFO, `${e("VOLDOWN")} Volume: **${newVolDown}%**`);
         break;
 
       case "music_volup":
-        const newVolUp = Math.min(100, queue.node.volume + 10);
-        queue.node.setVolume(newVolUp);
+        const newVolUp = await DiscordPlayer.adjustVolume(interaction.guildId, client, 10);
         await sendEphemeralEmbed(COLORS.INFO, `${e("VOLUP")} Volume: **${newVolUp}%**`);
         break;
 
@@ -339,7 +334,7 @@ async function handleButtonInteraction(interaction, client) {
         await sendEphemeralEmbed(COLORS.ERROR, `${e("WARNING")} Unknown button action.`);
     }
 
-    await updateMusicController(interaction, queue);
+    await DiscordPlayer.triggerUpdate(interaction.guildId, client);
   } catch (error) {
     console.error("Button interaction error:", error);
     try {
@@ -475,6 +470,9 @@ function startMainBot() {
     console.error("❌ DISCORD_TOKEN is not set in .env file!");
     process.exit(1);
   }
+
+  const { initWatchdog } = require("./utils/watchdog");
+  initWatchdog(client);
 
   const apiServer = require("./api")(client);
 

@@ -46,39 +46,13 @@ module.exports = {
 
       const { QueryType } = require("discord-player");
       
-      const finalQuery = await resolveSpotifyQuery(query);
-      const isUrl = finalQuery.startsWith("http://") || finalQuery.startsWith("https://");
-      const searchEngine = QueryType.AUTO;
-
-      const result = await client.player.search(finalQuery, {
-        requestedBy: interaction.user,
-        searchEngine: searchEngine,
-      });
-
-      if (!result || result.isEmpty()) {
-        const container = new ContainerBuilder().setAccentColor(0xff4444);
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("ERROR")} No results found for your query.`));
-        return interaction.editReply({
-          components: [container],
-          flags: MessageFlags.IsComponentsV2,
-        });
-      }
-
-      const { track } = await client.player.play(voiceChannel, result, {
-        nodeOptions: {
-          metadata: {
-            channel: interaction.channel,
-          },
-          leaveOnEmpty: true,
-          leaveOnEmptyCooldown: 300000,
-          leaveOnEnd: false,
-          leaveOnStop: false,
-        },
-      });
+      const DiscordPlayer = require("../utils/DiscordPlayer");
+      
+      const { isPlaylist, count, track } = await DiscordPlayer.play(interaction, query, voiceChannel, client);
 
       const container = new ContainerBuilder().setAccentColor(0x00ffff);
-      if (result.hasPlaylist()) {
-        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} **${result.playlist.tracks.length} songs** from playlist added to queue`));
+      if (isPlaylist) {
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} **${count} songs** from playlist added to queue`));
       } else {
         container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${e("MUSIC")} **${track.title}** added to queue`));
       }

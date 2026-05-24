@@ -81,8 +81,8 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `${bullet} Song names\n` +
-      `${bullet} Spotify links (tracks & playlists)\n` +
-      `${bullet} SoundCloud links`
+      `${bullet} Tracks (YouTube, Spotify, SoundCloud)\n` +
+      `${bullet} Playlists (YouTube - no Mix, Spotify, SoundCloud)`
     )
   );
 

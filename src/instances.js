@@ -310,9 +310,9 @@ function startInstance(config, instanceIndex) {
 
         const songInput = new TextInputBuilder()
           .setCustomId("song_query")
-          .setLabel("Song name, Spotify or SoundCloud link")
+          .setLabel("Song name, Spotify, SoundCloud, or YouTube")
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder("e.g., sao paulo, https://open.spotify.com/...")
+          .setPlaceholder("e.g., sao paulo, https://youtube.com/...")
           .setRequired(true);
 
         const row = new ActionRowBuilder().addComponents(songInput);

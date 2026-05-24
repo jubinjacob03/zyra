@@ -13,7 +13,8 @@ const COLORS = {
   PLAYING: 0x00ffff,
   PAUSED: 0x00aaaa,
   SPOTIFY: 0x1db954,
-  SOUNDCLOUD: 0xff0000,
+  SOUNDCLOUD: 0xff5500,
+  YOUTUBE: 0xff0000,
 };
 
 /**
@@ -56,14 +57,17 @@ function createNowPlayingEmbed(queue) {
 
   const isSpotify = song.source === 'spotify';
   const isSoundCloud = song.source === 'soundcloud';
+  const isYouTube = song.source === 'youtube' || (!isSpotify && !isSoundCloud);
   const isPaused = queue.node.isPaused();
   const color = isSpotify
     ? COLORS.SPOTIFY
     : isSoundCloud
       ? COLORS.SOUNDCLOUD
-      : isPaused
-        ? COLORS.PAUSED
-        : COLORS.PLAYING;
+      : isYouTube
+        ? COLORS.YOUTUBE
+        : isPaused
+          ? COLORS.PAUSED
+          : COLORS.PLAYING;
 
   const platformIcon = isSpotify ? e("SPOTIFY") || "🟢" : e("YOUTUBE") || "🔴";
   const platformName = isSpotify ? "Spotify" : song.source === 'soundcloud' ? "SoundCloud" : "YouTube";

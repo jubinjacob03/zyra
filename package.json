@@ -7,6 +7,7 @@
     "start": "node src/index.js",
     "deploy": "node src/deploy-commands.js",
     "dev": "nodemon src/index.js",
+    "lint": "eslint src/",
     "postinstall": "youtube-dl-exec --version || echo 'yt-dlp check complete'"
   },
   "keywords": [
@@ -40,7 +41,10 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@napi-rs/canvas": "^0.1.96",
+    "eslint": "^10.4.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
     "nodemon": "^3.1.7"
   },
   "nodemonConfig": {

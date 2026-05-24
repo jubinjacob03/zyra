@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
 const { e } = require("../utils/customEmoji");
+const { resolveSpotifyQuery } = require("../utils/spotify");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -44,10 +45,12 @@ module.exports = {
       console.log(`🔍 Starting search for: "${query}"`);
 
       const { QueryType } = require("discord-player");
-      const isUrl = query.startsWith("http://") || query.startsWith("https://");
-      const searchEngine = isUrl ? QueryType.AUTO : QueryType.SPOTIFY_SEARCH;
+      
+      const finalQuery = await resolveSpotifyQuery(query);
+      const isUrl = finalQuery.startsWith("http://") || finalQuery.startsWith("https://");
+      const searchEngine = QueryType.AUTO;
 
-      const result = await client.player.search(query, {
+      const result = await client.player.search(finalQuery, {
         requestedBy: interaction.user,
         searchEngine: searchEngine,
       });

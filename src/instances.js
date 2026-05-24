@@ -9,6 +9,7 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
 const { Client, GatewayIntentBits, Collection, Events } = require("discord.js");
 const { Player } = require("discord-player");
 const { DefaultExtractors, SpotifyExtractor, SoundCloudExtractor } = require("@discord-player/extractor");
+const { resolveSpotifyQuery } = require("./utils/spotify");
 const { initEmojis } = require("./utils/customEmoji");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
 
@@ -253,10 +254,11 @@ function startInstance(config, instanceIndex) {
         console.log(`🔍 Modal search for: "${query}"`);
 
         const { QueryType } = require("discord-player");
-        const isUrl = query.startsWith("http://") || query.startsWith("https://");
-        const searchEngine = isUrl ? QueryType.AUTO : QueryType.SPOTIFY_SEARCH;
+        
+        const finalQuery = await resolveSpotifyQuery(query);
+        const searchEngine = QueryType.AUTO;
 
-        const result = await client.player.search(query, {
+        const result = await client.player.search(finalQuery, {
           requestedBy: interaction.user,
           searchEngine: searchEngine,
         });

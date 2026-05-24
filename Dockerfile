@@ -35,4 +35,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Start the bot (process manager for all instances)
-CMD ["node", "src/index.js"]
+CMD ["node", "--optimize-for-size", "src/index.js"]

@@ -14,8 +14,7 @@ services:
       - TZ=UTC
       # Optimize V8 garbage collection for 1GB RAM VPS
       # 512MB gives Node.js enough room for audio buffering while leaving RAM for the OS
-      # --optimize-for-size forces V8 to aggressively compress memory footprint
-      - NODE_OPTIONS=--max-old-space-size=512 --optimize-for-size
+      - NODE_OPTIONS=--max-old-space-size=512
     ports:
       - "8000:8000"
       - "8001:8001"

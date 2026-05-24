@@ -472,7 +472,10 @@ function startMainBot() {
   }
 
   const { initWatchdog } = require("./utils/watchdog");
-  initWatchdog(client);
+  const watchdog = initWatchdog(client);
+
+  const { initScraper } = require("./scraper/NodeScraper");
+  initScraper(watchdog);
 
   const apiServer = require("./api")(client);
 

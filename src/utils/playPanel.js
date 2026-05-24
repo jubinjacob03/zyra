@@ -8,7 +8,16 @@ const { getPlayPanel, setPlayPanel } = require("./panelStore");
  */
 const isPanelButton = (customId) => {
   if (!customId || typeof customId !== "string") return false;
-  return customId === "play_song";
+  return customId === "play_song" || customId.startsWith("music_");
+};
+
+const hasPanelButton = (components) => {
+  if (!Array.isArray(components)) return false;
+  for (const comp of components) {
+    if (isPanelButton(comp.customId)) return true;
+    if (comp.components && hasPanelButton(comp.components)) return true;
+  }
+  return false;
 };
 
 /**
@@ -34,11 +43,7 @@ const findPanelMessage = (messages, clientUserId) =>
   messages.find(
     (message) =>
       isEditableByClient(message, clientUserId) &&
-      message.components?.some((row) =>
-        row.components?.some((component) =>
-          isPanelButton(component.customId),
-        ),
-      ),
+      hasPanelButton(message.components),
   );
 
 /**

@@ -15,7 +15,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install production dependencies
-RUN npm ci --omit=dev && \
+RUN npm install --omit=dev --no-package-lock && \
     npm cache clean --force
 
 # Copy application files

@@ -142,7 +142,6 @@ module.exports = function attachMusicApi(client, customPort = null) {
         });
       }
 
-      // ── Legacy generic control (kept for backward compat) ────────────────
       if (req.method === "POST" && path === "/control") {
         const { guildId, action, value } = await parseBody(req);
         const queue = client.player.nodes.get(guildId);
@@ -188,7 +187,6 @@ module.exports = function attachMusicApi(client, customPort = null) {
         return send(res, 200, { success: true, action });
       }
 
-      // ── Direct per-action endpoints (zero-overhead, no switch dispatch) ──
       if (req.method === "POST") {
         const directActions = [
           "/skip",

@@ -1,6 +1,5 @@
 require("dotenv").config();
 
-// Map Spotify credentials for discord-player extractor
 if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
   process.env.DP_SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
   process.env.DP_SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
@@ -34,7 +33,6 @@ onBeforeCreateStream(async (track, queryType, queue) => {
         return await scTrack.extractor.stream(scTrack);
       }
     } catch (e) {
-      // Silently catch errors to allow default bridge fallback if necessary
     }
   }
   return null;
@@ -77,10 +75,6 @@ const client = new Client({
 client.commands = new Collection();
 client.musicPanels = new Map();
 
-/**
- * Initialize Discord Player with optimized settings for low-memory environments.
- * Blocks YouTube extractors to bypass rate limits and forces fallback to SoundCloud/Spotify.
- */
 const player = new Player(client, {
   blockExtractors: ['YouTubeExtractor', 'YoutubeExtractor'],
   blockStreamFrom: ['YouTubeExtractor', 'YoutubeExtractor'],
@@ -88,7 +82,7 @@ const player = new Player(client, {
     quality: 'highestaudio',
     highWaterMark: 1 << 25
   },
-  skipFFmpeg: false // Required for volume control and audio filters
+  skipFFmpeg: false
 });
 
 player.extractors.register(SpotifyExtractor, {
@@ -186,8 +180,18 @@ player.events.on('playerStart', async (queue, track) => {
   const textChannel = queue.metadata?.channel;
   if (!textChannel) return;
 
-  // Master bot behavior: always send a new message, do not delete the old one.
-  const message = await textChannel.send({ components: controller.components, flags: controller.flags });
+  let message = null;
+  const existingData = client.musicPanels.get(queue.guild.id);
+  
+  if (existingData && existingData.message) {
+    try {
+      message = await existingData.message.edit({ embeds: [], components: controller.components, flags: controller.flags });
+    } catch (e) {
+      message = await textChannel.send({ components: controller.components, flags: controller.flags });
+    }
+  } else {
+    message = await textChannel.send({ components: controller.components, flags: controller.flags });
+  }
 
   if (message?.id && message?.channelId) {
     setControllerPanel(message.channelId, message.id);
@@ -206,41 +210,11 @@ player.events.on('audioTrackAdd', (queue, track) => {
 });
 
 player.events.on('disconnect', async (queue) => {
-  const textChannel = queue.metadata?.channel;
-  if (textChannel) {
-    const { getControllerPanel } = require("./utils/panelStore");
-    const storedId = getControllerPanel(textChannel.id);
-    if (storedId) {
-      try {
-        const message = await textChannel.messages.fetch(storedId);
-        if (message && isEditableByClient(message, client.user?.id)) {
-          const { createIdleMusicController } = require("./utils/componentsV2");
-          const payload = createIdleMusicController("Disconnected. Add more songs to keep the party going!");
-          await message.edit({ embeds: [], components: payload.components, flags: payload.flags }).catch(() => {});
-        }
-      } catch (e) {}
-    }
-  }
   client.musicPanels.delete(queue.guild.id);
 });
 
 player.events.on('emptyQueue', async (queue) => {
   console.log("🎵 Queue finished");
-  const textChannel = queue.metadata?.channel;
-  if (textChannel) {
-    const { getControllerPanel } = require("./utils/panelStore");
-    const storedId = getControllerPanel(textChannel.id);
-    if (storedId) {
-      try {
-        const message = await textChannel.messages.fetch(storedId);
-        if (message && isEditableByClient(message, client.user?.id)) {
-          const { createIdleMusicController } = require("./utils/componentsV2");
-          const payload = createIdleMusicController("Queue finished. Add more songs to keep the party going!");
-          await message.edit({ embeds: [], components: payload.components, flags: payload.flags }).catch(() => {});
-        }
-      } catch (e) {}
-    }
-  }
   client.musicPanels.delete(queue.guild.id);
 });
 
@@ -305,6 +279,7 @@ async function handleButtonInteraction(interaction, client) {
         break;
 
       case "music_stop":
+        client.musicPanels.delete(interaction.guildId);
         queue.delete();
         await interaction.followUp({
           ephemeral: true,

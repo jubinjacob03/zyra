@@ -1,6 +1,4 @@
 require("dotenv").config();
-
-// Map Spotify credentials for discord-player extractor
 if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
   process.env.DP_SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
   process.env.DP_SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
@@ -152,7 +150,7 @@ function startInstance(config, instanceIndex) {
       }
     }
 
-    // Slave instance behavior: ALWAYS reuse the same embed (edit the existing one)
+
     if (message && typeof message.edit === 'function') {
       try {
         await message.edit({ embeds: [], components: controller.components, flags: controller.flags });
@@ -251,7 +249,6 @@ function startInstance(config, instanceIndex) {
 
     forceJoinVC();
 
-    // Auto-rejoin if disconnected
     client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       if (oldState.member.user.id === client.user.id) {
         if (!newState.channelId || newState.channelId !== INSTANCE_VOICE_CHANNEL_ID) {

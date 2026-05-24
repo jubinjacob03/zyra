@@ -219,7 +219,7 @@ function initScraper(watchdog) {
     console.error(`❌ [Scraper] Unhandled rejection in initial scrape: ${err.message}`);
   });
 
-  const INTERVAL_MS = 3 * 60 * 60 * 1000;
+  const INTERVAL_MS = 40 * 60 * 1000;
   setInterval(() => {
     runScrapeCycle(watchdog).catch(err => {
       console.error(`❌ [Scraper] Unhandled rejection in scheduled scrape: ${err.message}`);

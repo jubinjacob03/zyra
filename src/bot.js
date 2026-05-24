@@ -70,8 +70,7 @@ const player = new Player(client, {
 player.extractors.register(SpotifyExtractor, {
   clientId: process.env.SPOTIFY_CLIENT_ID,
   clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-  bridgeProvider: SoundCloudExtractor,
-  bridgeQuery: (track) => `${track.author} ${track.title} official audio`
+  bridgeProvider: SoundCloudExtractor
 }).then(() => {
   player.extractors.loadMulti(DefaultExtractors.filter(e => e.name !== 'SpotifyExtractor'));
 }).catch(console.error);

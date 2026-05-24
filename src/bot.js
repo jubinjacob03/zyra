@@ -73,7 +73,7 @@ player.extractors.register(SpotifyExtractor, {
   bridgeProvider: SoundCloudExtractor,
   bridgeQuery: (track) => `${track.author} ${track.title} official audio`
 }).then(() => {
-  player.extractors.loadMulti(DefaultExtractors);
+  player.extractors.loadMulti(DefaultExtractors.filter(e => e.name !== 'SpotifyExtractor'));
 }).catch(console.error);
 client.player = player;
 
@@ -163,43 +163,8 @@ player.events.on('playerStart', async (queue, track) => {
   const textChannel = queue.metadata?.channel;
   if (!textChannel) return;
 
-  let message = null;
-  const existingPanel = client.musicPanels.get(queue.guild.id);
-  
-  if (existingPanel?.message) {
-    message = existingPanel.message;
-  }
-
-  if (!message) {
-    const storedId = getControllerPanel(textChannel.id);
-    if (storedId) {
-      try {
-        message = await textChannel.messages.fetch(storedId);
-      } catch (error) {
-        message = null;
-      }
-    }
-  }
-
-  if (!message) {
-    message = await findExistingMusicPanel(textChannel, client.user?.id);
-  }
-
-  if (!message) {
-    const { createIdleMusicController } = require("./utils/componentsV2");
-    const payload = createIdleMusicController("Loading player...");
-    message = await textChannel.send({ components: payload.components, flags: payload.flags });
-  }
-
-  if (message && isEditableByClient(message, client.user?.id)) {
-    try {
-      await message.edit({ embeds: [], components: controller.components, flags: controller.flags });
-    } catch (error) {
-      message = await textChannel.send({ components: controller.components, flags: controller.flags });
-    }
-  } else {
-    message = await textChannel.send({ components: controller.components, flags: controller.flags });
-  }
+  // Master bot behavior: always send a new message, do not delete the old one.
+  const message = await textChannel.send({ components: controller.components, flags: controller.flags });
 
   if (message?.id && message?.channelId) {
     setControllerPanel(message.channelId, message.id);

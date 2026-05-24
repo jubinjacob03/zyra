@@ -123,9 +123,78 @@ function startInstance(config, instanceIndex) {
     bridgeProvider: SoundCloudExtractor,
     bridgeQuery: (track) => `${track.author} ${track.title} official audio`
   }).then(() => {
-    player.extractors.loadMulti(DefaultExtractors);
+    player.extractors.loadMulti(DefaultExtractors.filter(e => e.name !== 'SpotifyExtractor'));
   }).catch(console.error);
   client.player = player;
+
+  player.events.on('playerStart', async (queue, track) => {
+    const { createCompleteMusicController } = require("./utils/componentsV2");
+    const { getControllerPanel, setControllerPanel } = require("./utils/panelStore");
+    const controller = createCompleteMusicController(queue);
+
+    const textChannel = queue.metadata?.channel || client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
+    if (!textChannel) return;
+
+    let message = null;
+    const existingPanel = client.musicPanels.get(queue.guild.id);
+    
+    if (existingPanel?.message) {
+      message = existingPanel.message;
+    }
+
+    if (!message) {
+      const storedId = getControllerPanel(textChannel.id);
+      if (storedId) {
+        try {
+          message = await textChannel.messages.fetch(storedId);
+        } catch (error) {
+          message = null;
+        }
+      }
+    }
+
+    // Slave instance behavior: ALWAYS reuse the same embed (edit the existing one)
+    if (message && typeof message.edit === 'function') {
+      try {
+        await message.edit({ embeds: [], components: controller.components, flags: controller.flags });
+      } catch (error) {
+        message = await textChannel.send({ components: controller.components, flags: controller.flags });
+      }
+    } else {
+      message = await textChannel.send({ components: controller.components, flags: controller.flags });
+    }
+
+    if (message?.id && message?.channelId) {
+      setControllerPanel(message.channelId, message.id);
+    }
+
+    client.musicPanels.set(queue.guild.id, {
+      message,
+      song: track,
+      startTime: Date.now(),
+    });
+    console.log(`🎵 [${INSTANCE_NAME}] Now playing:`, track.title);
+  });
+
+  player.events.on('emptyQueue', async (queue) => {
+    console.log(`🎵 [${INSTANCE_NAME}] Queue finished`);
+    const textChannel = queue.metadata?.channel || client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
+    if (textChannel) {
+      const { getControllerPanel } = require("./utils/panelStore");
+      const storedId = getControllerPanel(textChannel.id);
+      if (storedId) {
+        try {
+          const message = await textChannel.messages.fetch(storedId);
+          if (message && typeof message.edit === 'function') {
+            const { createIdleMusicController } = require("./utils/componentsV2");
+            const payload = createIdleMusicController("Queue finished. Add more songs!");
+            await message.edit({ embeds: [], components: payload.components, flags: payload.flags }).catch(() => {});
+          }
+        } catch (e) {}
+      }
+    }
+    client.musicPanels.delete(queue.guild.id);
+  });
 
   client.updateMusicController = updateMusicController;
   client.formatDuration = formatDuration;

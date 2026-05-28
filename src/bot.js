@@ -126,20 +126,31 @@ const idlePhrases = [
 const pickIdlePhrase = () =>
   idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
 
-const setPresenceActivity = (idleText) => {
+const setPresenceActivity = (trackOrText) => {
   if (!client?.user) return;
-  const presenceText = idleText || pickIdlePhrase();
-  client.user.setPresence({
-    activities: [
-      {
-        name: "Custom Status",
-        type: ActivityType.Custom,
-        state: presenceText,
-      },
-    ],
-    status: "online",
-  });
+  if (trackOrText && trackOrText.title) {
+    client.user.setPresence({
+      activities: [{
+        name: (trackOrText.title || "music").slice(0, 128),
+        type: ActivityType.Listening,
+        timestamps: { start: Date.now() },
+      }],
+      status: "online",
+    });
+  } else {
+    const presenceText = typeof trackOrText === "string" ? trackOrText : pickIdlePhrase();
+    client.user.setPresence({
+      activities: [{
+        name: presenceText,
+        type: ActivityType.Listening,
+      }],
+      status: "online",
+    });
+  }
 };
+
+client.updateMusicPresence = (track) => setPresenceActivity(track);
+client.updateVoiceStatus = (channel, status) => setVoiceChannelStatus(channel, status);
 
 const isAnyTrackPlaying = () => {
   for (const queue of client.player?.nodes?.cache?.values() || []) {
@@ -282,8 +293,9 @@ player.events.on("playerStart", async (queue, track) => {
     song: track,
     startTime: Date.now(),
   });
-  setPresenceActivity(pickIdlePhrase());
-  await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
+
+  setPresenceActivity(track);
+  await setVoiceChannelStatus(queue.channel, `✨ Now playing: ${track.title}`);
   console.log("🎵 Now playing:", track.title);
 });
 
@@ -580,7 +592,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   try {
     const avatarPath = path.join(__dirname, "..", "assets", "avatar.jpg");
     if (fs.existsSync(avatarPath)) {
-      await client.user.setAvatar(avatarPath);
+      await client.user.setAvatar(avatarPath).catch(console.error);
       console.log("✅ Avatar updated successfully!");
     }
   } catch (error) {

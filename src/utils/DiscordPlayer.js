@@ -94,15 +94,27 @@ async function play(interaction, query, voiceChannel, client, fallbackQuery) {
     } catch (e) {
       console.warn(`[Lavalink] Failed to play: ${e.message}. Falling back to DiscordPlayer.`);
       if (watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
+        client.isFallingBack = true;
         await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
       }
-      return await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
+      try {
+        const result = await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
+        return result;
+      } finally {
+        setTimeout(() => { client.isFallingBack = false; }, 5000);
+      }
     }
   } else {
     if (watchdog && watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
+      client.isFallingBack = true;
       await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
     }
-    return await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
+    try {
+      const result = await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
+      return result;
+    } finally {
+      setTimeout(() => { client.isFallingBack = false; }, 5000);
+    }
   }
 }
 
@@ -165,11 +177,18 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
       if (!queue.current) {
         lavalinkQueues.delete(getQueueKey(client, voiceChannel.guild.id));
         client.musicPanels.delete(voiceChannel.guild.id);
-        try {
-          await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
-            body: { status: "🎵 /play to start" },
-          });
-        } catch (e) {}
+        if (typeof client.updateVoiceStatus === "function") {
+          await client.updateVoiceStatus(voiceChannel.id, "🎵 /play to start");
+        } else {
+          try {
+            await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
+              body: { status: "🎵 /play to start" },
+            });
+          } catch (e) {}
+        }
+        if (typeof client.updateMusicPresence === "function") {
+          client.updateMusicPresence(null);
+        }
         await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
       } else {
         await updateLavalinkPanel(voiceChannel.guild.id, client);
@@ -179,11 +198,18 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
     player.on("closed", async () => {
       lavalinkQueues.delete(getQueueKey(client, voiceChannel.guild.id));
       client.musicPanels.delete(voiceChannel.guild.id);
-      try {
-        await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
-          body: { status: "🎵 /play to start" },
-        });
-      } catch (e) {}
+      if (typeof client.updateVoiceStatus === "function") {
+        await client.updateVoiceStatus(voiceChannel.id, "🎵 /play to start");
+      } else {
+        try {
+          await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
+            body: { status: "🎵 /play to start" },
+          });
+        } catch (e) {}
+      }
+      if (typeof client.updateMusicPresence === "function") {
+        client.updateMusicPresence(null);
+      }
     });
   }
 
@@ -246,11 +272,19 @@ async function updateLavalinkPanel(guildId, client) {
   try {
     const voiceChannelId = queue.player.connection.channelId;
     if (voiceChannelId) {
-      await client.rest.put(`/channels/${voiceChannelId}/voice-status`, {
-        body: { status: "🎵 /play to start" }
-      });
+      if (typeof client.updateVoiceStatus === "function") {
+        await client.updateVoiceStatus(voiceChannelId, `✨ Now playing: ${queue.current.info.title}`);
+      } else {
+        await client.rest.put(`/channels/${voiceChannelId}/voice-status`, {
+          body: { status: `✨ Now playing: ${queue.current.info.title}`.slice(0, 500) }
+        });
+      }
     }
   } catch (e) {}
+
+  if (typeof client.updateMusicPresence === "function") {
+    client.updateMusicPresence(queue.current.info);
+  }
 
   const pseudoQueue = createPseudoQueue(queue, guildId, client);
   const controller = createCompleteMusicController(pseudoQueue);

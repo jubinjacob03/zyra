@@ -52,19 +52,27 @@ const idlePhrases = [
 const pickIdlePhrase = () =>
   idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
 
-const setPresenceActivity = (client, idleText) => {
+const setPresenceActivity = (client, trackOrText) => {
   if (!client?.user) return;
-  const presenceText = idleText || pickIdlePhrase();
-  client.user.setPresence({
-    activities: [
-      {
-        name: "Custom Status",
-        type: ActivityType.Custom,
-        state: presenceText,
-      },
-    ],
-    status: "online",
-  });
+  if (trackOrText && trackOrText.title) {
+    client.user.setPresence({
+      activities: [{
+        name: (trackOrText.title || "music").slice(0, 128),
+        type: ActivityType.Listening,
+        timestamps: { start: Date.now() },
+      }],
+      status: "online",
+    });
+  } else {
+    const presenceText = typeof trackOrText === "string" ? trackOrText : pickIdlePhrase();
+    client.user.setPresence({
+      activities: [{
+        name: presenceText,
+        type: ActivityType.Listening,
+      }],
+      status: "online",
+    });
+  }
 };
 
 const applyIdleStatus = async (client, channel) => {
@@ -76,7 +84,7 @@ const applyIdleStatus = async (client, channel) => {
 const setVoiceChannelStatus = async (client, channel, status) => {
   if (!channel || !client) return;
   try {
-    await client.rest.put(`/channels/${channel.id}/voice-status`, {
+    await client.rest.put(`/channels/${channel.id || channel}/voice-status`, {
       body: { status: status ? status.slice(0, 500) : "" }
     });
   } catch (e) {
@@ -249,8 +257,8 @@ function startInstance(config, instanceIndex) {
       song: track,
       startTime: Date.now(),
     });
-    setPresenceActivity(client, pickIdlePhrase());
-    await setVoiceChannelStatus(client, queue.channel, "🎵 /play to start");
+    setPresenceActivity(client, track);
+    await setVoiceChannelStatus(client, queue.channel, `✨ Now playing: ${track.title}`);
     console.log(`🎵 [${INSTANCE_NAME}] Now playing:`, track.title);
   });
 
@@ -311,6 +319,9 @@ function startInstance(config, instanceIndex) {
     `✅ Instance configured - no slash commands, message-based control`,
   );
 
+  client.updateMusicPresence = (track) => setPresenceActivity(client, track);
+  client.updateVoiceStatus = (channelId, status) => setVoiceChannelStatus(client, channelId, status);
+
   client.once(Events.ClientReady, async (c) => {
     console.log(`🤖 Instance ready as ${c.user.tag} (name: ${INSTANCE_NAME})`);
     await initEmojis(client);
@@ -337,6 +348,9 @@ function startInstance(config, instanceIndex) {
      * @returns {Promise<void>}
      */
     const forceJoinVC = async () => {
+      if (client.isFallingBack) return;
+      if (client.player?.nodes?.has(GUILD_ID)) return;
+      
       try {
         const watchdog = getWatchdog(client);
         if (watchdog && watchdog.shoukaku && watchdog.isNodeAvailable()) {
@@ -399,6 +413,7 @@ function startInstance(config, instanceIndex) {
           !newState.channelId ||
           newState.channelId !== INSTANCE_VOICE_CHANNEL_ID
         ) {
+          if (client.isFallingBack || client.player?.nodes?.has(GUILD_ID)) return;
           setTimeout(forceJoinVC, 1000);
         }
       }

@@ -93,9 +93,15 @@ async function play(interaction, query, voiceChannel, client, fallbackQuery) {
       return await handleLavalinkPlay(interaction, finalQuery, voiceChannel, client, watchdog);
     } catch (e) {
       console.warn(`[Lavalink] Failed to play: ${e.message}. Falling back to DiscordPlayer.`);
+      if (watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
+        await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
+      }
       return await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
     }
   } else {
+    if (watchdog && watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
+      await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
+    }
     return await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
   }
 }

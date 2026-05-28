@@ -345,23 +345,31 @@ function startInstance(config, instanceIndex) {
       process.exit(1);
     }
 
-    const { joinVoiceChannel } = require("@discordjs/voice");
+    const { getWatchdog, initWatchdog } = require("./utils/watchdog");
+    initWatchdog(client);
+
     /**
      * Forces the bot instance to join its designated voice channel.
-     * Uses the discordjs/voice library to establish the connection adapter.
+     * Uses Shoukaku to establish the connection adapter.
      * @function forceJoinVC
-     * @returns {void}
+     * @returns {Promise<void>}
      */
-    const forceJoinVC = () => {
+    const forceJoinVC = async () => {
       try {
-        joinVoiceChannel({
-          channelId: INSTANCE_VOICE_CHANNEL_ID,
-          guildId: GUILD_ID,
-          adapterCreator: guild.voiceAdapterCreator,
-          group: client.user.id,
-        });
+        const watchdog = getWatchdog(client);
+        if (watchdog && watchdog.shoukaku && watchdog.isNodeAvailable()) {
+          const existingPlayer = watchdog.shoukaku.players.get(GUILD_ID);
+          if (!existingPlayer) {
+             await watchdog.shoukaku.joinVoiceChannel({
+                guildId: GUILD_ID,
+                channelId: INSTANCE_VOICE_CHANNEL_ID,
+                shardId: guild.shardId,
+                deaf: true
+             });
+          }
+        }
       } catch (e) {
-        console.error("Failed to force join VC:", e);
+        console.error("Failed to force join VC via Shoukaku:", e);
       }
     };
 
@@ -397,7 +405,8 @@ function startInstance(config, instanceIndex) {
 
     setInterval(() => {
       const queue = client.player?.nodes?.cache?.get(GUILD_ID);
-      if (!queue || !queue.currentTrack) {
+      const lavalinkQueue = require("./utils/DiscordPlayer").lavalinkQueues?.get(`${client.user.id}_${GUILD_ID}`);
+      if ((!queue || !queue.currentTrack) && (!lavalinkQueue || !lavalinkQueue.current)) {
         applyIdleStatus(client, voiceChannel);
       }
     }, 120000);

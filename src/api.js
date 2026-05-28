@@ -258,7 +258,9 @@ module.exports = function attachMusicApi(client, customPort = null) {
         const DiscordPlayer = require("./utils/DiscordPlayer");
 
         if (DiscordPlayer.isUsingLavalink(client, guildId)) {
-          const lq = DiscordPlayer.lavalinkQueues.get(guildId);
+          const lq = DiscordPlayer.lavalinkQueues.get(
+            DiscordPlayer.getQueueKey(client, guildId),
+          );
           if (!lq || !lq.current) return send(res, 200, { playing: false, paused: false, song: null, queue: [], queueLength: 0 });
           const elapsed = lq.player.position || 0;
           return send(res, 200, {

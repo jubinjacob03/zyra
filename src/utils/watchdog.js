@@ -86,8 +86,8 @@ const instances = new Map();
  * @returns {Watchdog|null}
  */
 function initWatchdog(client) {
-  if (!client || !client.user) return null;
-  const key = client.user.id;
+  if (!client) return null;
+  const key = client.INSTANCE_NAME || client.user?.id || 'main';
   if (!instances.has(key)) {
     instances.set(key, new Watchdog(client));
   }
@@ -100,12 +100,12 @@ function initWatchdog(client) {
  * @returns {Watchdog|null}
  */
 function getWatchdog(client) {
-  if (!client || !client.user) {
+  if (!client) {
     // Fallback: return the first available watchdog if no client provided (legacy support)
     return instances.values().next().value || null;
   }
-  const key = client.user.id;
-  return instances.get(key) || null;
+  const key = client.INSTANCE_NAME || client.user?.id || 'main';
+  return instances.get(key) || instances.values().next().value || null;
 }
 
 module.exports = {

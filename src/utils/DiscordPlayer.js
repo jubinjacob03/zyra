@@ -130,12 +130,15 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
   let queue = lavalinkQueues.get(getQueueKey(client, voiceChannel.guild.id));
 
   if (!queue) {
-    const player = await watchdog.shoukaku.joinVoiceChannel({
-      guildId: voiceChannel.guild.id,
-      channelId: voiceChannel.id,
-      shardId: voiceChannel.guild.shardId,
-      deaf: true
-    });
+    let player = watchdog.shoukaku.players.get(voiceChannel.guild.id);
+    if (!player) {
+      player = await watchdog.shoukaku.joinVoiceChannel({
+        guildId: voiceChannel.guild.id,
+        channelId: voiceChannel.id,
+        shardId: voiceChannel.guild.shardId,
+        deaf: true
+      });
+    }
 
     queue = {
       player,
@@ -197,9 +200,10 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
  * @param {import('discord.js').Client} client 
  */
 async function handleDiscordPlayerPlay(interaction, query, voiceChannel, client) {
+  const searchEngine = query.startsWith("http") ? QueryType.AUTO : QueryType.SOUNDCLOUD_SEARCH;
   const result = await client.player.search(query, {
     requestedBy: interaction.user,
-    searchEngine: QueryType.AUTO,
+    searchEngine: searchEngine,
   });
 
   if (!result || result.isEmpty()) {

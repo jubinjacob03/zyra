@@ -66,7 +66,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
       }
 
       if (req.method === "POST" && path === "/play") {
-        const { guildId, voiceChannelId, query, userId, username } =
+        const { guildId, voiceChannelId, query, userId, username, fallbackQuery } =
           await parseBody(req);
 
         if (!guildId || !voiceChannelId || !query)
@@ -78,7 +78,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
         if (!guild)
           return send(res, 404, { error: "Bot is not in this guild" });
 
-        const voiceChannel = guild.channels.cache.get(voiceChannelId);
+        const voiceChannel = client.channels.cache.get(voiceChannelId);
         if (!voiceChannel)
           return send(res, 404, { error: "Voice channel not found" });
 
@@ -113,7 +113,8 @@ module.exports = function attachMusicApi(client, customPort = null) {
             webApiInteraction,
             query,
             voiceChannel,
-            client
+            client,
+            fallbackQuery
           );
           
           return send(res, 200, {

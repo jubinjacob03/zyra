@@ -83,19 +83,20 @@ async function playNextLavalink(queue) {
  * @param {import('discord.js').VoiceChannel} voiceChannel 
  * @param {import('discord.js').Client} client 
  */
-async function play(interaction, query, voiceChannel, client) {
+async function play(interaction, query, voiceChannel, client, fallbackQuery) {
   const watchdog = getWatchdog(client);
   const finalQuery = await resolveSpotifyQuery(query);
+  const discordPlayerQuery = fallbackQuery ? fallbackQuery : finalQuery;
 
   if (watchdog && watchdog.isNodeAvailable() && !isUsingDiscordPlayer(client, voiceChannel.guild.id)) {
     try {
       return await handleLavalinkPlay(interaction, finalQuery, voiceChannel, client, watchdog);
     } catch (e) {
       console.warn(`[Lavalink] Failed to play: ${e.message}. Falling back to DiscordPlayer.`);
-      return await handleDiscordPlayerPlay(interaction, finalQuery, voiceChannel, client);
+      return await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
     }
   } else {
-    return await handleDiscordPlayerPlay(interaction, finalQuery, voiceChannel, client);
+    return await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
   }
 }
 

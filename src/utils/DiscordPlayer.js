@@ -87,10 +87,13 @@ async function play(interaction, query, voiceChannel, client) {
   const watchdog = getWatchdog(client);
   const finalQuery = await resolveSpotifyQuery(query);
 
-  const isMainBot = !client.INSTANCE_NAME;
-
-  if (isMainBot && watchdog && watchdog.isNodeAvailable() && !isUsingDiscordPlayer(client, voiceChannel.guild.id)) {
-    return await handleLavalinkPlay(interaction, finalQuery, voiceChannel, client, watchdog);
+  if (watchdog && watchdog.isNodeAvailable() && !isUsingDiscordPlayer(client, voiceChannel.guild.id)) {
+    try {
+      return await handleLavalinkPlay(interaction, finalQuery, voiceChannel, client, watchdog);
+    } catch (e) {
+      console.warn(`[Lavalink] Failed to play: ${e.message}. Falling back to DiscordPlayer.`);
+      return await handleDiscordPlayerPlay(interaction, finalQuery, voiceChannel, client);
+    }
   } else {
     return await handleDiscordPlayerPlay(interaction, finalQuery, voiceChannel, client);
   }
@@ -152,15 +155,21 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
       if (!queue.current) {
         lavalinkQueues.delete(getQueueKey(client, voiceChannel.guild.id));
         client.musicPanels.delete(voiceChannel.guild.id);
+        try {
+          await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, { body: { status: "" } });
+        } catch (e) {}
         await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
       } else {
         await updateLavalinkPanel(voiceChannel.guild.id, client);
       }
     });
 
-    player.on("closed", () => {
+    player.on("closed", async () => {
       lavalinkQueues.delete(getQueueKey(client, voiceChannel.guild.id));
       client.musicPanels.delete(voiceChannel.guild.id);
+      try {
+        await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, { body: { status: "" } });
+      } catch (e) {}
     });
   }
 
@@ -218,6 +227,15 @@ async function handleDiscordPlayerPlay(interaction, query, voiceChannel, client)
 async function updateLavalinkPanel(guildId, client) {
   const queue = lavalinkQueues.get(getQueueKey(client, guildId));
   if (!queue || !queue.current) return;
+
+  try {
+    const voiceChannelId = queue.player.connection.channelId;
+    if (voiceChannelId) {
+      await client.rest.put(`/channels/${voiceChannelId}/voice-status`, {
+        body: { status: `🎵 Playing: ${queue.current.info.title}`.slice(0, 500) }
+      });
+    }
+  } catch (e) {}
 
   const pseudoQueue = createPseudoQueue(queue, guildId, client);
   const controller = createCompleteMusicController(pseudoQueue);

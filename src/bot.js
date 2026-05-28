@@ -133,7 +133,7 @@ const setPresenceActivity = (track) => {
     client.user.setPresence({
       activities: [
         {
-          name: text,
+          name: "Custom Status",
           type: ActivityType.Custom,
           state: text,
         },
@@ -146,7 +146,7 @@ const setPresenceActivity = (track) => {
   client.user.setPresence({
     activities: [
       {
-        name: idleText,
+        name: "Custom Status",
         type: ActivityType.Custom,
         state: idleText,
       },

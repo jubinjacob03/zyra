@@ -59,7 +59,7 @@ const setPresenceActivity = (client, track) => {
     client.user.setPresence({
       activities: [
         {
-          name: text,
+          name: "Custom Status",
           type: ActivityType.Custom,
           state: text,
         },
@@ -72,7 +72,7 @@ const setPresenceActivity = (client, track) => {
   client.user.setPresence({
     activities: [
       {
-        name: idleText,
+        name: "Custom Status",
         type: ActivityType.Custom,
         state: idleText,
       },
@@ -84,20 +84,18 @@ const setPresenceActivity = (client, track) => {
 const applyIdleStatus = async (client, channel) => {
   const phrase = pickIdlePhrase();
   setPresenceActivity(client, null);
-  await setVoiceChannelStatus(channel, phrase);
+  await setVoiceChannelStatus(client, channel, phrase);
 };
 
-const setVoiceChannelStatus = async (channel, status) => {
-  if (!channel) return;
-  if (typeof channel.setStatus === "function") {
-    try {
-      await channel.setStatus(status ?? null);
-      return;
-    } catch {}
-  }
+const setVoiceChannelStatus = async (client, channel, status) => {
+  if (!channel || !client) return;
   try {
-    await channel.edit({ status: status ?? null });
-  } catch {}
+    await client.rest.put(`/channels/${channel.id}/voice-status`, {
+      body: { status: status ? status.slice(0, 500) : "" }
+    });
+  } catch (e) {
+    console.error("Failed to set voice status:", e.message);
+  }
 };
 
 process.on("unhandledRejection", (reason) => {
@@ -267,6 +265,7 @@ function startInstance(config, instanceIndex) {
     });
     setPresenceActivity(client, track);
     await setVoiceChannelStatus(
+      client,
       queue.channel,
       `✨ Now playing: ${track.title}`,
     );

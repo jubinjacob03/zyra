@@ -82,14 +82,20 @@ module.exports = function attachMusicApi(client, customPort = null) {
         if (!voiceChannel)
           return send(res, 404, { error: "Voice channel not found" });
 
-        const textChannel =
-          guild.channels.cache.get("1473105751575760917") ||
-          guild.systemChannel ||
-          guild.channels.cache.find(
-            (c) =>
-              c.type === 0 &&
-              c.permissionsFor(guild.members.me)?.has("SendMessages"),
-          );
+        let textChannel = null;
+        if (client.INSTANCE_VOICE_CHANNEL_ID) {
+          textChannel = voiceChannel;
+        }
+        if (!textChannel || typeof textChannel.send !== "function") {
+          textChannel =
+            guild.channels.cache.get("1473105751575760917") ||
+            guild.systemChannel ||
+            guild.channels.cache.find(
+              (c) =>
+                c.type === 0 &&
+                c.permissionsFor(guild.members.me)?.has("SendMessages"),
+            );
+        }
         if (!textChannel)
           return send(res, 500, {
             error: "No accessible text channel in guild",

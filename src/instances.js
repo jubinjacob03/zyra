@@ -52,29 +52,15 @@ const idlePhrases = [
 const pickIdlePhrase = () =>
   idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
 
-const setPresenceActivity = (client, track) => {
+const setPresenceActivity = (client, idleText) => {
   if (!client?.user) return;
-  if (track) {
-    const text = `🎵 ${(track.title || "music").slice(0, 100)}`;
-    client.user.setPresence({
-      activities: [
-        {
-          name: "Custom Status",
-          type: ActivityType.Custom,
-          state: text,
-        },
-      ],
-      status: "online",
-    });
-    return;
-  }
-  const idleText = `🎵 /play to start playing music`;
+  const presenceText = idleText || pickIdlePhrase();
   client.user.setPresence({
     activities: [
       {
         name: "Custom Status",
         type: ActivityType.Custom,
-        state: idleText,
+        state: presenceText,
       },
     ],
     status: "online",
@@ -83,8 +69,8 @@ const setPresenceActivity = (client, track) => {
 
 const applyIdleStatus = async (client, channel) => {
   const phrase = pickIdlePhrase();
-  setPresenceActivity(client, null);
-  await setVoiceChannelStatus(client, channel, phrase);
+  setPresenceActivity(client, phrase);
+  await setVoiceChannelStatus(client, channel, "🎵 /play to start");
 };
 
 const setVoiceChannelStatus = async (client, channel, status) => {
@@ -263,12 +249,8 @@ function startInstance(config, instanceIndex) {
       song: track,
       startTime: Date.now(),
     });
-    setPresenceActivity(client, track);
-    await setVoiceChannelStatus(
-      client,
-      queue.channel,
-      `✨ Now playing: ${track.title}`,
-    );
+    setPresenceActivity(client, pickIdlePhrase());
+    await setVoiceChannelStatus(client, queue.channel, "🎵 /play to start");
     console.log(`🎵 [${INSTANCE_NAME}] Now playing:`, track.title);
   });
 

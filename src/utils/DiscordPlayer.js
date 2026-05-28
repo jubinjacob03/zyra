@@ -160,7 +160,9 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
         lavalinkQueues.delete(getQueueKey(client, voiceChannel.guild.id));
         client.musicPanels.delete(voiceChannel.guild.id);
         try {
-          await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, { body: { status: "" } });
+          await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
+            body: { status: "🎵 /play to start" },
+          });
         } catch (e) {}
         await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
       } else {
@@ -172,7 +174,9 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
       lavalinkQueues.delete(getQueueKey(client, voiceChannel.guild.id));
       client.musicPanels.delete(voiceChannel.guild.id);
       try {
-        await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, { body: { status: "" } });
+        await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
+          body: { status: "🎵 /play to start" },
+        });
       } catch (e) {}
     });
   }
@@ -237,7 +241,7 @@ async function updateLavalinkPanel(guildId, client) {
     const voiceChannelId = queue.player.connection.channelId;
     if (voiceChannelId) {
       await client.rest.put(`/channels/${voiceChannelId}/voice-status`, {
-        body: { status: `🎵 Playing: ${queue.current.info.title}`.slice(0, 500) }
+        body: { status: "🎵 /play to start" }
       });
     }
   } catch (e) {}

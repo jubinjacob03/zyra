@@ -126,29 +126,15 @@ const idlePhrases = [
 const pickIdlePhrase = () =>
   idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
 
-const setPresenceActivity = (track) => {
+const setPresenceActivity = (idleText) => {
   if (!client?.user) return;
-  if (track) {
-    const text = `🎵 ${(track.title || "music").slice(0, 100)}`;
-    client.user.setPresence({
-      activities: [
-        {
-          name: "Custom Status",
-          type: ActivityType.Custom,
-          state: text,
-        },
-      ],
-      status: "online",
-    });
-    return;
-  }
-  const idleText = `🎵 /play to start playing music`;
+  const presenceText = idleText || pickIdlePhrase();
   client.user.setPresence({
     activities: [
       {
         name: "Custom Status",
         type: ActivityType.Custom,
-        state: idleText,
+        state: presenceText,
       },
     ],
     status: "online",
@@ -296,8 +282,8 @@ player.events.on("playerStart", async (queue, track) => {
     song: track,
     startTime: Date.now(),
   });
-  setPresenceActivity(track);
-  await setVoiceChannelStatus(queue.channel, `✨ Now playing: ${track.title}`);
+  setPresenceActivity(pickIdlePhrase());
+  await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
   console.log("🎵 Now playing:", track.title);
 });
 
@@ -307,21 +293,21 @@ player.events.on("audioTrackAdd", (queue, track) => {
 
 player.events.on("disconnect", async (queue) => {
   client.musicPanels.delete(queue.guild.id);
-  setPresenceActivity(null);
+  setPresenceActivity(pickIdlePhrase());
 
   setInterval(() => {
     if (!isAnyTrackPlaying()) {
-      setPresenceActivity(null);
+      setPresenceActivity(pickIdlePhrase());
     }
   }, 120000);
-  await setVoiceChannelStatus(queue.channel, pickIdlePhrase());
+  await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
 });
 
 player.events.on("emptyQueue", async (queue) => {
   console.log("🎵 Queue finished");
   client.musicPanels.delete(queue.guild.id);
-  setPresenceActivity(null);
-  await setVoiceChannelStatus(queue.channel, pickIdlePhrase());
+  setPresenceActivity(pickIdlePhrase());
+  await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
 });
 
 player.events.on("error", (queue, error) => {
@@ -603,7 +589,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     }
   }
 
-  setPresenceActivity(null);
+  setPresenceActivity(pickIdlePhrase());
 
   setInterval(() => {
     const status = `✅ Bot alive | ${client.guilds.cache.size} servers | ${client.player.nodes.cache.size} active queues`;

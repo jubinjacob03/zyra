@@ -95,21 +95,26 @@ module.exports = function attachMusicApi(client, customPort = null) {
             error: "No accessible text channel in guild",
           });
 
-        const fakeUser = {
+        const webApiUser = {
           id: userId || "api",
           displayName: username || "API Player",
           username: username || "api",
         };
 
-        const fakeInteraction = {
-          user: fakeUser,
+        const webApiInteraction = {
+          user: webApiUser,
           member: { voice: { channel: voiceChannel } },
           channel: textChannel,
         };
 
         const DiscordPlayer = require("./utils/DiscordPlayer");
         try {
-          const playResult = await DiscordPlayer.play(fakeInteraction, query, voiceChannel, client);
+          const playResult = await DiscordPlayer.play(
+            webApiInteraction,
+            query,
+            voiceChannel,
+            client
+          );
           
           return send(res, 200, {
             success: true,

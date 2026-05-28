@@ -132,9 +132,9 @@ const setPresenceActivity = (track) => {
     client.user.setPresence({
       activities: [
         {
-          name: (track.title || "music").slice(0, 128),
-          type: ActivityType.Listening,
-          timestamps: { start: Date.now() },
+          name: "Custom Status",
+          type: ActivityType.Custom,
+          state: `🎵 ${(track.title || "music").slice(0, 100)}`,
         },
       ],
       status: "online",
@@ -144,8 +144,9 @@ const setPresenceActivity = (track) => {
   client.user.setPresence({
     activities: [
       {
-        name: pickIdlePhrase(),
-        type: ActivityType.Listening,
+        name: "Custom Status",
+        type: ActivityType.Custom,
+        state: `🎵 /play to start playing music`,
       },
     ],
     status: "online",

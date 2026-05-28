@@ -78,7 +78,9 @@ async function play(interaction, query, voiceChannel, client) {
   const watchdog = getWatchdog();
   const finalQuery = await resolveSpotifyQuery(query);
 
-  if (watchdog && watchdog.isNodeAvailable() && !isUsingDiscordPlayer(client, voiceChannel.guild.id)) {
+  const isMainBot = !client.INSTANCE_NAME;
+
+  if (isMainBot && watchdog && watchdog.isNodeAvailable() && !isUsingDiscordPlayer(client, voiceChannel.guild.id)) {
     return await handleLavalinkPlay(interaction, finalQuery, voiceChannel, client, watchdog);
   } else {
     return await handleDiscordPlayerPlay(interaction, finalQuery, voiceChannel, client);

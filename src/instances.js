@@ -55,24 +55,26 @@ const pickIdlePhrase = () =>
 const setPresenceActivity = (client, track) => {
   if (!client?.user) return;
   if (track) {
+    const text = `🎵 ${(track.title || "music").slice(0, 100)}`;
     client.user.setPresence({
       activities: [
         {
-          name: "Custom Status",
+          name: text,
           type: ActivityType.Custom,
-          state: `🎵 ${(track.title || "music").slice(0, 100)}`,
+          state: text,
         },
       ],
       status: "online",
     });
     return;
   }
+  const idleText = `🎵 /play to start playing music`;
   client.user.setPresence({
     activities: [
       {
-        name: "Custom Status",
+        name: idleText,
         type: ActivityType.Custom,
-        state: `🎵 /play to start playing music`,
+        state: idleText,
       },
     ],
     status: "online",

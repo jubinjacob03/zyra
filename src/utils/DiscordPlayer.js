@@ -129,7 +129,8 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
   const node = watchdog.shoukaku.options.nodeResolver(watchdog.shoukaku.nodes);
   if (!node) throw new Error("No available Lavalink nodes.");
 
-  const searchResult = await node.rest.resolve(query.startsWith("http") ? query : `ytsearch:${query}`);
+  const searchStr = query.startsWith("http") || query.startsWith("ytsearch:") ? query : `ytsearch:${query}`;
+  const searchResult = await node.rest.resolve(searchStr);
   if (!searchResult || !searchResult.data) {
     throw new Error("No results found.");
   }

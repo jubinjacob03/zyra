@@ -162,6 +162,9 @@ function startInstance(config, instanceIndex) {
     ],
   });
 
+  const { initWatchdog } = require("./utils/watchdog");
+  client.watchdog = initWatchdog(client);
+
   client.commands = new Collection();
   client.musicPanels = new Map();
   client.INSTANCE_NAME = INSTANCE_NAME;

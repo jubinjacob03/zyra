@@ -305,7 +305,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
             queueLength: 0,
           });
 
-        const elapsed = queue.node.getTimestamp()?.current.value || 0;
+        const elapsed = queue.node.getTimestamp()?.current?.value || 0;
 
         return send(res, 200, {
           playing: queue.isPlaying() && !queue.node.isPaused(),

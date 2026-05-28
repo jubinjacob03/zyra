@@ -4,9 +4,19 @@ if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
   process.env.DP_SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 }
 
-const { Client, GatewayIntentBits, Collection, Events } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Collection,
+  Events,
+  ActivityType,
+} = require("discord.js");
 const { Player } = require("discord-player");
-const { DefaultExtractors, SpotifyExtractor, SoundCloudExtractor } = require("@discord-player/extractor");
+const {
+  DefaultExtractors,
+  SpotifyExtractor,
+  SoundCloudExtractor,
+} = require("@discord-player/extractor");
 const { resolveSpotifyQuery } = require("./utils/spotify");
 const { initEmojis } = require("./utils/customEmoji");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
@@ -15,7 +25,7 @@ let handleButtonInteraction;
 let updateMusicController;
 let formatDuration;
 
-require('dns').setDefaultResultOrder('ipv4first');
+require("dns").setDefaultResultOrder("ipv4first");
 
 const instanceConfig = require("../config.json");
 
@@ -23,6 +33,69 @@ const asEphemeral = (payload) => ({
   ...payload,
   flags: 64,
 });
+
+const idlePhrases = [
+  "🎧 /play to start",
+  "✨ Vibe check: passed",
+  "🫧 Breathing between beats",
+  "🌙 Lowkey online",
+  "🧊 Chill rn",
+  "💫 Just vibing",
+  "📻 Static-free",
+  "🪩 Mood: playlist",
+  "☕ Coffee break, still tuned in",
+  "🎯 Energy: steady",
+  "🍀 Good vibes only",
+  "🛰️ Ready when you are",
+];
+
+const pickIdlePhrase = () =>
+  idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
+
+const setPresenceActivity = (client, track) => {
+  if (!client?.user) return;
+  if (track) {
+    client.user.setPresence({
+      activities: [
+        {
+          name: (track.title || "music").slice(0, 128),
+          type: ActivityType.Listening,
+          timestamps: { start: Date.now() },
+        },
+      ],
+      status: "online",
+    });
+    return;
+  }
+  client.user.setPresence({
+    activities: [
+      {
+        name: pickIdlePhrase(),
+        type: ActivityType.Listening,
+      },
+    ],
+    status: "online",
+  });
+};
+
+const applyIdleStatus = async (client, channel) => {
+  const phrase = pickIdlePhrase();
+  setPresenceActivity(client, null);
+  await setVoiceChannelStatus(channel, phrase);
+};
+
+const setVoiceChannelStatus = async (channel, status) => {
+  if (!channel) return;
+  if (typeof channel.setStatus === "function") {
+    try {
+      await channel.setStatus(status ?? null);
+      return;
+    } catch {}
+  }
+  try {
+    await channel.edit({ status: status ?? null });
+  } catch {}
+};
 
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
@@ -106,35 +179,45 @@ function startInstance(config, instanceIndex) {
    * Blocks YouTube extractors to bypass rate limits and forces fallback to SoundCloud/Spotify.
    */
   const player = new Player(client, {
-    blockExtractors: ['YouTubeExtractor', 'YoutubeExtractor'],
-    blockStreamFrom: ['YouTubeExtractor', 'YoutubeExtractor'],
+    blockExtractors: ["YouTubeExtractor", "YoutubeExtractor"],
+    blockStreamFrom: ["YouTubeExtractor", "YoutubeExtractor"],
     ytdlOptions: {
-      quality: 'highestaudio',
-      highWaterMark: 1 << 25
+      quality: "highestaudio",
+      highWaterMark: 1 << 25,
     },
-    skipFFmpeg: false // Required for volume control and audio filters
+    skipFFmpeg: false, // Required for volume control and audio filters
   });
 
-  player.extractors.register(SpotifyExtractor, {
-    clientId: process.env.SPOTIFY_CLIENT_ID,
-    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-    bridgeProvider: SoundCloudExtractor
-  }).then(() => {
-    player.extractors.loadMulti(DefaultExtractors.filter(e => e.name !== 'SpotifyExtractor'));
-  }).catch(console.error);
+  player.extractors
+    .register(SpotifyExtractor, {
+      clientId: process.env.SPOTIFY_CLIENT_ID,
+      clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+      bridgeProvider: SoundCloudExtractor,
+    })
+    .then(() => {
+      player.extractors.loadMulti(
+        DefaultExtractors.filter((e) => e.name !== "SpotifyExtractor"),
+      );
+    })
+    .catch(console.error);
   client.player = player;
 
-  player.events.on('playerStart', async (queue, track) => {
+  player.events.on("playerStart", async (queue, track) => {
     const { createCompleteMusicController } = require("./utils/componentsV2");
-    const { getControllerPanel, setControllerPanel } = require("./utils/panelStore");
+    const {
+      getControllerPanel,
+      setControllerPanel,
+    } = require("./utils/panelStore");
     const controller = createCompleteMusicController(queue);
 
-    const textChannel = queue.metadata?.channel || client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
+    const textChannel =
+      queue.metadata?.channel ||
+      client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
     if (!textChannel) return;
 
     let message = null;
     const existingPanel = client.musicPanels.get(queue.guild.id);
-    
+
     if (existingPanel?.message) {
       message = existingPanel.message;
     }
@@ -150,15 +233,24 @@ function startInstance(config, instanceIndex) {
       }
     }
 
-
-    if (message && typeof message.edit === 'function') {
+    if (message && typeof message.edit === "function") {
       try {
-        await message.edit({ embeds: [], components: controller.components, flags: controller.flags });
+        await message.edit({
+          embeds: [],
+          components: controller.components,
+          flags: controller.flags,
+        });
       } catch (error) {
-        message = await textChannel.send({ components: controller.components, flags: controller.flags });
+        message = await textChannel.send({
+          components: controller.components,
+          flags: controller.flags,
+        });
       }
     } else {
-      message = await textChannel.send({ components: controller.components, flags: controller.flags });
+      message = await textChannel.send({
+        components: controller.components,
+        flags: controller.flags,
+      });
     }
 
     if (message?.id && message?.channelId) {
@@ -170,27 +262,45 @@ function startInstance(config, instanceIndex) {
       song: track,
       startTime: Date.now(),
     });
+    setPresenceActivity(client, track);
+    await setVoiceChannelStatus(
+      queue.channel,
+      `✨ Now playing: ${track.title}`,
+    );
     console.log(`🎵 [${INSTANCE_NAME}] Now playing:`, track.title);
   });
 
-  player.events.on('emptyQueue', async (queue) => {
+  player.events.on("emptyQueue", async (queue) => {
     console.log(`🎵 [${INSTANCE_NAME}] Queue finished`);
-    const textChannel = queue.metadata?.channel || client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
+    const textChannel =
+      queue.metadata?.channel ||
+      client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
     if (textChannel) {
       const { getControllerPanel } = require("./utils/panelStore");
       const storedId = getControllerPanel(textChannel.id);
       if (storedId) {
         try {
           const message = await textChannel.messages.fetch(storedId);
-          if (message && typeof message.edit === 'function') {
-            const { createIdleMusicController } = require("./utils/componentsV2");
-            const payload = createIdleMusicController("Queue finished. Add more songs!");
-            await message.edit({ embeds: [], components: payload.components, flags: payload.flags }).catch(() => {});
+          if (message && typeof message.edit === "function") {
+            const {
+              createIdleMusicController,
+            } = require("./utils/componentsV2");
+            const payload = createIdleMusicController(
+              "Queue finished. Add more songs!",
+            );
+            await message
+              .edit({
+                embeds: [],
+                components: payload.components,
+                flags: payload.flags,
+              })
+              .catch(() => {});
           }
         } catch (e) {}
       }
     }
     client.musicPanels.delete(queue.guild.id);
+    await applyIdleStatus(client, queue.channel);
   });
 
   client.updateMusicController = updateMusicController;
@@ -233,7 +343,7 @@ function startInstance(config, instanceIndex) {
       process.exit(1);
     }
 
-    const { joinVoiceChannel } = require('@discordjs/voice');
+    const { joinVoiceChannel } = require("@discordjs/voice");
     /**
      * Forces the bot instance to join its designated voice channel.
      * Uses the discordjs/voice library to establish the connection adapter.
@@ -254,6 +364,7 @@ function startInstance(config, instanceIndex) {
     };
 
     forceJoinVC();
+    await applyIdleStatus(client, voiceChannel);
 
     /**
      * Watchdog connection monitor.
@@ -266,9 +377,15 @@ function startInstance(config, instanceIndex) {
         const currentGuild = client.guilds.cache.get(GUILD_ID);
         if (!currentGuild) return;
         const me = currentGuild.members.me;
-        
-        if (!me || !me.voice || me.voice.channelId !== INSTANCE_VOICE_CHANNEL_ID) {
-          console.log(`[Watchdog] 🤖 Instance ${INSTANCE_NAME} disconnected! Attempting to reconnect...`);
+
+        if (
+          !me ||
+          !me.voice ||
+          me.voice.channelId !== INSTANCE_VOICE_CHANNEL_ID
+        ) {
+          console.log(
+            `[Watchdog] 🤖 Instance ${INSTANCE_NAME} disconnected! Attempting to reconnect...`,
+          );
           forceJoinVC();
         }
       } catch (error) {
@@ -276,9 +393,19 @@ function startInstance(config, instanceIndex) {
       }
     }, 15000);
 
+    setInterval(() => {
+      const queue = client.player?.nodes?.cache?.get(GUILD_ID);
+      if (!queue || !queue.currentTrack) {
+        applyIdleStatus(client, voiceChannel);
+      }
+    }, 120000);
+
     client.on(Events.VoiceStateUpdate, (oldState, newState) => {
       if (oldState.member.user.id === client.user.id) {
-        if (!newState.channelId || newState.channelId !== INSTANCE_VOICE_CHANNEL_ID) {
+        if (
+          !newState.channelId ||
+          newState.channelId !== INSTANCE_VOICE_CHANNEL_ID
+        ) {
           setTimeout(forceJoinVC, 1000);
         }
       }
@@ -346,7 +473,7 @@ function startInstance(config, instanceIndex) {
         console.log(`🔍 Modal search for: "${query}"`);
 
         const { QueryType } = require("discord-player");
-        
+
         const finalQuery = await resolveSpotifyQuery(query);
         const searchEngine = QueryType.AUTO;
 
@@ -357,7 +484,9 @@ function startInstance(config, instanceIndex) {
 
         if (!result || result.isEmpty()) {
           const { errorEmbed } = require("./utils/embed");
-          return interaction.editReply(errorEmbed("No results found for your query."));
+          return interaction.editReply(
+            errorEmbed("No results found for your query."),
+          );
         }
 
         await client.player.play(voiceChannel, result, {
@@ -373,14 +502,18 @@ function startInstance(config, instanceIndex) {
 
         const { successEmbed } = require("./utils/embed");
         if (result.hasPlaylist()) {
-          await interaction.editReply(successEmbed(`Added ${result.playlist.tracks.length} songs`));
+          await interaction.editReply(
+            successEmbed(`Added ${result.playlist.tracks.length} songs`),
+          );
         } else {
           await interaction.editReply(successEmbed("Added to queue"));
         }
       } catch (error) {
         console.error("Modal play error:", error);
         const { errorEmbed } = require("./utils/embed");
-        await interaction.editReply(errorEmbed(`${error.message || "Failed to play"}`));
+        await interaction.editReply(
+          errorEmbed(`${error.message || "Failed to play"}`),
+        );
       }
     }
   });

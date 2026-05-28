@@ -9,7 +9,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("emoji-debug")
     .setDescription("Debug custom emoji loading"),
-  
+
   /**
    * Executes the emoji-debug command.
    * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
@@ -57,11 +57,15 @@ module.exports = {
     const loaded = testEmojis.map((key) => {
       const emoji = e(key);
       const isCustom = emoji.startsWith("<:");
-      return `${key}: ${isCustom ? "✅" : "❌"} ${emoji}`;
+      return `${key}: ${isCustom ? e("iconSuccess") : e("iconError")} ${emoji}`;
     });
 
-    const customCount = loaded.filter((line) => line.includes("✅")).length;
-    const unicodeCount = loaded.filter((line) => line.includes("❌")).length;
+    const customCount = loaded.filter((line) =>
+      line.includes(e("iconSuccess")),
+    ).length;
+    const unicodeCount = loaded.filter((line) =>
+      line.includes(e("iconError")),
+    ).length;
 
     await interaction.reply({
       content:

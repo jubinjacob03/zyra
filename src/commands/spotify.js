@@ -1,4 +1,10 @@
-const { SlashCommandBuilder, ContainerBuilder, TextDisplayBuilder, SectionBuilder, MessageFlags } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SectionBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { errorEmbed, infoEmbed } = require("../utils/embed");
 const { e } = require("../utils/customEmoji");
 
@@ -37,7 +43,7 @@ module.exports = {
       return interaction.reply(
         errorEmbed(
           "Spotify integration is not configured. Please add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to your .env file.",
-        )
+        ),
       );
     }
 
@@ -56,17 +62,21 @@ module.exports = {
         );
         await spotifyAPI.authenticate();
 
-        const container = new ContainerBuilder().setAccentColor(0x1DB954);
+        const container = new ContainerBuilder().setAccentColor(0x1db954);
         let description = `### ${e("HEADPHONES")} Spotify Integration Status\n\n`;
-        description += `**${e("SUCCESS")} Authentication:** Connected successfully\n`;
-        description += `**🔑 Client ID:** ${process.env.SPOTIFY_CLIENT_ID.substring(0, 8)}...\n`;
+        description += `**${e("iconSuccess")} Authentication:** Connected successfully\n`;
+        description += `**${e("iconKey")} Client ID:** ${process.env.SPOTIFY_CLIENT_ID.substring(0, 8)}...\n`;
         description += `**${e("MUSIC")} Features:** Tracks, Playlists, Albums`;
 
         container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(description)
+          new TextDisplayBuilder().setContent(description),
         );
 
-        await interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
+        await interaction.editReply({
+          content: null,
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
       } catch (error) {
         console.error("Spotify status check failed:", error);
         await interaction.editReply({
@@ -97,19 +107,23 @@ module.exports = {
           });
         }
 
-        const container = new ContainerBuilder().setAccentColor(0x1DB954);
+        const container = new ContainerBuilder().setAccentColor(0x1db954);
         let description = `### ${e("INFO")} Spotify Search Results\nQuery: **${query}**\n\n`;
-        
+
         results.forEach((track, i) => {
           description += `**${i + 1}.** [${track.name}](${track.external_urls.spotify})\n`;
           description += `*${track.artists.map((a) => a.name).join(", ")}* • ${Math.floor(track.duration_ms / 60000)}:${String(Math.floor((track.duration_ms % 60000) / 1000)).padStart(2, "0")}\n\n`;
         });
 
         container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(description)
+          new TextDisplayBuilder().setContent(description),
         );
 
-        await interaction.editReply({ content: null, components: [container], flags: MessageFlags.IsComponentsV2 });
+        await interaction.editReply({
+          content: null,
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
       } catch (error) {
         console.error("Spotify search failed:", error);
         await interaction.editReply({

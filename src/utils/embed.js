@@ -19,10 +19,12 @@ const { e, btn } = require("./customEmoji");
 function addFooter(container) {
   const ts = Math.floor(Date.now() / 1000);
   container.addSeparatorComponents(
-    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+    new SeparatorBuilder()
+      .setDivider(true)
+      .setSpacing(SeparatorSpacingSize.Small),
   );
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`-# Shantha · <t:${ts}:f>`)
+    new TextDisplayBuilder().setContent(`-# Remani · <t:${ts}:f>`),
   );
   return container;
 }
@@ -136,15 +138,27 @@ function createMusicPanel(queue) {
         ? ICONS.VOLUME_MID
         : ICONS.VOLUME_LOW;
 
-  const progressBar = createProgressBar(queue.node.getTimestamp()?.current.value || 0, song.durationMS || 100, 15);
-  const isSpotify = song.source === 'spotify';
-  const isSoundCloud = song.source === 'soundcloud';
-  const color = isSpotify ? COLORS.SPOTIFY : isSoundCloud ? COLORS.SOUNDCLOUD : COLORS.PRIMARY;
+  const progressBar = createProgressBar(
+    queue.node.getTimestamp()?.current.value || 0,
+    song.durationMS || 100,
+    15,
+  );
+  const isSpotify = song.source === "spotify";
+  const isSoundCloud = song.source === "soundcloud";
+  const color = isSpotify
+    ? COLORS.SPOTIFY
+    : isSoundCloud
+      ? COLORS.SOUNDCLOUD
+      : COLORS.PRIMARY;
   const platformIcon = isSpotify ? ICONS.SPOTIFY : ICONS.LIVE;
-  const platformName = isSpotify ? "SPOTIFY" : isSoundCloud ? "SOUNDCLOUD" : "NOW PLAYING";
+  const platformName = isSpotify
+    ? "SPOTIFY"
+    : isSoundCloud
+      ? "SOUNDCLOUD"
+      : "NOW PLAYING";
 
   const container = new ContainerBuilder().setAccentColor(color);
-  
+
   let description = `### ${platformIcon} ${platformName}\n**[${song.title}](${song.url})**\n**${song.author || "Unknown Artist"}**\n\n`;
   description += `${ICONS.TIME} \`${formatDuration(Math.floor((queue.node.getTimestamp()?.current.value || 0) / 1000))} ${progressBar} ${song.duration}\`\n`;
   description += `${ICONS.USER} ${song.requestedBy?.displayName || song.requestedBy?.username || "Unknown"}\n`;
@@ -153,11 +167,15 @@ function createMusicPanel(queue) {
   if (song.thumbnail && typeof song.thumbnail === "string") {
     const { ThumbnailBuilder } = require("discord.js");
     const section = new SectionBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(description))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(description),
+      )
       .setThumbnailAccessory(new ThumbnailBuilder().setURL(song.thumbnail));
     container.addSectionComponents(section);
   } else {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(description));
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(description),
+    );
   }
 
   const row1 = new ActionRowBuilder().addComponents(
@@ -173,7 +191,9 @@ function createMusicPanel(queue) {
     new ButtonBuilder()
       .setCustomId("music_pause")
       .setEmoji(queue.node.isPaused() ? btn("PLAY") : btn("PAUSE"))
-      .setStyle(queue.node.isPaused() ? ButtonStyle.Success : ButtonStyle.Primary),
+      .setStyle(
+        queue.node.isPaused() ? ButtonStyle.Success : ButtonStyle.Primary,
+      ),
     new ButtonBuilder()
       .setCustomId("music_skip")
       .setEmoji(btn("SKIP"))
@@ -229,14 +249,14 @@ function createNowPlayingEmbed(song, queue, type = "playing") {
     : `${ICONS.MUSIC_NOTE} Now Playing`;
   const color = isAdded
     ? COLORS.SUCCESS
-    : song.source === 'spotify'
+    : song.source === "spotify"
       ? COLORS.SPOTIFY
-      : song.source === 'soundcloud'
+      : song.source === "soundcloud"
         ? COLORS.SOUNDCLOUD
         : COLORS.PRIMARY;
 
   const container = new ContainerBuilder().setAccentColor(color);
-  
+
   let description = `### ${title}\n**[${song.title}](${song.url})**\n*${song.author || "Unknown Artist"}*\n\n`;
   description += `**${ICONS.TIME} Duration:** \`${song.duration}\`\n`;
   description += `**${ICONS.USER} Requested:** ${song.requestedBy}\n`;
@@ -245,11 +265,15 @@ function createNowPlayingEmbed(song, queue, type = "playing") {
   if (song.thumbnail && typeof song.thumbnail === "string") {
     const { ThumbnailBuilder } = require("discord.js");
     const section = new SectionBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(description))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(description),
+      )
       .setThumbnailAccessory(new ThumbnailBuilder().setURL(song.thumbnail));
     container.addSectionComponents(section);
   } else {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(description));
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(description),
+    );
   }
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -263,8 +287,12 @@ function createNowPlayingEmbed(song, queue, type = "playing") {
  */
 function successEmbed(description, title = null) {
   const container = new ContainerBuilder().setAccentColor(COLORS.SUCCESS);
-  const content = title ? `### ${ICONS.SUCCESS} ${title}\n${description}` : `${ICONS.SUCCESS} ${description}`;
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+  const content = title
+    ? `### ${ICONS.SUCCESS} ${title}\n${description}`
+    : `${ICONS.SUCCESS} ${description}`;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(content),
+  );
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -276,8 +304,12 @@ function successEmbed(description, title = null) {
  */
 function errorEmbed(description, title = null) {
   const container = new ContainerBuilder().setAccentColor(COLORS.ERROR);
-  const content = title ? `### ${ICONS.ERROR} ${title}\n${description}` : `${ICONS.ERROR} ${description}`;
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+  const content = title
+    ? `### ${ICONS.ERROR} ${title}\n${description}`
+    : `${ICONS.ERROR} ${description}`;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(content),
+  );
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -286,8 +318,12 @@ function errorEmbed(description, title = null) {
  */
 function infoEmbed(description, title = null) {
   const container = new ContainerBuilder().setAccentColor(COLORS.INFO);
-  const content = title ? `### ${ICONS.INFO} ${title}\n${description}` : `${ICONS.INFO} ${description}`;
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+  const content = title
+    ? `### ${ICONS.INFO} ${title}\n${description}`
+    : `${ICONS.INFO} ${description}`;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(content),
+  );
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -296,8 +332,12 @@ function infoEmbed(description, title = null) {
  */
 function warningEmbed(description, title = null) {
   const container = new ContainerBuilder().setAccentColor(COLORS.WARNING);
-  const content = title ? `### ${ICONS.WARNING} ${title}\n${description}` : `${ICONS.WARNING} ${description}`;
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+  const content = title
+    ? `### ${ICONS.WARNING} ${title}\n${description}`
+    : `${ICONS.WARNING} ${description}`;
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(content),
+  );
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -315,9 +355,7 @@ function queueEmbed(queue, page = 0) {
       const position = start + i + 1;
       const prefix = `\`${position.toString().padStart(2, "0")}.\``;
 
-      const spotifyIcon = song.source === 'spotify'
-        ? ` ${ICONS.SPOTIFY}`
-        : "";
+      const spotifyIcon = song.source === "spotify" ? ` ${ICONS.SPOTIFY}` : "";
       return (
         `${prefix} **[${song.title}](${song.url})**${spotifyIcon}\n` +
         `${ICONS.DOT} *${song.author || "Unknown"}* ${ICONS.DOT} \`${song.duration}\``
@@ -327,23 +365,26 @@ function queueEmbed(queue, page = 0) {
 
   if (queue.currentTrack && page === 0) {
     const current = queue.currentTrack;
-    const spotifyIcon = current.source === 'spotify' ? ` ${ICONS.SPOTIFY}` : "";
-    description = `${ICONS.PLAY} **Now:** **[${current.title}](${current.url})**${spotifyIcon}\n${ICONS.DOT} *${current.author || "Unknown"}* ${ICONS.DOT} \`${current.duration}\`\n\n` + description;
+    const spotifyIcon = current.source === "spotify" ? ` ${ICONS.SPOTIFY}` : "";
+    description =
+      `${ICONS.PLAY} **Now:** **[${current.title}](${current.url})**${spotifyIcon}\n${ICONS.DOT} *${current.author || "Unknown"}* ${ICONS.DOT} \`${current.duration}\`\n\n` +
+      description;
   }
 
   if (!description) {
     description = `${ICONS.INFO} Queue is empty\n\nUse \`/play\` to add some music!`;
   }
 
-  const totalDuration = queue.tracks.toArray().reduce(
-    (acc, song) => acc + (song.durationMS || 0),
-    0,
-  );
+  const totalDuration = queue.tracks
+    .toArray()
+    .reduce((acc, song) => acc + (song.durationMS || 0), 0);
 
   const container = new ContainerBuilder().setAccentColor(COLORS.MUSIC);
   const content = `### ${ICONS.QUEUE} Music Queue\n${description}\n\n**${ICONS.INFO} Queue Stats**\n**Songs:** \`${queue.tracks.size}\` ${ICONS.DOT} **Duration:** \`${formatDuration(Math.floor(totalDuration / 1000))}\` ${ICONS.DOT} **Page:** \`${page + 1}/${totalPages}\``;
-  
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+
+  container.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(content),
+  );
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -356,7 +397,7 @@ function playlistEmbed(playlist, isSpotify = false) {
   const platform = isSpotify ? "Spotify" : "YouTube";
 
   const container = new ContainerBuilder().setAccentColor(color);
-  
+
   let description = `### ${ICONS.SUCCESS} Added ${platform} Playlist\n**[${playlist.title}](${playlist.url})**\n\n`;
   description += `**${ICONS.MUSIC_NOTE} Songs:** \`${playlist.tracks.length}\`\n`;
   description += `**${ICONS.USER} Requested by:** ${playlist.tracks[0]?.requestedBy}\n`;
@@ -365,11 +406,15 @@ function playlistEmbed(playlist, isSpotify = false) {
   if (playlist.thumbnail && typeof playlist.thumbnail === "string") {
     const { ThumbnailBuilder } = require("discord.js");
     const section = new SectionBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(description))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(description),
+      )
       .setThumbnailAccessory(new ThumbnailBuilder().setURL(playlist.thumbnail));
     container.addSectionComponents(section);
   } else {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(description));
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(description),
+    );
   }
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }

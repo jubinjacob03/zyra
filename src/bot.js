@@ -14,27 +14,32 @@ const {
   ActivityType,
 } = require("discord.js");
 const { Player, onBeforeCreateStream } = require("discord-player");
-const { DefaultExtractors, SpotifyExtractor, SoundCloudExtractor } = require("@discord-player/extractor");
+const {
+  DefaultExtractors,
+  SpotifyExtractor,
+  SoundCloudExtractor,
+} = require("@discord-player/extractor");
 
 onBeforeCreateStream(async (track, queryType, queue) => {
-  if (track.source === 'spotify') {
+  if (track.source === "spotify") {
     try {
-      let q = track.title + ' ' + track.author;
-      let scRes = await queue.player.search(q, { searchEngine: 'soundcloud' });
-      
+      let q = track.title + " " + track.author;
+      let scRes = await queue.player.search(q, { searchEngine: "soundcloud" });
+
       if (scRes.tracks.length === 0) {
-        scRes = await queue.player.search(track.title, { searchEngine: 'soundcloud' });
+        scRes = await queue.player.search(track.title, {
+          searchEngine: "soundcloud",
+        });
       }
 
       if (scRes.tracks.length > 0) {
         const scTrack = scRes.tracks[0];
         if (scTrack.thumbnail) {
-            track.thumbnail = scTrack.thumbnail;
+          track.thumbnail = scTrack.thumbnail;
         }
         return await scTrack.extractor.stream(scTrack);
       }
-    } catch (e) {
-    }
+    } catch (e) {}
   }
   return null;
 });
@@ -43,9 +48,12 @@ const path = require("path");
 const { formatDuration } = require("./utils/embed");
 const { initEmojis, e } = require("./utils/customEmoji");
 const { initRuntimeLogger } = require("./utils/runtimeLogger");
-const { getControllerPanel, setControllerPanel } = require("./utils/panelStore");
+const {
+  getControllerPanel,
+  setControllerPanel,
+} = require("./utils/panelStore");
 
-require('dns').setDefaultResultOrder('ipv4first');
+require("dns").setDefaultResultOrder("ipv4first");
 
 initRuntimeLogger({ label: process.env.RUNTIME_LOGGER_LABEL || "main" });
 
@@ -77,23 +85,92 @@ client.commands = new Collection();
 client.musicPanels = new Map();
 
 const player = new Player(client, {
-  blockExtractors: ['YouTubeExtractor', 'YoutubeExtractor'],
-  blockStreamFrom: ['YouTubeExtractor', 'YoutubeExtractor'],
+  blockExtractors: ["YouTubeExtractor", "YoutubeExtractor"],
+  blockStreamFrom: ["YouTubeExtractor", "YoutubeExtractor"],
   ytdlOptions: {
-    quality: 'highestaudio',
-    highWaterMark: 1 << 25
+    quality: "highestaudio",
+    highWaterMark: 1 << 25,
   },
-  skipFFmpeg: false
+  skipFFmpeg: false,
 });
 
-player.extractors.register(SpotifyExtractor, {
-  clientId: process.env.SPOTIFY_CLIENT_ID,
-  clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-  bridgeProvider: SoundCloudExtractor
-}).then(() => {
-  player.extractors.loadMulti(DefaultExtractors.filter(e => e.name !== 'SpotifyExtractor'));
-}).catch(console.error);
+player.extractors
+  .register(SpotifyExtractor, {
+    clientId: process.env.SPOTIFY_CLIENT_ID,
+    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    bridgeProvider: SoundCloudExtractor,
+  })
+  .then(() => {
+    player.extractors.loadMulti(
+      DefaultExtractors.filter((e) => e.name !== "SpotifyExtractor"),
+    );
+  })
+  .catch(console.error);
 client.player = player;
+
+const idlePhrases = [
+  "🎧 /play to start",
+  "✨ Vibe check: passed",
+  "🫧 Breathing between beats",
+  "🌙 Lowkey online",
+  "🧊 Chill rn",
+  "💫 Just vibing",
+  "📻 Static-free",
+  "🪩 Mood: playlist",
+  "☕ Coffee break, still tuned in",
+  "🎯 Energy: steady",
+  "🍀 Good vibes only",
+  "🛰️ Ready when you are",
+];
+
+const pickIdlePhrase = () =>
+  idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
+
+const setPresenceActivity = (track) => {
+  if (!client?.user) return;
+  if (track) {
+    client.user.setPresence({
+      activities: [
+        {
+          name: (track.title || "music").slice(0, 128),
+          type: ActivityType.Listening,
+          timestamps: { start: Date.now() },
+        },
+      ],
+      status: "online",
+    });
+    return;
+  }
+  client.user.setPresence({
+    activities: [
+      {
+        name: pickIdlePhrase(),
+        type: ActivityType.Listening,
+      },
+    ],
+    status: "online",
+  });
+};
+
+const isAnyTrackPlaying = () => {
+  for (const queue of client.player?.nodes?.cache?.values() || []) {
+    if (queue?.currentTrack) return true;
+  }
+  return false;
+};
+
+const setVoiceChannelStatus = async (channel, status) => {
+  if (!channel) return;
+  if (typeof channel.setStatus === "function") {
+    try {
+      await channel.setStatus(status ?? null);
+      return;
+    } catch {}
+  }
+  try {
+    await channel.edit({ status: status ?? null });
+  } catch {}
+};
 
 /**
  * Checks if a message is editable by the client.
@@ -173,9 +250,12 @@ async function resolveStoredMusicPanel(client, channelId) {
   return null;
 }
 
-player.events.on('playerStart', async (queue, track) => {
+player.events.on("playerStart", async (queue, track) => {
   const { createCompleteMusicController } = require("./utils/componentsV2");
-  const { getControllerPanel, setControllerPanel } = require("./utils/panelStore");
+  const {
+    getControllerPanel,
+    setControllerPanel,
+  } = require("./utils/panelStore");
   const controller = createCompleteMusicController(queue);
 
   const textChannel = queue.metadata?.channel;
@@ -183,15 +263,25 @@ player.events.on('playerStart', async (queue, track) => {
 
   let message = null;
   const existingData = client.musicPanels.get(queue.guild.id);
-  
+
   if (existingData && existingData.message) {
     try {
-      message = await existingData.message.edit({ embeds: [], components: controller.components, flags: controller.flags });
+      message = await existingData.message.edit({
+        embeds: [],
+        components: controller.components,
+        flags: controller.flags,
+      });
     } catch (e) {
-      message = await textChannel.send({ components: controller.components, flags: controller.flags });
+      message = await textChannel.send({
+        components: controller.components,
+        flags: controller.flags,
+      });
     }
   } else {
-    message = await textChannel.send({ components: controller.components, flags: controller.flags });
+    message = await textChannel.send({
+      components: controller.components,
+      flags: controller.flags,
+    });
   }
 
   if (message?.id && message?.channelId) {
@@ -203,27 +293,39 @@ player.events.on('playerStart', async (queue, track) => {
     song: track,
     startTime: Date.now(),
   });
+  setPresenceActivity(track);
+  await setVoiceChannelStatus(queue.channel, `✨ Now playing: ${track.title}`);
   console.log("🎵 Now playing:", track.title);
 });
 
-player.events.on('audioTrackAdd', (queue, track) => {
+player.events.on("audioTrackAdd", (queue, track) => {
   console.log(`🎵 Track added to queue: ${track.title}`);
 });
 
-player.events.on('disconnect', async (queue) => {
+player.events.on("disconnect", async (queue) => {
   client.musicPanels.delete(queue.guild.id);
+  setPresenceActivity(null);
+
+  setInterval(() => {
+    if (!isAnyTrackPlaying()) {
+      setPresenceActivity(null);
+    }
+  }, 120000);
+  await setVoiceChannelStatus(queue.channel, pickIdlePhrase());
 });
 
-player.events.on('emptyQueue', async (queue) => {
+player.events.on("emptyQueue", async (queue) => {
   console.log("🎵 Queue finished");
   client.musicPanels.delete(queue.guild.id);
+  setPresenceActivity(null);
+  await setVoiceChannelStatus(queue.channel, pickIdlePhrase());
 });
 
-player.events.on('error', (queue, error) => {
+player.events.on("error", (queue, error) => {
   console.error(`Player error: ${error.message}`);
 });
 
-player.events.on('playerError', (queue, error) => {
+player.events.on("playerError", (queue, error) => {
   console.error(`Player error: ${error.message}`);
 });
 
@@ -242,103 +344,186 @@ async function handleButtonInteraction(interaction, client) {
 
   const { e } = require("./utils/customEmoji");
   const { COLORS } = require("./utils/embed");
-  const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
-  
+  const {
+    ContainerBuilder,
+    TextDisplayBuilder,
+    MessageFlags,
+  } = require("discord.js");
+
   const sendEphemeralEmbed = async (color, message) => {
     const container = new ContainerBuilder().setAccentColor(color);
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(message));
-    return interaction.followUp({ components: [container], flags: MessageFlags.IsComponentsV2 | 64 });
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(message),
+    );
+    return interaction.followUp({
+      components: [container],
+      flags: MessageFlags.IsComponentsV2 | 64,
+    });
   };
 
   const DiscordPlayer = require("./utils/DiscordPlayer");
-  
+
   const botVoiceChannelId = interaction.guild.members.me.voice.channelId;
-  if (!botVoiceChannelId || (!DiscordPlayer.isUsingLavalink(client, interaction.guildId) && !DiscordPlayer.isUsingDiscordPlayer(client, interaction.guildId))) {
-    return sendEphemeralEmbed(COLORS.ERROR, `${e("ERROR")} Nothing is playing right now.`);
+  if (
+    !botVoiceChannelId ||
+    (!DiscordPlayer.isUsingLavalink(client, interaction.guildId) &&
+      !DiscordPlayer.isUsingDiscordPlayer(client, interaction.guildId))
+  ) {
+    return sendEphemeralEmbed(
+      COLORS.ERROR,
+      `${e("ERROR")} Nothing is playing right now.`,
+    );
   }
 
   const member = interaction.member;
   const voiceChannel = member.voice.channel;
 
   if (!voiceChannel || voiceChannel.id !== botVoiceChannelId) {
-    return sendEphemeralEmbed(COLORS.ERROR, `${e("ERROR")} You need to be in the same voice channel.`);
+    return sendEphemeralEmbed(
+      COLORS.ERROR,
+      `${e("ERROR")} You need to be in the same voice channel.`,
+    );
   }
 
   try {
     switch (interaction.customId) {
       case "music_pause":
-        const { isPaused } = await DiscordPlayer.pause(interaction.guildId, client);
+        const { isPaused } = await DiscordPlayer.pause(
+          interaction.guildId,
+          client,
+        );
         if (isPaused) {
-          await sendEphemeralEmbed(COLORS.INFO, `${e("PAUSE")} Paused the music.`);
+          await sendEphemeralEmbed(
+            COLORS.INFO,
+            `${e("PAUSE")} Paused the music.`,
+          );
         } else {
-          await sendEphemeralEmbed(COLORS.INFO, `${e("PLAY")} Resumed the music.`);
+          await sendEphemeralEmbed(
+            COLORS.INFO,
+            `${e("PLAY")} Resumed the music.`,
+          );
         }
         break;
 
       case "music_skip":
         await DiscordPlayer.skip(interaction.guildId, client);
-        await sendEphemeralEmbed(COLORS.INFO, `${e("SKIP")} Skipped the current song.`);
+        await sendEphemeralEmbed(
+          COLORS.INFO,
+          `${e("SKIP")} Skipped the current song.`,
+        );
         break;
 
       case "music_stop":
         client.musicPanels.delete(interaction.guildId);
         await DiscordPlayer.stop(interaction.guildId, client);
-        await sendEphemeralEmbed(COLORS.ERROR, `${e("STOP")} Stopped the music and cleared the queue.`);
+        await sendEphemeralEmbed(
+          COLORS.ERROR,
+          `${e("STOP")} Stopped the music and cleared the queue.`,
+        );
         break;
 
       case "music_shuffle":
         await DiscordPlayer.shuffle(interaction.guildId, client);
-        await sendEphemeralEmbed(COLORS.INFO, `${e("SHUFFLE")} Shuffled the queue.`);
+        await sendEphemeralEmbed(
+          COLORS.INFO,
+          `${e("SHUFFLE")} Shuffled the queue.`,
+        );
         break;
 
       case "music_loop":
         const modes = ["Off", "Track", "Queue", "Autoplay"];
         const nextMode = await DiscordPlayer.loop(interaction.guildId, client);
-        await sendEphemeralEmbed(COLORS.INFO, `${e("LOOP")} Loop mode: **${modes[nextMode]}**`);
+        await sendEphemeralEmbed(
+          COLORS.INFO,
+          `${e("LOOP")} Loop mode: **${modes[nextMode]}**`,
+        );
         break;
 
       case "music_previous":
-        const hasPrev = await DiscordPlayer.previous(interaction.guildId, client);
+        const hasPrev = await DiscordPlayer.previous(
+          interaction.guildId,
+          client,
+        );
         if (hasPrev) {
-          await sendEphemeralEmbed(COLORS.INFO, `${e("PREVIOUS")} Playing previous track.`);
+          await sendEphemeralEmbed(
+            COLORS.INFO,
+            `${e("PREVIOUS")} Playing previous track.`,
+          );
         } else {
-          await sendEphemeralEmbed(COLORS.ERROR, `${e("PREVIOUS")} Previous track not available.`);
+          await sendEphemeralEmbed(
+            COLORS.ERROR,
+            `${e("PREVIOUS")} Previous track not available.`,
+          );
         }
         break;
 
       case "music_queue":
-        const queueInfo = DiscordPlayer.getQueueInfo(interaction.guildId, client);
+        const queueInfo = DiscordPlayer.getQueueInfo(
+          interaction.guildId,
+          client,
+        );
         if (!queueInfo) break;
         const queueList = queueInfo.tracks
-          .map((song, i) => `**${i + 1}.** [${song.title}](${song.url}) - \`${song.duration}\``)
+          .map(
+            (song, i) =>
+              `**${i + 1}.** [${song.title}](${song.url}) - \`${song.duration}\``,
+          )
           .join("\n");
-        const currentStr = queueInfo.current ? `**${e("PLAY")} Now:** [${queueInfo.current.title}](${queueInfo.current.url}) - \`${queueInfo.current.duration}\`\n\n` : "";
-        await sendEphemeralEmbed(COLORS.INFO, `${e("QUEUE")} **Queue** (${queueInfo.size} songs)\n\n${currentStr}${queueList}`);
+        const currentStr = queueInfo.current
+          ? `**${e("PLAY")} Now:** [${queueInfo.current.title}](${queueInfo.current.url}) - \`${queueInfo.current.duration}\`\n\n`
+          : "";
+        await sendEphemeralEmbed(
+          COLORS.INFO,
+          `${e("QUEUE")} **Queue** (${queueInfo.size} songs)\n\n${currentStr}${queueList}`,
+        );
         break;
 
       case "music_voldown":
-        const newVolDown = await DiscordPlayer.adjustVolume(interaction.guildId, client, -10);
-        await sendEphemeralEmbed(COLORS.INFO, `${e("VOLDOWN")} Volume: **${newVolDown}%**`);
+        const newVolDown = await DiscordPlayer.adjustVolume(
+          interaction.guildId,
+          client,
+          -10,
+        );
+        await sendEphemeralEmbed(
+          COLORS.INFO,
+          `${e("VOLDOWN")} Volume: **${newVolDown}%**`,
+        );
         break;
 
       case "music_volup":
-        const newVolUp = await DiscordPlayer.adjustVolume(interaction.guildId, client, 10);
-        await sendEphemeralEmbed(COLORS.INFO, `${e("VOLUP")} Volume: **${newVolUp}%**`);
+        const newVolUp = await DiscordPlayer.adjustVolume(
+          interaction.guildId,
+          client,
+          10,
+        );
+        await sendEphemeralEmbed(
+          COLORS.INFO,
+          `${e("VOLUP")} Volume: **${newVolUp}%**`,
+        );
         break;
 
       case "music_refresh":
-        await sendEphemeralEmbed(COLORS.INFO, `${e("REFRESH")} Music controller refreshed!`);
+        await sendEphemeralEmbed(
+          COLORS.INFO,
+          `${e("REFRESH")} Music controller refreshed!`,
+        );
         break;
 
       default:
-        await sendEphemeralEmbed(COLORS.ERROR, `${e("WARNING")} Unknown button action.`);
+        await sendEphemeralEmbed(
+          COLORS.ERROR,
+          `${e("WARNING")} Unknown button action.`,
+        );
     }
 
     await DiscordPlayer.triggerUpdate(interaction.guildId, client);
   } catch (error) {
     console.error("Button interaction error:", error);
     try {
-      await sendEphemeralEmbed(COLORS.ERROR, `${e("ERROR")} An error occurred.`);
+      await sendEphemeralEmbed(
+        COLORS.ERROR,
+        `${e("ERROR")} An error occurred.`,
+      );
     } catch (replyError) {
       console.error("Failed to send error message:", replyError);
     }
@@ -415,9 +600,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     }
   }
 
-  client.user.setActivity("🎵 /play to start", {
-    type: ActivityType.Listening,
-  });
+  setPresenceActivity(null);
 
   setInterval(() => {
     const status = `✅ Bot alive | ${client.guilds.cache.size} servers | ${client.player.nodes.cache.size} active queues`;

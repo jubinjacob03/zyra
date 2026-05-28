@@ -101,155 +101,137 @@ module.exports = function attachMusicApi(client, customPort = null) {
           username: username || "api",
         };
 
-        const result = await client.player.search(query, {
-          requestedBy: fakeUser,
-        });
+        const fakeInteraction = {
+          user: fakeUser,
+          member: { voice: { channel: voiceChannel } },
+          channel: textChannel,
+        };
 
-        if (!result || result.isEmpty())
-          return send(res, 404, { error: "No results found for query" });
-
-        const queue = client.player.nodes.get(guildId);
-        const isNewQueue = !queue;
-
-        const isInstance = !!client.INSTANCE_NAME;
-
-        await client.player.play(voiceChannel, result, {
-          nodeOptions: {
-            metadata: {
-              channel: textChannel,
-            },
-            leaveOnEmpty: !isInstance,
-            leaveOnEmptyCooldown: 300000,
-            leaveOnEnd: !isInstance,
-            leaveOnStop: !isInstance,
-          },
-        });
-
-        return send(res, 200, {
-          success: true,
-          isNewQueue,
-          added: result.hasPlaylist() ? result.playlist.tracks.length : 1,
-          song:
-            !result.hasPlaylist()
-              ? {
-                  name: result.tracks[0].title,
-                  url: result.tracks[0].url,
-                  thumbnail: result.tracks[0].thumbnail,
-                  formattedDuration: result.tracks[0].duration,
-                  author: result.tracks[0].author,
-                }
-              : null,
-        });
-      }
-
-      if (req.method === "POST" && path === "/control") {
-        const { guildId, action, value } = await parseBody(req);
-        const queue = client.player.nodes.get(guildId);
-        if (!queue) return send(res, 404, { error: "Nothing is playing" });
-        switch (action) {
-          case "pause":
-            queue.node.pause();
-            break;
-          case "resume":
-            queue.node.resume();
-            break;
-          case "toggle":
-            queue.node.isPaused() ? queue.node.resume() : queue.node.pause();
-            break;
-          case "skip":
-            queue.node.skip();
-            break;
-          case "stop":
-            queue.delete();
-            break;
-          case "shuffle":
-            queue.tracks.shuffle();
-            break;
-          case "loop":
-            queue.setRepeatMode(value ?? (queue.repeatMode + 1) % 4);
-            break;
-          case "volume":
-            queue.node.setVolume(Math.max(0, Math.min(100, Number(value) || 50)));
-            break;
-          case "remove": {
-            const removed = queue.tracks.removeOne(Number(value) || 0);
-            if (!removed)
-              return send(res, 400, { error: "Invalid queue position" });
-            return send(res, 200, {
-              success: true,
-              action,
-              removed: removed.title,
-            });
-          }
-          default:
-            return send(res, 400, { error: `Unknown action: ${action}` });
+        const DiscordPlayer = require("./utils/DiscordPlayer");
+        try {
+          const playResult = await DiscordPlayer.play(fakeInteraction, query, voiceChannel, client);
+          
+          return send(res, 200, {
+            success: true,
+            isNewQueue: true,
+            added: playResult.count,
+            song: playResult.isPlaylist ? null : {
+              name: playResult.track.title || playResult.track.name || "Unknown",
+              url: playResult.track.url || playResult.track.uri || query,
+              thumbnail: playResult.track.thumbnail || "",
+              formattedDuration: playResult.track.duration || "0:00",
+              author: playResult.track.author || "Unknown Artist",
+            }
+          });
+        } catch (e) {
+          return send(res, 404, { error: e.message || "No results found for query" });
         }
-        return send(res, 200, { success: true, action });
       }
 
-      if (req.method === "POST") {
-        const directActions = [
-          "/skip",
-          "/pause",
-          "/resume",
-          "/toggle",
-          "/stop",
-          "/shuffle",
-          "/loop",
-          "/volume",
-          "/remove",
-        ];
-        if (directActions.includes(path)) {
-          const body = await parseBody(req);
-          const guildId = body.guildId;
-          const queue = client.player.nodes.get(guildId);
-          if (!queue) return send(res, 404, { error: "Nothing is playing" });
+      const directActions = [
+        "/skip",
+        "/pause",
+        "/resume",
+        "/toggle",
+        "/stop",
+        "/shuffle",
+        "/loop",
+        "/volume",
+        "/remove",
+      ];
+      if (req.method === "POST" && (path === "/control" || directActions.includes(path))) {
+        const body = await parseBody(req);
+        const guildId = body.guildId;
+        const action = path === "/control" ? body.action : path.substring(1);
+        const value = body.value;
+        
+        const DiscordPlayer = require("./utils/DiscordPlayer");
+        const isLavalink = DiscordPlayer.isUsingLavalink(client, guildId);
+        const isDP = DiscordPlayer.isUsingDiscordPlayer(client, guildId);
 
-          switch (path) {
-            case "/skip":
-              queue.node.skip();
+        if (!isLavalink && !isDP) {
+          return send(res, 404, { error: "Nothing is playing" });
+        }
+
+        try {
+          switch (action) {
+            case "pause":
+            case "resume":
+            case "toggle":
+              if (isLavalink) {
+                const lq = DiscordPlayer.lavalinkQueues.get(guildId);
+                if (action === "toggle") lq.paused = !lq.paused;
+                else lq.paused = action === "pause";
+                await lq.player.setPaused(lq.paused);
+              } else {
+                const q = client.player.nodes.get(guildId);
+                if (action === "toggle") q.node.isPaused() ? q.node.resume() : q.node.pause();
+                else action === "pause" ? q.node.pause() : q.node.resume();
+              }
               break;
-            case "/pause":
-              queue.node.pause();
+            case "skip":
+              await DiscordPlayer.skip(guildId, client);
               break;
-            case "/resume":
-              queue.node.resume();
+            case "stop":
+              await DiscordPlayer.stop(guildId, client);
               break;
-            case "/toggle":
-              queue.node.isPaused() ? queue.node.resume() : queue.node.pause();
+            case "shuffle":
+              await DiscordPlayer.shuffle(guildId, client);
               break;
-            case "/stop":
-              queue.delete();
-              break;
-            case "/shuffle":
-              queue.tracks.shuffle();
-              break;
-            case "/loop": {
-              const mode =
-                body.value !== undefined
-                  ? Number(body.value)
-                  : (queue.repeatMode + 1) % 4;
-              queue.setRepeatMode(mode);
+            case "loop": {
+              const mode = value !== undefined ? Number(value) : null;
+              await DiscordPlayer.loop(guildId, client, mode);
               break;
             }
-            case "/volume": {
-              const vol = Math.max(0, Math.min(100, Number(body.value) || 50));
-              queue.node.setVolume(vol);
+            case "volume": {
+              const vol = await DiscordPlayer.setVolume(guildId, client, Number(value) || 50);
+              await DiscordPlayer.triggerUpdate(guildId, client);
               return send(res, 200, { success: true, volume: vol });
             }
-            case "/remove": {
-              const removed = queue.tracks.removeOne(Number(body.value) || 0);
-              if (!removed)
-                return send(res, 400, { error: "Invalid queue position" });
-              return send(res, 200, { success: true, removed: removed.title });
+            case "remove": {
+              const idx = Number(value) || 0;
+              let removedTitle = "Unknown";
+              if (isLavalink) {
+                const lq = DiscordPlayer.lavalinkQueues.get(guildId);
+                if (idx < 0 || idx >= lq.tracks.length) return send(res, 400, { error: "Invalid queue position" });
+                removedTitle = lq.tracks.splice(idx, 1)[0].info.title;
+              } else {
+                const q = client.player.nodes.get(guildId);
+                const removed = q.tracks.removeOne(idx);
+                if (!removed) return send(res, 400, { error: "Invalid queue position" });
+                removedTitle = removed.title;
+              }
+              await DiscordPlayer.triggerUpdate(guildId, client);
+              return send(res, 200, { success: true, removed: removedTitle });
             }
+            default:
+              return send(res, 400, { error: `Unknown action: ${action}` });
           }
-          return send(res, 200, { success: true });
+          await DiscordPlayer.triggerUpdate(guildId, client);
+          return send(res, 200, { success: true, action });
+        } catch (e) {
+          return send(res, 500, { error: e.message });
         }
       }
 
       if (req.method === "GET" && path === "/queue") {
         const guildId = url.searchParams.get("guildId");
+        const DiscordPlayer = require("./utils/DiscordPlayer");
+        if (DiscordPlayer.isUsingLavalink(client, guildId)) {
+          const lq = DiscordPlayer.lavalinkQueues.get(guildId);
+          if (!lq) return send(res, 200, { queue: [], queueLength: 0 });
+          return send(res, 200, {
+            queue: lq.tracks.map((s, i) => ({
+              index: i,
+              name: s.info.title,
+              url: s.info.uri,
+              thumbnail: s.info.artworkUrl || `https://img.youtube.com/vi/${s.info.identifier}/hqdefault.jpg`,
+              formattedDuration: DiscordPlayer.formatLavalinkDuration(s.info.length),
+              author: s.info.author,
+            })),
+            queueLength: lq.tracks.length,
+          });
+        }
         const queue = client.player.nodes.get(guildId);
         if (!queue) return send(res, 200, { queue: [], queueLength: 0 });
         return send(res, 200, {
@@ -267,8 +249,39 @@ module.exports = function attachMusicApi(client, customPort = null) {
 
       if (req.method === "GET" && path === "/status") {
         const guildId = url.searchParams.get("guildId");
-        const queue = client.player.nodes.get(guildId);
+        const DiscordPlayer = require("./utils/DiscordPlayer");
 
+        if (DiscordPlayer.isUsingLavalink(client, guildId)) {
+          const lq = DiscordPlayer.lavalinkQueues.get(guildId);
+          if (!lq || !lq.current) return send(res, 200, { playing: false, paused: false, song: null, queue: [], queueLength: 0 });
+          const elapsed = lq.player.position || 0;
+          return send(res, 200, {
+            playing: !lq.paused,
+            paused: lq.paused,
+            repeatMode: lq.loopMode,
+            volume: lq.volume,
+            elapsed,
+            song: {
+              name: lq.current.info.title,
+              url: lq.current.info.uri,
+              thumbnail: lq.current.info.artworkUrl || `https://img.youtube.com/vi/${lq.current.info.identifier}/hqdefault.jpg`,
+              duration: lq.current.info.length || 0,
+              formattedDuration: DiscordPlayer.formatLavalinkDuration(lq.current.info.length),
+              author: lq.current.info.author || "Unknown Artist",
+            },
+            queue: lq.tracks.slice(0, 10).map((s, i) => ({
+              index: i + 1,
+              name: s.info.title,
+              url: s.info.uri,
+              thumbnail: s.info.artworkUrl || `https://img.youtube.com/vi/${s.info.identifier}/hqdefault.jpg`,
+              formattedDuration: DiscordPlayer.formatLavalinkDuration(s.info.length),
+              author: s.info.author,
+            })),
+            queueLength: lq.tracks.length,
+          });
+        }
+
+        const queue = client.player.nodes.get(guildId);
         if (!queue || !queue.currentTrack)
           return send(res, 200, {
             playing: false,

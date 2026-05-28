@@ -347,14 +347,14 @@ async function shuffle(guildId, client) {
  * @param {import('discord.js').Client} client 
  * @returns {number}
  */
-async function loop(guildId, client) {
+async function loop(guildId, client, mode = null) {
   if (isUsingLavalink(client, guildId)) {
     const q = lavalinkQueues.get(guildId);
-    q.loopMode = (q.loopMode + 1) % 4;
+    q.loopMode = mode !== null ? mode : (q.loopMode + 1) % 4;
     return q.loopMode;
   } else if (isUsingDiscordPlayer(client, guildId)) {
     const q = client.player.nodes.get(guildId);
-    const nextMode = (q.repeatMode + 1) % 4;
+    const nextMode = mode !== null ? mode : (q.repeatMode + 1) % 4;
     q.setRepeatMode(nextMode);
     return nextMode;
   }
@@ -403,6 +403,27 @@ async function adjustVolume(guildId, client, amount) {
     const newVol = Math.max(0, Math.min(100, q.node.volume + amount));
     q.node.setVolume(newVol);
     return newVol;
+  }
+  return 100;
+}
+
+/**
+ * @param {string} guildId 
+ * @param {import('discord.js').Client} client 
+ * @param {number} volume 
+ * @returns {number}
+ */
+async function setVolume(guildId, client, volume) {
+  const vol = Math.max(0, Math.min(100, volume));
+  if (isUsingLavalink(client, guildId)) {
+    const q = lavalinkQueues.get(guildId);
+    q.volume = vol;
+    await q.player.setGlobalVolume(q.volume);
+    return q.volume;
+  } else if (isUsingDiscordPlayer(client, guildId)) {
+    const q = client.player.nodes.get(guildId);
+    q.node.setVolume(vol);
+    return vol;
   }
   return 100;
 }
@@ -459,8 +480,11 @@ module.exports = {
   loop,
   previous,
   adjustVolume,
+  setVolume,
   getQueueInfo,
   triggerUpdate,
   isUsingLavalink,
-  isUsingDiscordPlayer
+  isUsingDiscordPlayer,
+  lavalinkQueues,
+  formatLavalinkDuration
 };

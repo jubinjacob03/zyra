@@ -87,8 +87,9 @@ module.exports = function attachMusicApi(client, customPort = null) {
           textChannel = voiceChannel;
         }
         if (!textChannel || typeof textChannel.send !== "function") {
+          const fallbackId = process.env.FALLBACK_TEXT_CHANNEL_ID;
           textChannel =
-            guild.channels.cache.get("1473105751575760917") ||
+            (fallbackId ? guild.channels.cache.get(fallbackId) : null) ||
             guild.systemChannel ||
             guild.channels.cache.find(
               (c) =>
@@ -334,31 +335,57 @@ module.exports = function attachMusicApi(client, customPort = null) {
       }
 
       if (req.method === "POST" && path === "/search") {
-        const { query, limit } = await parseBody(req);
-        if (!query) return send(res, 400, { error: "query is required" });
+          const { query, limit } = await parseBody(req);
+          if (!query) return send(res, 400, { error: "query is required" });
+  
+          try {
+            const { getWatchdog } = require("./utils/watchdog");
+            const watchdog = getWatchdog(client);
+            let results = [];
+            const maxResults = Math.min(Number(limit) || 10, 25);
+            
+            if (watchdog && watchdog.isNodeAvailable()) {
+              const node = watchdog.shoukaku.options.nodeResolver(watchdog.shoukaku.nodes);
+              if (node) {
+                 const searchStr = query.startsWith("http") || query.startsWith("ytsearch:") ? query : `ytsearch:${query}`;
+                 const searchResult = await node.rest.resolve(searchStr);
+                 if (searchResult && searchResult.data) {
+                    let tracks = searchResult.data.tracks || (Array.isArray(searchResult.data) ? searchResult.data : [searchResult.data]);
+                    if (!Array.isArray(tracks)) tracks = [];
+                    results = tracks.slice(0, maxResults).map(track => {
+                       const t = track.info;
+                       return {
+                         title: t.title || "Untitled",
+                         author: t.author || "Unknown",
+                         duration: Math.floor((t.length || 0) / 1000),
+                         url: t.uri || "",
+                         thumbnail: t.artworkUrl || (t.uri && t.identifier ? `https://i.ytimg.com/vi/${t.identifier}/hqdefault.jpg` : ""),
+                         id: t.identifier || ""
+                       };
+                    });
+                 }
+              }
+            }
 
-        try {
-          const searchResult = await client.player.search(query);
-          
-          if (!searchResult || searchResult.isEmpty()) {
-            return send(res, 200, { results: [] });
+            if (results.length === 0) {
+              const searchResult = await client.player.search(query);
+              if (searchResult && !searchResult.isEmpty()) {
+                results = searchResult.tracks.slice(0, maxResults).map((video) => ({
+                  title: video.title || "Untitled",
+                  author: video.author || "Unknown",
+                  duration: Math.floor((video.durationMS || 0) / 1000),
+                  url: video.url,
+                  thumbnail: video.thumbnail,
+                  id: video.id || "",
+                }));
+              }
+            }
+            
+            return send(res, 200, { results });
+          } catch (error) {
+            console.error("[Search Error]", error);
+            return send(res, 200, { results: [], error: "Search failed" });
           }
-
-          const maxResults = Math.min(Number(limit) || 10, 25);
-          const results = searchResult.tracks.slice(0, maxResults).map((video) => ({
-            title: video.title || "Untitled",
-            author: video.author || "Unknown",
-            duration: Math.floor((video.durationMS || 0) / 1000),
-            url: video.url,
-            thumbnail: video.thumbnail,
-            id: video.id || "",
-          }));
-
-          return send(res, 200, { results });
-        } catch (error) {
-          console.error("[Search Error]", error);
-          return send(res, 200, { results: [], error: "Search failed" });
-        }
       }
 
       return send(res, 404, { error: "Not found" });

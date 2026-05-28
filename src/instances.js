@@ -162,13 +162,13 @@ function startInstance(config, instanceIndex) {
     ],
   });
 
-  const { initWatchdog } = require("./utils/watchdog");
-  client.watchdog = initWatchdog(client);
-
   client.commands = new Collection();
   client.musicPanels = new Map();
   client.INSTANCE_NAME = INSTANCE_NAME;
   client.INSTANCE_VOICE_CHANNEL_ID = INSTANCE_VOICE_CHANNEL_ID;
+
+  const { initWatchdog } = require("./utils/watchdog");
+  client.watchdog = initWatchdog(client);
 
   client.on("error", console.error);
 
@@ -183,7 +183,7 @@ function startInstance(config, instanceIndex) {
       quality: "highestaudio",
       highWaterMark: 1 << 25,
     },
-    skipFFmpeg: false, // Required for volume control and audio filters
+    skipFFmpeg: false,
   });
 
   player.extractors
@@ -341,8 +341,7 @@ function startInstance(config, instanceIndex) {
       process.exit(1);
     }
 
-    const { getWatchdog, initWatchdog } = require("./utils/watchdog");
-    initWatchdog(client);
+    const { getWatchdog } = require("./utils/watchdog");
 
     /**
      * Forces the bot instance to join its designated voice channel.
@@ -547,10 +546,7 @@ function startInstance(config, instanceIndex) {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  client.login(INSTANCE_BOT_TOKEN).then(() => {
-    const { initWatchdog } = require("./utils/watchdog");
-    initWatchdog(client);
-  });
+  client.login(INSTANCE_BOT_TOKEN).then(() => {});
 
   setTimeout(() => {
     apiServer = require("./api")(client, INSTANCE_API_PORT);

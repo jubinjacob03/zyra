@@ -649,6 +649,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
+/**
+ * Initializes and starts the primary Remani Discord bot instance.
+ * Sets up Lavalink watchdogs, scrapers, and the Music API server.
+ * Ensures graceful shutdown on process termination.
+ * @returns {Promise<string>} A promise that resolves with the client token when logged in.
+ */
 function startMainBot() {
   if (!process.env.DISCORD_TOKEN) {
     console.error("❌ DISCORD_TOKEN is not set in .env file!");

@@ -1,80 +1,15 @@
-const EMOJI_NAMES = {
-  r_play: "PLAY",
-  r_pause: "PAUSE",
-  r_stop: "STOP",
-  r_skip: "SKIP",
-  r_previous: "PREVIOUS",
-  r_shuffle: "SHUFFLE",
-  r_loop: "LOOP",
-  r_loopone: "LOOP_ONE",
-  r_volup: "VOLUP",
-  r_voldown: "VOLDOWN",
-  r_queue: "QUEUE",
-  r_music: "MUSIC",
-  r_headphones: "HEADPHONES",
-  r_author: "AUTHOR",
-  r_playlist: "PLAYLIST",
-  r_youtube: "YOUTUBE",
-  r_spotify: "SPOTIFY",
-  iconSuccess: "iconSuccess",
-  iconError: "iconError",
-  r_warning: "WARNING",
-  r_info: "INFO",
-  iconAction: "iconAction",
-  iconTrash: "iconTrash",
-  iconUptime: "iconUptime",
-  iconChannel: "iconChannel",
-  iconEditor: "iconEditor",
-  iconTicket: "iconTicket",
-  iconBot: "iconBot",
-  iconLock: "iconLock",
-  iconBell: "iconBell",
-  iconMemo: "iconMemo",
-  iconCard: "iconCard",
-  iconKey: "iconKey",
-  r_refresh: "REFRESH",
-  r_user: "USER",
-  r_time: "TIME",
-};
+const path = require('path');
+const fs = require('fs');
 
-const UNICODE = {
-  PLAY: "▶️",
-  PAUSE: "⏸️",
-  STOP: "⏹️",
-  SKIP: "⏭️",
-  PREVIOUS: "⏮️",
-  SHUFFLE: "🔀",
-  LOOP: "🔁",
-  LOOP_ONE: "🔂",
-  VOLUP: "🔊",
-  VOLDOWN: "🔉",
-  QUEUE: "📋",
-  MUSIC: "🎵",
-  HEADPHONES: "🎧",
-  AUTHOR: "🎤",
-  PLAYLIST: "📑",
-  YOUTUBE: "🔴",
-  SPOTIFY: "🟢",
-  iconSuccess: "✅",
-  iconError: "❌",
-  WARNING: "⚠️",
-  INFO: "ℹ️",
-  iconAction: "⚡",
-  iconTrash: "🗑️",
-  iconUptime: "⏱️",
-  iconChannel: "💬",
-  iconEditor: "📝",
-  iconTicket: "🎟️",
-  iconBot: "🤖",
-  iconLock: "🔒",
-  iconBell: "🔔",
-  iconMemo: "📄",
-  iconCard: "💳",
-  iconKey: "🔑",
-  REFRESH: "🔄",
-  USER: "👤",
-  TIME: "⏱️",
-};
+const EMOJI_MAP = require('./icon-map.json');
+
+const EMOJI_NAMES = {};
+const UNICODE = {};
+
+for (const [key, value] of Object.entries(EMOJI_MAP)) {
+  EMOJI_NAMES[value.serverEmojiName] = key;
+  UNICODE[key] = value.fallback;
+}
 
 const resolved = {};
 

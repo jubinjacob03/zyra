@@ -78,24 +78,34 @@ class Watchdog {
   }
 }
 
-let instance = null;
+const instances = new Map();
 
 /**
+ * Initializes a Lavalink watchdog for the specified client.
  * @param {import('discord.js').Client} client 
- * @returns {Watchdog}
+ * @returns {Watchdog|null}
  */
 function initWatchdog(client) {
-  if (!instance) {
-    instance = new Watchdog(client);
+  if (!client || !client.user) return null;
+  const key = client.user.id;
+  if (!instances.has(key)) {
+    instances.set(key, new Watchdog(client));
   }
-  return instance;
+  return instances.get(key);
 }
 
 /**
- * @returns {Watchdog}
+ * Retrieves the Lavalink watchdog for the specified client.
+ * @param {import('discord.js').Client} client
+ * @returns {Watchdog|null}
  */
-function getWatchdog() {
-  return instance;
+function getWatchdog(client) {
+  if (!client || !client.user) {
+    // Fallback: return the first available watchdog if no client provided (legacy support)
+    return instances.values().next().value || null;
+  }
+  const key = client.user.id;
+  return instances.get(key) || null;
 }
 
 module.exports = {

@@ -164,7 +164,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
             case "resume":
             case "toggle":
               if (isLavalink) {
-                const lq = DiscordPlayer.lavalinkQueues.get(guildId);
+                const lq = DiscordPlayer.lavalinkQueues.get(DiscordPlayer.getQueueKey(client, guildId));
                 if (action === "toggle") lq.paused = !lq.paused;
                 else lq.paused = action === "pause";
                 await lq.player.setPaused(lq.paused);
@@ -197,7 +197,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
               const idx = Number(value) || 0;
               let removedTitle = "Unknown";
               if (isLavalink) {
-                const lq = DiscordPlayer.lavalinkQueues.get(guildId);
+                const lq = DiscordPlayer.lavalinkQueues.get(DiscordPlayer.getQueueKey(client, guildId));
                 if (idx < 0 || idx >= lq.tracks.length) return send(res, 400, { error: "Invalid queue position" });
                 removedTitle = lq.tracks.splice(idx, 1)[0].info.title;
               } else {
@@ -223,7 +223,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
         const guildId = url.searchParams.get("guildId");
         const DiscordPlayer = require("./utils/DiscordPlayer");
         if (DiscordPlayer.isUsingLavalink(client, guildId)) {
-          const lq = DiscordPlayer.lavalinkQueues.get(guildId);
+          const lq = DiscordPlayer.lavalinkQueues.get(DiscordPlayer.getQueueKey(client, guildId));
           if (!lq) return send(res, 200, { queue: [], queueLength: 0 });
           return send(res, 200, {
             queue: lq.tracks.map((s, i) => ({

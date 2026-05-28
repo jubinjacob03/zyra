@@ -539,7 +539,10 @@ function startInstance(config, instanceIndex) {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  client.login(INSTANCE_BOT_TOKEN);
+  client.login(INSTANCE_BOT_TOKEN).then(() => {
+    const { initWatchdog } = require("./utils/watchdog");
+    initWatchdog(client);
+  });
 
   setTimeout(() => {
     apiServer = require("./api")(client, INSTANCE_API_PORT);

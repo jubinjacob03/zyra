@@ -162,6 +162,10 @@ const isAnyTrackPlaying = () => {
   for (const queue of client.player?.nodes?.cache?.values() || []) {
     if (queue?.currentTrack) return true;
   }
+  const DiscordPlayer = require("./utils/DiscordPlayer");
+  for (const [key, queue] of DiscordPlayer.lavalinkQueues.entries()) {
+    if (key.startsWith(client.user.id) && queue?.current) return true;
+  }
   return false;
 };
 
@@ -329,6 +333,7 @@ player.events.on("disconnect", async (queue) => {
 });
 
 player.events.on("emptyQueue", async (queue) => {
+  if (queue.repeatMode !== 0) return;
   console.log("🎵 Queue finished");
   client.musicPanels.delete(queue.guild.id);
   setPresenceActivity(pickIdlePhrase());

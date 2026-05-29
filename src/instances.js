@@ -275,6 +275,7 @@ function startInstance(config, instanceIndex) {
   });
 
   player.events.on("emptyQueue", async (queue) => {
+    if (queue.repeatMode !== 0) return;
     console.log(`🎵 [${INSTANCE_NAME}] Queue finished`);
     const textChannel =
       queue.metadata?.channel ||

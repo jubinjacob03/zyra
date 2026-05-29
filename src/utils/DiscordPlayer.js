@@ -321,6 +321,7 @@ async function handleLavalinkPlay(
 
     queue = {
       player,
+      voiceChannelId: voiceChannel.id,
       tracks: [],
       current: null,
       textChannel: interaction.channel,
@@ -486,7 +487,11 @@ async function updateLavalinkPanel(guildId, client) {
   if (!queue || !queue.current) return;
 
   try {
-    const voiceChannelId = queue.player.connection.channelId;
+    const voiceChannelId =
+      queue.voiceChannelId ||
+      client.guilds.cache.get(guildId)?.members.me?.voice?.channelId ||
+      client.INSTANCE_VOICE_CHANNEL_ID;
+
     if (voiceChannelId) {
       if (typeof client.updateVoiceStatus === "function") {
         await client.updateVoiceStatus(

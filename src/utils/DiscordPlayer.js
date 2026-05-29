@@ -519,8 +519,20 @@ async function updateLavalinkPanel(guildId, client) {
   const existingData = client.musicPanels.get(guildId);
 
   if (existingData && existingData.message) {
+    message = existingData.message;
+  } else {
+    const { getControllerPanel } = require("./panelStore");
+    const storedId = getControllerPanel(queue.textChannel.id);
+    if (storedId) {
+      try {
+        message = await queue.textChannel.messages.fetch(storedId);
+      } catch (e) {}
+    }
+  }
+
+  if (message && typeof message.edit === "function") {
     try {
-      message = await existingData.message.edit({
+      message = await message.edit({
         embeds: [],
         components: controller.components,
         flags: controller.flags,

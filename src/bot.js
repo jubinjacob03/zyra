@@ -282,8 +282,19 @@ player.events.on("playerStart", async (queue, track) => {
   const existingData = client.musicPanels.get(queue.guild.id);
 
   if (existingData && existingData.message) {
+    message = existingData.message;
+  } else {
+    const storedId = getControllerPanel(textChannel.id);
+    if (storedId) {
+      try {
+        message = await textChannel.messages.fetch(storedId);
+      } catch (e) {}
+    }
+  }
+
+  if (message && typeof message.edit === "function") {
     try {
-      message = await existingData.message.edit({
+      message = await message.edit({
         embeds: [],
         components: controller.components,
         flags: controller.flags,

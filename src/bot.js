@@ -365,14 +365,13 @@ async function handleButtonInteraction(interaction, client) {
   } = require("discord.js");
 
   const sendEphemeralEmbed = async (color, message) => {
-    const container = new ContainerBuilder().setAccentColor(color);
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(message),
-    );
+    const { EmbedBuilder } = require("discord.js");
+    const embed = new EmbedBuilder().setColor(color).setDescription(message);
+
     return interaction.followUp({
-      embeds: [],
-      components: [container],
-      flags: MessageFlags.IsComponentsV2 | 64,
+      embeds: [embed],
+      components: [],
+      flags: 64,
     });
   };
 

@@ -308,6 +308,16 @@ function startInstance(config, instanceIndex) {
     await applyIdleStatus(client, queue.channel);
   });
 
+  player.events.on("error", (queue, error) => {
+    console.error(`[${INSTANCE_NAME}] Player error: ${error.message}`);
+  });
+
+  player.events.on("playerError", (queue, error) => {
+    console.error(
+      `[${INSTANCE_NAME}] Player error (connection/playback): ${error.message}`,
+    );
+  });
+
   client.updateMusicController = updateMusicController;
   client.formatDuration = formatDuration;
 

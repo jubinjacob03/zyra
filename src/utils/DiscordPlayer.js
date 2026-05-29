@@ -153,6 +153,7 @@ async function play(interaction, query, voiceChannel, client, fallbackQuery) {
         if (watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
           client.isFallingBack = true;
           await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
+          await new Promise((resolve) => setTimeout(resolve, 1500));
         }
         if (typeof watchdog.clearPreferredNode === "function") {
           watchdog.clearPreferredNode(voiceChannel.guild.id);
@@ -175,6 +176,7 @@ async function play(interaction, query, voiceChannel, client, fallbackQuery) {
       if (watchdog && watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
         client.isFallingBack = true;
         await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
       if (watchdog && typeof watchdog.clearPreferredNode === "function") {
         watchdog.clearPreferredNode(voiceChannel.guild.id);
@@ -253,24 +255,35 @@ async function handleLavalinkPlay(
     queue = null;
   }
 
-  if (queue?.player?.node?.state === 1) {
-    resolved = await resolveOnNode(queue.player.node);
-  } else if (existingPlayer?.node?.state === 1) {
-    resolved = await resolveOnNode(existingPlayer.node);
-  } else {
+  const preferredNode = queue?.player?.node || existingPlayer?.node;
+
+  if (preferredNode?.state === 1) {
+    try {
+      resolved = await resolveOnNode(preferredNode);
+    } catch (e) {
+      console.warn(
+        `[Lavalink] Preferred node ${preferredNode.name} failed to resolve: ${e.message}. Trying other nodes...`,
+      );
+    }
+  }
+
+  if (!resolved) {
     const onlineNodes = getOnlineNodes(watchdog);
     if (!onlineNodes.length) throw new Error("No available Lavalink nodes.");
 
-    const attempts = onlineNodes.map((node) =>
-      resolveOnNode(node).catch((error) => {
-        throw new Error(`${node.name} | ${error.message}`);
+    const attempts = onlineNodes.map((n) =>
+      resolveOnNode(n).catch((error) => {
+        throw new Error(`${n.name}: ${error.message}`);
       }),
     );
 
     try {
       resolved = await Promise.any(attempts);
     } catch (error) {
-      throw new Error("No results found on any Lavalink node.");
+      const errorDetails = error.errors
+        ? error.errors.map((e) => e.message).join(" | ")
+        : error.message;
+      throw new Error(`All nodes failed to resolve. (${errorDetails})`);
     }
   }
 

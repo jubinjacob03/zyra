@@ -12,19 +12,26 @@ const {
 const { e, btn } = require("./customEmoji");
 
 /**
- * Adds a standard footer to a V2 container.
- * @param {import('discord.js').ContainerBuilder} container - The container to add the footer to.
- * @returns {import('discord.js').ContainerBuilder} The modified container.
+ * Appends a dynamic timestamp and branding footer to the provided container.
+ * Adjusts branding string intelligently based on provided bot name characteristics.
+ * @param {import('discord.js').ContainerBuilder} container
+ * @param {string} [botName]
+ * @returns {import('discord.js').ContainerBuilder}
  */
-function addFooter(container) {
+function addFooter(container, botName) {
   const ts = Math.floor(Date.now() / 1000);
+  let name = botName || "NexKord";
+  if (name.toLowerCase().includes("remani")) {
+    name = "Remani";
+  }
+
   container.addSeparatorComponents(
     new SeparatorBuilder()
       .setDivider(true)
       .setSpacing(SeparatorSpacingSize.Small),
   );
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`-# Remani · <t:${ts}:f>`),
+    new TextDisplayBuilder().setContent(`-# ${name} · <t:${ts}:f>`),
   );
   return container;
 }

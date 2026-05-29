@@ -24,19 +24,54 @@ const { setControllerPanel } = require("./panelStore");
 
 /** @type {Map<string, LavalinkQueue>} */
 const lavalinkQueues = new Map();
+const lavalinkPlayLocks = new Map();
 
 /**
+ * Synchronizes Lavalink queue creation across concurrent requests.
+ * @param {string} key
+ * @param {Function} fn
+ * @returns {Promise<any>}
+ */
+function withLavalinkLock(key, fn) {
+  const pending = lavalinkPlayLocks.get(key) || Promise.resolve();
+  const next = pending.then(fn, fn);
+  lavalinkPlayLocks.set(
+    key,
+    next.finally(() => {
+      if (lavalinkPlayLocks.get(key) === next) {
+        lavalinkPlayLocks.delete(key);
+      }
+    }),
+  );
+  return next;
+}
+
+/**
+ * Retrieves all currently connected Lavalink nodes.
+ * @param {import('./lavalinkWatchdog').LavalinkWatchdog} watchdog
+ * @returns {import('shoukaku').Node[]}
+ */
+function getOnlineNodes(watchdog) {
+  if (!watchdog?.shoukaku?.nodes) return [];
+  return Array.from(watchdog.shoukaku.nodes.values()).filter(
+    (node) => node.state === 1,
+  );
+}
+
+/**
+ * Generates a unique queue identifier mapping to the current client instance and guild.
  * @param {import('discord.js').Client} client
  * @param {string} guildId
  * @returns {string}
  */
 function getQueueKey(client, guildId) {
-  return `${client?.user?.id || 'unknown'}_${guildId}`;
+  return `${client?.user?.id || "unknown"}_${guildId}`;
 }
 
 /**
- * @param {import('discord.js').Client} client 
- * @param {string} guildId 
+ * Checks if a specific guild has an active Lavalink queue.
+ * @param {import('discord.js').Client} client
+ * @param {string} guildId
  * @returns {boolean}
  */
 function isUsingLavalink(client, guildId) {
@@ -44,8 +79,9 @@ function isUsingLavalink(client, guildId) {
 }
 
 /**
- * @param {import('discord.js').Client} client 
- * @param {string} guildId 
+ * Checks if a specific guild has an active Discord-Player queue.
+ * @param {import('discord.js').Client} client
+ * @param {string} guildId
  * @returns {boolean}
  */
 function isUsingDiscordPlayer(client, guildId) {
@@ -53,7 +89,10 @@ function isUsingDiscordPlayer(client, guildId) {
 }
 
 /**
- * @param {LavalinkQueue} queue 
+ * Advances the given Lavalink queue to the next track.
+ * Handles loop modes and history propagation.
+ * @param {LavalinkQueue} queue
+ * @returns {Promise<void>}
  */
 async function playNextLavalink(queue) {
   if (queue.loopMode === 1 && queue.current) {
@@ -67,7 +106,7 @@ async function playNextLavalink(queue) {
   }
 
   const nextTrack = queue.tracks.shift();
-  
+
   if (!nextTrack) {
     queue.current = null;
     return;
@@ -78,84 +117,186 @@ async function playNextLavalink(queue) {
 }
 
 /**
- * @param {import('discord.js').CommandInteraction} interaction 
- * @param {string} query 
- * @param {import('discord.js').VoiceChannel} voiceChannel 
- * @param {import('discord.js').Client} client 
+ * Entrypoint for playing media on a voice channel.
+ * Implements concurrency locks, Lavalink fallback strategies, and dual-layer orchestrator delegation.
+ * @param {import('discord.js').CommandInteraction} interaction
+ * @param {string} query
+ * @param {import('discord.js').VoiceChannel} voiceChannel
+ * @param {import('discord.js').Client} client
+ * @param {string} [fallbackQuery]
+ * @returns {Promise<Object>} Playback initialization metadata
  */
 async function play(interaction, query, voiceChannel, client, fallbackQuery) {
   const watchdog = getWatchdog(client);
   const finalQuery = await resolveSpotifyQuery(query);
   const discordPlayerQuery = fallbackQuery ? fallbackQuery : finalQuery;
+  const queueKey = getQueueKey(client, voiceChannel.guild.id);
 
-  if (watchdog && watchdog.isNodeAvailable() && !isUsingDiscordPlayer(client, voiceChannel.guild.id)) {
-    try {
-      return await handleLavalinkPlay(interaction, finalQuery, voiceChannel, client, watchdog);
-    } catch (e) {
-      console.warn(`[Lavalink] Failed to play: ${e.message}. Falling back to DiscordPlayer.`);
-      if (watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
+  return withLavalinkLock(queueKey, async () => {
+    if (
+      watchdog &&
+      watchdog.isNodeAvailable() &&
+      !isUsingDiscordPlayer(client, voiceChannel.guild.id)
+    ) {
+      try {
+        return await handleLavalinkPlay(
+          interaction,
+          finalQuery,
+          voiceChannel,
+          client,
+          watchdog,
+        );
+      } catch (e) {
+        console.warn(
+          `[Lavalink] Failed to play: ${e.message}. Falling back to DiscordPlayer.`,
+        );
+        if (watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
+          client.isFallingBack = true;
+          await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
+        }
+        if (typeof watchdog.clearPreferredNode === "function") {
+          watchdog.clearPreferredNode(voiceChannel.guild.id);
+        }
+        try {
+          const result = await handleDiscordPlayerPlay(
+            interaction,
+            discordPlayerQuery,
+            voiceChannel,
+            client,
+          );
+          return result;
+        } finally {
+          setTimeout(() => {
+            client.isFallingBack = false;
+          }, 5000);
+        }
+      }
+    } else {
+      if (watchdog && watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
         client.isFallingBack = true;
         await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
       }
+      if (watchdog && typeof watchdog.clearPreferredNode === "function") {
+        watchdog.clearPreferredNode(voiceChannel.guild.id);
+      }
       try {
-        const result = await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
+        const result = await handleDiscordPlayerPlay(
+          interaction,
+          discordPlayerQuery,
+          voiceChannel,
+          client,
+        );
         return result;
       } finally {
-        setTimeout(() => { client.isFallingBack = false; }, 5000);
+        setTimeout(() => {
+          client.isFallingBack = false;
+        }, 5000);
       }
     }
-  } else {
-    if (watchdog && watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
-      client.isFallingBack = true;
-      await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
-    }
-    try {
-      const result = await handleDiscordPlayerPlay(interaction, discordPlayerQuery, voiceChannel, client);
-      return result;
-    } finally {
-      setTimeout(() => { client.isFallingBack = false; }, 5000);
-    }
-  }
+  });
 }
 
 /**
- * @param {import('discord.js').CommandInteraction} interaction 
- * @param {string} query 
- * @param {import('discord.js').VoiceChannel} voiceChannel 
- * @param {import('discord.js').Client} client 
- * @param {import('./lavalinkWatchdog').LavalinkWatchdog} watchdog 
+ * Handles Lavalink media resolution and playback queue management.
+ * Implements parallel node resolution and mid-queue fallback recovery patterns.
+ * @param {import('discord.js').CommandInteraction} interaction
+ * @param {string} query
+ * @param {import('discord.js').VoiceChannel} voiceChannel
+ * @param {import('discord.js').Client} client
+ * @param {import('./lavalinkWatchdog').LavalinkWatchdog} watchdog
+ * @returns {Promise<Object>} Playback initialization metadata
  */
-async function handleLavalinkPlay(interaction, query, voiceChannel, client, watchdog) {
-  const node = watchdog.shoukaku.options.nodeResolver(watchdog.shoukaku.nodes);
-  if (!node) throw new Error("No available Lavalink nodes.");
+async function handleLavalinkPlay(
+  interaction,
+  query,
+  voiceChannel,
+  client,
+  watchdog,
+) {
+  const searchStr =
+    query.startsWith("http") || query.startsWith("ytsearch:")
+      ? query
+      : `ytsearch:${query}`;
+  const queueKey = getQueueKey(client, voiceChannel.guild.id);
 
-  const searchStr = query.startsWith("http") || query.startsWith("ytsearch:") ? query : `ytsearch:${query}`;
-  const searchResult = await node.rest.resolve(searchStr);
-  if (!searchResult || !searchResult.data) {
-    throw new Error("No results found.");
+  const resolveOnNode = async (node) => {
+    const searchResult = await node.rest.resolve(searchStr);
+    if (!searchResult || !searchResult.data) {
+      throw new Error("No results found.");
+    }
+
+    let tracksToAdd = [];
+    if (searchResult.loadType === "playlist") {
+      tracksToAdd = searchResult.data.info.tracks;
+    } else if (
+      searchResult.loadType === "search" ||
+      searchResult.loadType === "track"
+    ) {
+      tracksToAdd = [
+        searchResult.loadType === "search"
+          ? searchResult.data[0]
+          : searchResult.data,
+      ];
+    } else {
+      throw new Error("No results found.");
+    }
+
+    return { node, searchResult, tracksToAdd };
+  };
+
+  let queue = lavalinkQueues.get(queueKey);
+  const existingPlayer = watchdog.shoukaku.players.get(voiceChannel.guild.id);
+  let resolved = null;
+
+  if (queue && queue.player?.node?.state !== 1) {
+    lavalinkQueues.delete(queueKey);
+    queue = null;
   }
 
-  let tracksToAdd = [];
-  if (searchResult.loadType === "playlist") {
-    tracksToAdd = searchResult.data.info.tracks;
-  } else if (searchResult.loadType === "search" || searchResult.loadType === "track") {
-    tracksToAdd = [searchResult.loadType === "search" ? searchResult.data[0] : searchResult.data];
+  if (queue?.player?.node?.state === 1) {
+    resolved = await resolveOnNode(queue.player.node);
+  } else if (existingPlayer?.node?.state === 1) {
+    resolved = await resolveOnNode(existingPlayer.node);
   } else {
-    throw new Error("No results found.");
+    const onlineNodes = getOnlineNodes(watchdog);
+    if (!onlineNodes.length) throw new Error("No available Lavalink nodes.");
+
+    const attempts = onlineNodes.map((node) =>
+      resolveOnNode(node).catch((error) => {
+        throw new Error(`${node.name} | ${error.message}`);
+      }),
+    );
+
+    try {
+      resolved = await Promise.any(attempts);
+    } catch (error) {
+      throw new Error("No results found on any Lavalink node.");
+    }
   }
 
-  tracksToAdd.forEach(t => t.requestedBy = interaction.user);
+  const { node, searchResult, tracksToAdd } = resolved;
 
-  let queue = lavalinkQueues.get(getQueueKey(client, voiceChannel.guild.id));
+  tracksToAdd.forEach((t) => (t.requestedBy = interaction.user));
 
   if (!queue) {
-    let player = watchdog.shoukaku.players.get(voiceChannel.guild.id);
+    let player =
+      existingPlayer && existingPlayer.node?.name === node.name
+        ? existingPlayer
+        : null;
     if (!player) {
+      if (existingPlayer) {
+        try {
+          await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
+        } catch (e) {}
+      }
+      if (typeof watchdog.setPreferredNode === "function") {
+        watchdog.setPreferredNode(voiceChannel.guild.id, node.name);
+      }
       player = await watchdog.shoukaku.joinVoiceChannel({
         guildId: voiceChannel.guild.id,
         channelId: voiceChannel.id,
         shardId: voiceChannel.guild.shardId,
-        deaf: true
+        deaf: true,
       });
     }
 
@@ -167,16 +308,73 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
       loopMode: 0,
       paused: false,
       volume: 100,
-      history: []
+      history: [],
     };
 
-    lavalinkQueues.set(getQueueKey(client, voiceChannel.guild.id), queue);
+    lavalinkQueues.set(queueKey, queue);
 
-    player.on("end", async (reason) => {
-      if (reason.reason === "REPLACED") return;
-      await playNextLavalink(queue);
-      if (!queue.current) {
-        lavalinkQueues.delete(getQueueKey(client, voiceChannel.guild.id));
+    const attachPlayerListeners = (p, q) => {
+      p.on("end", async (reason) => {
+        if (reason.reason === "REPLACED") return;
+        await playNextLavalink(q);
+        if (!q.current) {
+          lavalinkQueues.delete(queueKey);
+          client.musicPanels.delete(voiceChannel.guild.id);
+          if (typeof client.updateVoiceStatus === "function") {
+            await client.updateVoiceStatus(
+              voiceChannel.id,
+              "🎵 /play to start",
+            );
+          } else {
+            try {
+              await client.rest.put(
+                `/channels/${voiceChannel.id}/voice-status`,
+                {
+                  body: { status: "🎵 /play to start" },
+                },
+              );
+            } catch (e) {}
+          }
+          if (typeof client.updateMusicPresence === "function") {
+            client.updateMusicPresence(null);
+          }
+          if (typeof watchdog.clearPreferredNode === "function") {
+            watchdog.clearPreferredNode(voiceChannel.guild.id);
+          }
+          await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
+        } else {
+          await updateLavalinkPanel(voiceChannel.guild.id, client);
+        }
+      });
+
+      p.on("closed", async () => {
+        if (q.tracks.length > 0) {
+          const onlineNodes = getOnlineNodes(watchdog);
+          if (onlineNodes.length > 0) {
+            try {
+              q.current = null;
+              const newNode = onlineNodes[0];
+              if (typeof watchdog.setPreferredNode === "function") {
+                watchdog.setPreferredNode(voiceChannel.guild.id, newNode.name);
+              }
+              const newPlayer = await watchdog.shoukaku.joinVoiceChannel({
+                guildId: voiceChannel.guild.id,
+                channelId: voiceChannel.id,
+                shardId: voiceChannel.guild.shardId,
+                deaf: true,
+              });
+              q.player = newPlayer;
+              attachPlayerListeners(newPlayer, q);
+              await playNextLavalink(q);
+              await updateLavalinkPanel(voiceChannel.guild.id, client);
+              return;
+            } catch (e) {
+              console.error("Failed to recover node mid-queue", e);
+            }
+          }
+        }
+
+        lavalinkQueues.delete(queueKey);
         client.musicPanels.delete(voiceChannel.guild.id);
         if (typeof client.updateVoiceStatus === "function") {
           await client.updateVoiceStatus(voiceChannel.id, "🎵 /play to start");
@@ -190,28 +388,13 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
         if (typeof client.updateMusicPresence === "function") {
           client.updateMusicPresence(null);
         }
-        await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
-      } else {
-        await updateLavalinkPanel(voiceChannel.guild.id, client);
-      }
-    });
+        if (typeof watchdog.clearPreferredNode === "function") {
+          watchdog.clearPreferredNode(voiceChannel.guild.id);
+        }
+      });
+    };
 
-    player.on("closed", async () => {
-      lavalinkQueues.delete(getQueueKey(client, voiceChannel.guild.id));
-      client.musicPanels.delete(voiceChannel.guild.id);
-      if (typeof client.updateVoiceStatus === "function") {
-        await client.updateVoiceStatus(voiceChannel.id, "🎵 /play to start");
-      } else {
-        try {
-          await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
-            body: { status: "🎵 /play to start" },
-          });
-        } catch (e) {}
-      }
-      if (typeof client.updateMusicPresence === "function") {
-        client.updateMusicPresence(null);
-      }
-    });
+    attachPlayerListeners(player, queue);
   }
 
   queue.tracks.push(...tracksToAdd);
@@ -223,21 +406,30 @@ async function handleLavalinkPlay(interaction, query, voiceChannel, client, watc
     await updateLavalinkPanel(voiceChannel.guild.id, client);
   }
 
-  return { 
-    isPlaylist: searchResult.loadType === "playlist", 
-    count: tracksToAdd.length, 
-    track: { title: tracksToAdd[0].info.title } 
+  return {
+    isPlaylist: searchResult.loadType === "playlist",
+    count: tracksToAdd.length,
+    track: { title: tracksToAdd[0].info.title },
   };
 }
 
 /**
- * @param {import('discord.js').CommandInteraction} interaction 
- * @param {string} query 
- * @param {import('discord.js').VoiceChannel} voiceChannel 
- * @param {import('discord.js').Client} client 
+ * Handles Discord-Player fallback playback logic.
+ * @param {import('discord.js').CommandInteraction} interaction
+ * @param {string} query
+ * @param {import('discord.js').VoiceChannel} voiceChannel
+ * @param {import('discord.js').Client} client
+ * @returns {Promise<Object>} Playback initialization metadata
  */
-async function handleDiscordPlayerPlay(interaction, query, voiceChannel, client) {
-  const searchEngine = query.startsWith("http") ? QueryType.AUTO : QueryType.SOUNDCLOUD_SEARCH;
+async function handleDiscordPlayerPlay(
+  interaction,
+  query,
+  voiceChannel,
+  client,
+) {
+  const searchEngine = query.startsWith("http")
+    ? QueryType.AUTO
+    : QueryType.SOUNDCLOUD_SEARCH;
   const result = await client.player.search(query, {
     requestedBy: interaction.user,
     searchEngine: searchEngine,
@@ -259,12 +451,16 @@ async function handleDiscordPlayerPlay(interaction, query, voiceChannel, client)
     },
   });
 
-  return { isPlaylist: result.hasPlaylist(), count: result.playlist ? result.playlist.tracks.length : 1, track };
+  return {
+    isPlaylist: result.hasPlaylist(),
+    count: result.playlist ? result.playlist.tracks.length : 1,
+    track,
+  };
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  */
 async function updateLavalinkPanel(guildId, client) {
   const queue = lavalinkQueues.get(getQueueKey(client, guildId));
@@ -274,10 +470,15 @@ async function updateLavalinkPanel(guildId, client) {
     const voiceChannelId = queue.player.connection.channelId;
     if (voiceChannelId) {
       if (typeof client.updateVoiceStatus === "function") {
-        await client.updateVoiceStatus(voiceChannelId, `✨ Now playing: ${queue.current.info.title}`);
+        await client.updateVoiceStatus(
+          voiceChannelId,
+          `✨ Now playing: ${queue.current.info.title}`,
+        );
       } else {
         await client.rest.put(`/channels/${voiceChannelId}/voice-status`, {
-          body: { status: `✨ Now playing: ${queue.current.info.title}`.slice(0, 500) }
+          body: {
+            status: `✨ Now playing: ${queue.current.info.title}`.slice(0, 500),
+          },
         });
       }
     }
@@ -295,12 +496,22 @@ async function updateLavalinkPanel(guildId, client) {
 
   if (existingData && existingData.message) {
     try {
-      message = await existingData.message.edit({ embeds: [], components: controller.components, flags: controller.flags });
+      message = await existingData.message.edit({
+        embeds: [],
+        components: controller.components,
+        flags: controller.flags,
+      });
     } catch (e) {
-      message = await queue.textChannel.send({ components: controller.components, flags: controller.flags });
+      message = await queue.textChannel.send({
+        components: controller.components,
+        flags: controller.flags,
+      });
     }
   } else {
-    message = await queue.textChannel.send({ components: controller.components, flags: controller.flags });
+    message = await queue.textChannel.send({
+      components: controller.components,
+      flags: controller.flags,
+    });
   }
 
   if (message && message.id && message.channelId) {
@@ -315,36 +526,40 @@ async function updateLavalinkPanel(guildId, client) {
 }
 
 /**
- * @param {LavalinkQueue} queue 
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {LavalinkQueue} queue
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  * @returns {Object}
  */
 function createPseudoQueue(queue, guildId, client) {
   return {
     guild: client.guilds.cache.get(guildId),
-    currentTrack: queue.current ? {
-      title: queue.current.info.title,
-      url: queue.current.info.uri,
-      author: queue.current.info.author,
-      thumbnail: queue.current.info.artworkUrl || `https://img.youtube.com/vi/${queue.current.info.identifier}/hqdefault.jpg`,
-      requestedBy: queue.current.requestedBy || client.user,
-      duration: formatLavalinkDuration(queue.current.info.length),
-      source: 'youtube'
-    } : null,
+    currentTrack: queue.current
+      ? {
+          title: queue.current.info.title,
+          url: queue.current.info.uri,
+          author: queue.current.info.author,
+          thumbnail:
+            queue.current.info.artworkUrl ||
+            `https://img.youtube.com/vi/${queue.current.info.identifier}/hqdefault.jpg`,
+          requestedBy: queue.current.requestedBy || client.user,
+          duration: formatLavalinkDuration(queue.current.info.length),
+          source: "youtube",
+        }
+      : null,
     tracks: {
-      size: queue.tracks.length
+      size: queue.tracks.length,
     },
     node: {
       isPaused: () => queue.paused,
-      volume: queue.volume
+      volume: queue.volume,
     },
-    repeatMode: queue.loopMode
+    repeatMode: queue.loopMode,
   };
 }
 
 /**
- * @param {number} ms 
+ * @param {number} ms
  * @returns {string}
  */
 function formatLavalinkDuration(ms) {
@@ -352,12 +567,12 @@ function formatLavalinkDuration(ms) {
   const seconds = Math.floor(ms / 1000);
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  */
 async function pause(guildId, client) {
   if (isUsingLavalink(client, guildId)) {
@@ -379,8 +594,8 @@ async function pause(guildId, client) {
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  */
 async function skip(guildId, client) {
   if (isUsingLavalink(client, guildId)) {
@@ -392,8 +607,8 @@ async function skip(guildId, client) {
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  */
 async function stop(guildId, client) {
   if (isUsingLavalink(client, guildId)) {
@@ -406,8 +621,8 @@ async function stop(guildId, client) {
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  */
 async function shuffle(guildId, client) {
   if (isUsingLavalink(client, guildId)) {
@@ -422,8 +637,8 @@ async function shuffle(guildId, client) {
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  * @returns {number}
  */
 async function loop(guildId, client, mode = null) {
@@ -441,8 +656,8 @@ async function loop(guildId, client, mode = null) {
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  */
 async function previous(guildId, client) {
   if (isUsingLavalink(client, guildId)) {
@@ -466,9 +681,9 @@ async function previous(guildId, client) {
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
- * @param {number} amount 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
+ * @param {number} amount
  * @returns {number}
  */
 async function adjustVolume(guildId, client, amount) {
@@ -487,9 +702,9 @@ async function adjustVolume(guildId, client, amount) {
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
- * @param {number} volume 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
+ * @param {number} volume
  * @returns {number}
  */
 async function setVolume(guildId, client, volume) {
@@ -508,8 +723,8 @@ async function setVolume(guildId, client, volume) {
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  * @returns {Object}
  */
 function getQueueInfo(guildId, client) {
@@ -517,23 +732,42 @@ function getQueueInfo(guildId, client) {
     const q = lavalinkQueues.get(getQueueKey(client, guildId));
     return {
       size: q.tracks.length,
-      current: q.current ? { title: q.current.info.title, url: q.current.info.uri, duration: formatLavalinkDuration(q.current.info.length) } : null,
-      tracks: q.tracks.slice(0, 10).map(t => ({ title: t.info.title, url: t.info.uri, duration: formatLavalinkDuration(t.info.length) }))
+      current: q.current
+        ? {
+            title: q.current.info.title,
+            url: q.current.info.uri,
+            duration: formatLavalinkDuration(q.current.info.length),
+          }
+        : null,
+      tracks: q.tracks.slice(0, 10).map((t) => ({
+        title: t.info.title,
+        url: t.info.uri,
+        duration: formatLavalinkDuration(t.info.length),
+      })),
     };
   } else if (isUsingDiscordPlayer(client, guildId)) {
     const q = client.player.nodes.get(guildId);
     return {
       size: q.tracks.size,
-      current: q.currentTrack ? { title: q.currentTrack.title, url: q.currentTrack.url, duration: q.currentTrack.duration } : null,
-      tracks: q.tracks.toArray().slice(0, 10).map(t => ({ title: t.title, url: t.url, duration: t.duration }))
+      current: q.currentTrack
+        ? {
+            title: q.currentTrack.title,
+            url: q.currentTrack.url,
+            duration: q.currentTrack.duration,
+          }
+        : null,
+      tracks: q.tracks
+        .toArray()
+        .slice(0, 10)
+        .map((t) => ({ title: t.title, url: t.url, duration: t.duration })),
     };
   }
   return null;
 }
 
 /**
- * @param {string} guildId 
- * @param {import('discord.js').Client} client 
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
  */
 async function triggerUpdate(guildId, client) {
   if (isUsingLavalink(client, guildId)) {
@@ -544,7 +778,7 @@ async function triggerUpdate(guildId, client) {
     if (q) {
       const interaction = { message: client.musicPanels.get(guildId)?.message };
       if (interaction.message) {
-         await updateMusicController(interaction, q);
+        await updateMusicController(interaction, q);
       }
     }
   }
@@ -566,5 +800,5 @@ module.exports = {
   isUsingDiscordPlayer,
   getQueueKey,
   lavalinkQueues,
-  formatLavalinkDuration
+  formatLavalinkDuration,
 };

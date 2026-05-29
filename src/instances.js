@@ -56,20 +56,25 @@ const setPresenceActivity = (client, trackOrText) => {
   if (!client?.user) return;
   if (trackOrText && trackOrText.title) {
     client.user.setPresence({
-      activities: [{
-        name: (trackOrText.title || "music").slice(0, 128),
-        type: ActivityType.Listening,
-        timestamps: { start: Date.now() },
-      }],
+      activities: [
+        {
+          name: (trackOrText.title || "music").slice(0, 128),
+          type: ActivityType.Listening,
+          timestamps: { start: Date.now() },
+        },
+      ],
       status: "online",
     });
   } else {
-    const presenceText = typeof trackOrText === "string" ? trackOrText : pickIdlePhrase();
+    const presenceText =
+      typeof trackOrText === "string" ? trackOrText : pickIdlePhrase();
     client.user.setPresence({
-      activities: [{
-        name: presenceText,
-        type: ActivityType.Listening,
-      }],
+      activities: [
+        {
+          name: presenceText,
+          type: ActivityType.Listening,
+        },
+      ],
       status: "online",
     });
   }
@@ -85,7 +90,7 @@ const setVoiceChannelStatus = async (client, channel, status) => {
   if (!channel || !client) return;
   try {
     await client.rest.put(`/channels/${channel.id || channel}/voice-status`, {
-      body: { status: status ? status.slice(0, 500) : "" }
+      body: { status: status ? status.slice(0, 500) : "" },
     });
   } catch (e) {
     console.error("Failed to set voice status:", e.message);
@@ -261,7 +266,11 @@ function startInstance(config, instanceIndex) {
       startTime: Date.now(),
     });
     setPresenceActivity(client, track);
-    await setVoiceChannelStatus(client, queue.channel, `✨ Now playing: ${track.title}`);
+    await setVoiceChannelStatus(
+      client,
+      queue.channel,
+      `✨ Now playing: ${track.title}`,
+    );
     console.log(`🎵 [${INSTANCE_NAME}] Now playing:`, track.title);
   });
 
@@ -282,6 +291,7 @@ function startInstance(config, instanceIndex) {
             } = require("./utils/componentsV2");
             const payload = createIdleMusicController(
               "Queue finished. Add more songs!",
+              textChannel.client?.user?.username,
             );
             await message
               .edit({
@@ -323,7 +333,8 @@ function startInstance(config, instanceIndex) {
   );
 
   client.updateMusicPresence = (track) => setPresenceActivity(client, track);
-  client.updateVoiceStatus = (channelId, status) => setVoiceChannelStatus(client, channelId, status);
+  client.updateVoiceStatus = (channelId, status) =>
+    setVoiceChannelStatus(client, channelId, status);
 
   client.once(Events.ClientReady, async (c) => {
     console.log(`🤖 Instance ready as ${c.user.tag} (name: ${INSTANCE_NAME})`);
@@ -352,18 +363,18 @@ function startInstance(config, instanceIndex) {
     const forceJoinVC = async () => {
       if (client.isFallingBack) return;
       if (client.player?.nodes?.has(GUILD_ID)) return;
-      
+
       try {
         const watchdog = getWatchdog(client);
         if (watchdog && watchdog.shoukaku && watchdog.isNodeAvailable()) {
           const existingPlayer = watchdog.shoukaku.players.get(GUILD_ID);
           if (!existingPlayer) {
-             await watchdog.shoukaku.joinVoiceChannel({
-                guildId: GUILD_ID,
-                channelId: INSTANCE_VOICE_CHANNEL_ID,
-                shardId: guild.shardId,
-                deaf: true
-             });
+            await watchdog.shoukaku.joinVoiceChannel({
+              guildId: GUILD_ID,
+              channelId: INSTANCE_VOICE_CHANNEL_ID,
+              shardId: guild.shardId,
+              deaf: true,
+            });
           }
         }
       } catch (e) {
@@ -403,8 +414,14 @@ function startInstance(config, instanceIndex) {
 
     setInterval(() => {
       const queue = client.player?.nodes?.cache?.get(GUILD_ID);
-      const lavalinkQueue = require("./utils/DiscordPlayer").lavalinkQueues?.get(`${client.user.id}_${GUILD_ID}`);
-      if ((!queue || !queue.currentTrack) && (!lavalinkQueue || !lavalinkQueue.current)) {
+      const lavalinkQueue =
+        require("./utils/DiscordPlayer").lavalinkQueues?.get(
+          `${client.user.id}_${GUILD_ID}`,
+        );
+      if (
+        (!queue || !queue.currentTrack) &&
+        (!lavalinkQueue || !lavalinkQueue.current)
+      ) {
         applyIdleStatus(client, voiceChannel);
       }
     }, 120000);
@@ -415,7 +432,8 @@ function startInstance(config, instanceIndex) {
           !newState.channelId ||
           newState.channelId !== INSTANCE_VOICE_CHANNEL_ID
         ) {
-          if (client.isFallingBack || client.player?.nodes?.has(GUILD_ID)) return;
+          if (client.isFallingBack || client.player?.nodes?.has(GUILD_ID))
+            return;
           setTimeout(forceJoinVC, 1000);
         }
       }

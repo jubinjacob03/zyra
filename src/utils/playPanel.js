@@ -1,4 +1,12 @@
-const { ContainerBuilder, TextDisplayBuilder, SectionBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags } = require("discord.js");
+const {
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SectionBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ActionRowBuilder,
+  MessageFlags,
+} = require("discord.js");
 const { getPlayPanel, setPlayPanel } = require("./panelStore");
 
 /**
@@ -60,30 +68,41 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
   const bullet = "\u2022";
 
   const container = new ContainerBuilder().setAccentColor(0x00ffff);
-  const { SectionBuilder, ThumbnailBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize } = require("discord.js");
-  
-  const section = new SectionBuilder()
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### 🎵 Music Player\nClick the button below to play music in this VC!\n-# \u200B\n**Supports:**`
-      )
-    );
-    
+  const {
+    SectionBuilder,
+    ThumbnailBuilder,
+    TextDisplayBuilder,
+    SeparatorBuilder,
+    SeparatorSpacingSize,
+  } = require("discord.js");
+
+  const section = new SectionBuilder().addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(
+      `### 🎵 Music Player\nClick the button below to play music in this VC!\n-# \u200B\n**Supports:**`,
+    ),
+  );
+
   if (channel.client?.user) {
-    section.setThumbnailAccessory(new ThumbnailBuilder().setURL(channel.client.user.displayAvatarURL({ extension: 'png' })));
+    section.setThumbnailAccessory(
+      new ThumbnailBuilder().setURL(
+        channel.client.user.displayAvatarURL({ extension: "png" }),
+      ),
+    );
   }
   container.addSectionComponents(section);
-  
+
   container.addSeparatorComponents(
-    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small)
+    new SeparatorBuilder()
+      .setDivider(true)
+      .setSpacing(SeparatorSpacingSize.Small),
   );
-  
+
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(
       `${bullet} Song names\n` +
-      `${bullet} Tracks (YouTube, Spotify, SoundCloud)\n` +
-      `${bullet} Playlists (YouTube - no Mix, Spotify, SoundCloud)`
-    )
+        `${bullet} Tracks (YouTube, Spotify, SoundCloud)\n` +
+        `${bullet} Playlists (YouTube - no Mix, Spotify, SoundCloud)`,
+    ),
   );
 
   const playButton = new ButtonBuilder()
@@ -95,9 +114,12 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
   container.addActionRowComponents(row);
 
   const { addFooter } = require("./embed");
-  addFooter(container);
+  addFooter(container, channel.client?.user?.username);
 
-  const payload = { components: [container], flags: MessageFlags.IsComponentsV2 };
+  const payload = {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  };
 
   const storedId = getPlayPanel(channel.id);
   if (storedId && channel.messages?.fetch) {

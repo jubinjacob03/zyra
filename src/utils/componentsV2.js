@@ -55,9 +55,9 @@ function createNowPlayingEmbed(queue) {
   const song = queue?.currentTrack;
   if (!song) return null;
 
-  const isSpotify = song.source === 'spotify';
-  const isSoundCloud = song.source === 'soundcloud';
-  const isYouTube = song.source === 'youtube' || (!isSpotify && !isSoundCloud);
+  const isSpotify = song.source === "spotify";
+  const isSoundCloud = song.source === "soundcloud";
+  const isYouTube = song.source === "youtube" || (!isSpotify && !isSoundCloud);
   const isPaused = queue.node.isPaused();
   const color = isSpotify
     ? COLORS.SPOTIFY
@@ -70,24 +70,34 @@ function createNowPlayingEmbed(queue) {
           : COLORS.PLAYING;
 
   const platformIcon = isSpotify ? e("SPOTIFY") || "🟢" : e("YOUTUBE") || "🔴";
-  const platformName = isSpotify ? "Spotify" : song.source === 'soundcloud' ? "SoundCloud" : "YouTube";
-  const duration = song.duration || formatTime(Math.floor(song.durationMS / 1000) || 0);
-  const requester = song.requestedBy?.displayName || song.requestedBy?.username || "Unknown";
+  const platformName = isSpotify
+    ? "Spotify"
+    : song.source === "soundcloud"
+      ? "SoundCloud"
+      : "YouTube";
+  const duration =
+    song.duration || formatTime(Math.floor(song.durationMS / 1000) || 0);
+  const requester =
+    song.requestedBy?.displayName || song.requestedBy?.username || "Unknown";
   const authorIcon = e("AUTHOR");
   const titleIcon = e("PLAYLIST");
 
   const description = `${titleIcon} **${song.title}**\n\nby **${song.author || "Unknown Artist"}**\n\n${platformIcon} ${platformName} • ${duration} • ${authorIcon} @${requester}`;
 
   const container = new ContainerBuilder().setAccentColor(color);
-  
+
   if (song.thumbnail && typeof song.thumbnail === "string") {
     const { ThumbnailBuilder } = require("discord.js");
     const section = new SectionBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(description))
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(description),
+      )
       .setThumbnailAccessory(new ThumbnailBuilder().setURL(song.thumbnail));
     container.addSectionComponents(section);
   } else {
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(description));
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(description),
+    );
   }
 
   return container;
@@ -154,36 +164,49 @@ function createControlButtons(queue) {
 function createCompleteMusicController(queue) {
   const container = createNowPlayingEmbed(queue);
   if (!container) return null;
-  
-  const { SeparatorBuilder, SeparatorSpacingSize, MessageFlags } = require("discord.js");
+
+  const {
+    SeparatorBuilder,
+    SeparatorSpacingSize,
+    MessageFlags,
+  } = require("discord.js");
   container.addSeparatorComponents(
-    new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large)
+    new SeparatorBuilder()
+      .setDivider(true)
+      .setSpacing(SeparatorSpacingSize.Large),
   );
-  
+
   const buttons = createControlButtons(queue);
-  buttons.forEach(row => container.addActionRowComponents(row));
-  
+  buttons.forEach((row) => container.addActionRowComponents(row));
+
+  const botName = queue?.player?.client?.user?.username || "NexKord";
   const { addFooter } = require("./embed");
-  addFooter(container);
+  addFooter(container, botName);
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
 /**
- * Creates an idle music controller payload without buttons.
- * @param {string} message - The idle message to display.
- * @returns {Object} The message payload containing the components and flags.
+ * Constructs an idle state UI payload containing contextual cues when playback halts.
+ * Includes dynamic branding injections mapping back to the client environment.
+ * @param {string} message
+ * @param {string} [botName]
+ * @returns {Object} V2 Components message payload footprint
  */
-function createIdleMusicController(message) {
-  const { ContainerBuilder, TextDisplayBuilder, MessageFlags } = require("discord.js");
+function createIdleMusicController(message, botName) {
+  const {
+    ContainerBuilder,
+    TextDisplayBuilder,
+    MessageFlags,
+  } = require("discord.js");
   const container = new ContainerBuilder().setAccentColor(0x00ffff);
-  
+
   container.addTextDisplayComponents(
-    new TextDisplayBuilder().setContent(`${e("MUSIC")} ${message}`)
+    new TextDisplayBuilder().setContent(`${e("MUSIC")} ${message}`),
   );
-  
+
   const { addFooter } = require("./embed");
-  addFooter(container);
+  addFooter(container, botName);
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }

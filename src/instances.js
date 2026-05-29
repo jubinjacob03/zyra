@@ -29,11 +29,6 @@ require("dns").setDefaultResultOrder("ipv4first");
 
 const instanceConfig = require("../config.json");
 
-const asEphemeral = (payload) => ({
-  ...payload,
-  flags: 64,
-});
-
 const idlePhrases = [
   "🎧 /play to start",
   "✨ Vibe check: passed",
@@ -322,19 +317,6 @@ function startInstance(config, instanceIndex) {
   client.updateMusicController = updateMusicController;
   client.formatDuration = formatDuration;
 
-  const originalHandleButtonInteraction = handleButtonInteraction;
-
-  client.handleButtonInteraction = async (interaction) => {
-    const previousReply = interaction.reply.bind(interaction);
-    const previousFollowUp = interaction.followUp.bind(interaction);
-    const previousDeferUpdate = interaction.deferUpdate?.bind(interaction);
-
-    interaction.reply = (options) => previousReply(asEphemeral(options));
-    interaction.followUp = (options) => previousFollowUp(asEphemeral(options));
-
-    return originalHandleButtonInteraction(interaction, client);
-  };
-
   console.log(
     `✅ Instance configured - no slash commands, message-based control`,
   );
@@ -484,7 +466,7 @@ function startInstance(config, instanceIndex) {
         return;
       }
 
-      await client.handleButtonInteraction(interaction);
+      await handleButtonInteraction(interaction, client);
     }
 
     if (

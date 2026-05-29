@@ -3,7 +3,7 @@ const http = require("node:http");
 /**
  * Attaches the Music API server to the Discord client.
  * Provides endpoints for external control and status monitoring.
- * 
+ *
  * @param {import('discord.js').Client} client - The Discord client instance.
  * @param {number|null} [customPort=null] - Optional custom port to listen on.
  * @returns {http.Server} The created HTTP server.
@@ -66,8 +66,14 @@ module.exports = function attachMusicApi(client, customPort = null) {
       }
 
       if (req.method === "POST" && path === "/play") {
-        const { guildId, voiceChannelId, query, userId, username, fallbackQuery } =
-          await parseBody(req);
+        const {
+          guildId,
+          voiceChannelId,
+          query,
+          userId,
+          username,
+          fallbackQuery,
+        } = await parseBody(req);
 
         if (!guildId || !voiceChannelId || !query)
           return send(res, 400, {
@@ -121,23 +127,30 @@ module.exports = function attachMusicApi(client, customPort = null) {
             query,
             voiceChannel,
             client,
-            fallbackQuery
+            fallbackQuery,
           );
-          
+
           return send(res, 200, {
             success: true,
             isNewQueue: true,
             added: playResult.count,
-            song: playResult.isPlaylist ? null : {
-              name: playResult.track.title || playResult.track.name || "Unknown",
-              url: playResult.track.url || playResult.track.uri || query,
-              thumbnail: playResult.track.thumbnail || "",
-              formattedDuration: playResult.track.duration || "0:00",
-              author: playResult.track.author || "Unknown Artist",
-            }
+            song: playResult.isPlaylist
+              ? null
+              : {
+                  name:
+                    playResult.track.title ||
+                    playResult.track.name ||
+                    "Unknown",
+                  url: playResult.track.url || playResult.track.uri || query,
+                  thumbnail: playResult.track.thumbnail || "",
+                  formattedDuration: playResult.track.duration || "0:00",
+                  author: playResult.track.author || "Unknown Artist",
+                },
           });
         } catch (e) {
-          return send(res, 404, { error: e.message || "No results found for query" });
+          return send(res, 404, {
+            error: e.message || "No results found for query",
+          });
         }
       }
 
@@ -152,12 +165,15 @@ module.exports = function attachMusicApi(client, customPort = null) {
         "/volume",
         "/remove",
       ];
-      if (req.method === "POST" && (path === "/control" || directActions.includes(path))) {
+      if (
+        req.method === "POST" &&
+        (path === "/control" || directActions.includes(path))
+      ) {
         const body = await parseBody(req);
         const guildId = body.guildId;
         const action = path === "/control" ? body.action : path.substring(1);
         const value = body.value;
-        
+
         const DiscordPlayer = require("./utils/DiscordPlayer");
         const isLavalink = DiscordPlayer.isUsingLavalink(client, guildId);
         const isDP = DiscordPlayer.isUsingDiscordPlayer(client, guildId);
@@ -172,13 +188,16 @@ module.exports = function attachMusicApi(client, customPort = null) {
             case "resume":
             case "toggle":
               if (isLavalink) {
-                const lq = DiscordPlayer.lavalinkQueues.get(DiscordPlayer.getQueueKey(client, guildId));
+                const lq = DiscordPlayer.lavalinkQueues.get(
+                  DiscordPlayer.getQueueKey(client, guildId),
+                );
                 if (action === "toggle") lq.paused = !lq.paused;
                 else lq.paused = action === "pause";
                 await lq.player.setPaused(lq.paused);
               } else {
                 const q = client.player.nodes.get(guildId);
-                if (action === "toggle") q.node.isPaused() ? q.node.resume() : q.node.pause();
+                if (action === "toggle")
+                  q.node.isPaused() ? q.node.resume() : q.node.pause();
                 else action === "pause" ? q.node.pause() : q.node.resume();
               }
               break;
@@ -197,7 +216,11 @@ module.exports = function attachMusicApi(client, customPort = null) {
               break;
             }
             case "volume": {
-              const vol = await DiscordPlayer.setVolume(guildId, client, Number(value) || 50);
+              const vol = await DiscordPlayer.setVolume(
+                guildId,
+                client,
+                Number(value) || 50,
+              );
               await DiscordPlayer.triggerUpdate(guildId, client);
               return send(res, 200, { success: true, volume: vol });
             }
@@ -205,13 +228,17 @@ module.exports = function attachMusicApi(client, customPort = null) {
               const idx = Number(value) || 0;
               let removedTitle = "Unknown";
               if (isLavalink) {
-                const lq = DiscordPlayer.lavalinkQueues.get(DiscordPlayer.getQueueKey(client, guildId));
-                if (idx < 0 || idx >= lq.tracks.length) return send(res, 400, { error: "Invalid queue position" });
+                const lq = DiscordPlayer.lavalinkQueues.get(
+                  DiscordPlayer.getQueueKey(client, guildId),
+                );
+                if (idx < 0 || idx >= lq.tracks.length)
+                  return send(res, 400, { error: "Invalid queue position" });
                 removedTitle = lq.tracks.splice(idx, 1)[0].info.title;
               } else {
                 const q = client.player.nodes.get(guildId);
                 const removed = q.tracks.removeOne(idx);
-                if (!removed) return send(res, 400, { error: "Invalid queue position" });
+                if (!removed)
+                  return send(res, 400, { error: "Invalid queue position" });
                 removedTitle = removed.title;
               }
               await DiscordPlayer.triggerUpdate(guildId, client);
@@ -231,15 +258,21 @@ module.exports = function attachMusicApi(client, customPort = null) {
         const guildId = url.searchParams.get("guildId");
         const DiscordPlayer = require("./utils/DiscordPlayer");
         if (DiscordPlayer.isUsingLavalink(client, guildId)) {
-          const lq = DiscordPlayer.lavalinkQueues.get(DiscordPlayer.getQueueKey(client, guildId));
+          const lq = DiscordPlayer.lavalinkQueues.get(
+            DiscordPlayer.getQueueKey(client, guildId),
+          );
           if (!lq) return send(res, 200, { queue: [], queueLength: 0 });
           return send(res, 200, {
             queue: lq.tracks.map((s, i) => ({
               index: i,
               name: s.info.title,
               url: s.info.uri,
-              thumbnail: s.info.artworkUrl || `https://img.youtube.com/vi/${s.info.identifier}/hqdefault.jpg`,
-              formattedDuration: DiscordPlayer.formatLavalinkDuration(s.info.length),
+              thumbnail:
+                s.info.artworkUrl ||
+                `https://img.youtube.com/vi/${s.info.identifier}/hqdefault.jpg`,
+              formattedDuration: DiscordPlayer.formatLavalinkDuration(
+                s.info.length,
+              ),
               author: s.info.author,
             })),
             queueLength: lq.tracks.length,
@@ -268,7 +301,14 @@ module.exports = function attachMusicApi(client, customPort = null) {
           const lq = DiscordPlayer.lavalinkQueues.get(
             DiscordPlayer.getQueueKey(client, guildId),
           );
-          if (!lq || !lq.current) return send(res, 200, { playing: false, paused: false, song: null, queue: [], queueLength: 0 });
+          if (!lq || !lq.current)
+            return send(res, 200, {
+              playing: false,
+              paused: false,
+              song: null,
+              queue: [],
+              queueLength: 0,
+            });
           const elapsed = lq.player.position || 0;
           return send(res, 200, {
             playing: !lq.paused,
@@ -279,17 +319,25 @@ module.exports = function attachMusicApi(client, customPort = null) {
             song: {
               name: lq.current.info.title,
               url: lq.current.info.uri,
-              thumbnail: lq.current.info.artworkUrl || `https://img.youtube.com/vi/${lq.current.info.identifier}/hqdefault.jpg`,
+              thumbnail:
+                lq.current.info.artworkUrl ||
+                `https://img.youtube.com/vi/${lq.current.info.identifier}/hqdefault.jpg`,
               duration: lq.current.info.length || 0,
-              formattedDuration: DiscordPlayer.formatLavalinkDuration(lq.current.info.length),
+              formattedDuration: DiscordPlayer.formatLavalinkDuration(
+                lq.current.info.length,
+              ),
               author: lq.current.info.author || "Unknown Artist",
             },
             queue: lq.tracks.slice(0, 10).map((s, i) => ({
               index: i + 1,
               name: s.info.title,
               url: s.info.uri,
-              thumbnail: s.info.artworkUrl || `https://img.youtube.com/vi/${s.info.identifier}/hqdefault.jpg`,
-              formattedDuration: DiscordPlayer.formatLavalinkDuration(s.info.length),
+              thumbnail:
+                s.info.artworkUrl ||
+                `https://img.youtube.com/vi/${s.info.identifier}/hqdefault.jpg`,
+              formattedDuration: DiscordPlayer.formatLavalinkDuration(
+                s.info.length,
+              ),
               author: s.info.author,
             })),
             queueLength: lq.tracks.length,
@@ -322,55 +370,73 @@ module.exports = function attachMusicApi(client, customPort = null) {
             formattedDuration: queue.currentTrack.duration,
             author: queue.currentTrack.author || "Unknown Artist",
           },
-          queue: queue.tracks.toArray().slice(0, 10).map((s, i) => ({
-            index: i + 1,
-            name: s.title,
-            url: s.url,
-            thumbnail: s.thumbnail,
-            formattedDuration: s.duration,
-            author: s.author,
-          })),
+          queue: queue.tracks
+            .toArray()
+            .slice(0, 10)
+            .map((s, i) => ({
+              index: i + 1,
+              name: s.title,
+              url: s.url,
+              thumbnail: s.thumbnail,
+              formattedDuration: s.duration,
+              author: s.author,
+            })),
           queueLength: queue.tracks.size,
         });
       }
 
       if (req.method === "POST" && path === "/search") {
-          const { query, limit } = await parseBody(req);
-          if (!query) return send(res, 400, { error: "query is required" });
-  
-          try {
-            const { getWatchdog } = require("./utils/watchdog");
-            const watchdog = getWatchdog(client);
-            let results = [];
-            const maxResults = Math.min(Number(limit) || 10, 25);
-            
-            if (watchdog && watchdog.isNodeAvailable()) {
-              const node = watchdog.shoukaku.options.nodeResolver(watchdog.shoukaku.nodes);
-              if (node) {
-                 const searchStr = query.startsWith("http") || query.startsWith("ytsearch:") ? query : `ytsearch:${query}`;
-                 const searchResult = await node.rest.resolve(searchStr);
-                 if (searchResult && searchResult.data) {
-                    let tracks = searchResult.data.tracks || (Array.isArray(searchResult.data) ? searchResult.data : [searchResult.data]);
-                    if (!Array.isArray(tracks)) tracks = [];
-                    results = tracks.slice(0, maxResults).map(track => {
-                       const t = track.info;
-                       return {
-                         title: t.title || "Untitled",
-                         author: t.author || "Unknown",
-                         duration: Math.floor((t.length || 0) / 1000),
-                         url: t.uri || "",
-                         thumbnail: t.artworkUrl || (t.uri && t.identifier ? `https://i.ytimg.com/vi/${t.identifier}/hqdefault.jpg` : ""),
-                         id: t.identifier || ""
-                       };
-                    });
-                 }
+        const { query, limit } = await parseBody(req);
+        if (!query) return send(res, 400, { error: "query is required" });
+
+        try {
+          const { getWatchdog } = require("./utils/watchdog");
+          const watchdog = getWatchdog(client);
+          let results = [];
+          const maxResults = Math.min(Number(limit) || 10, 25);
+
+          if (watchdog && watchdog.isNodeAvailable()) {
+            const node = watchdog.shoukaku.options.nodeResolver(
+              watchdog.shoukaku.nodes,
+            );
+            if (node) {
+              const searchStr =
+                query.startsWith("http") || query.startsWith("ytsearch:")
+                  ? query
+                  : `ytsearch:${query}`;
+              const searchResult = await node.rest.resolve(searchStr);
+              if (searchResult && searchResult.data) {
+                let tracks =
+                  searchResult.data.tracks ||
+                  (Array.isArray(searchResult.data)
+                    ? searchResult.data
+                    : [searchResult.data]);
+                if (!Array.isArray(tracks)) tracks = [];
+                results = tracks.slice(0, maxResults).map((track) => {
+                  const t = track.info;
+                  return {
+                    title: t.title || "Untitled",
+                    author: t.author || "Unknown",
+                    duration: Math.floor((t.length || 0) / 1000),
+                    url: t.uri || "",
+                    thumbnail:
+                      t.artworkUrl ||
+                      (t.uri && t.identifier
+                        ? `https://i.ytimg.com/vi/${t.identifier}/hqdefault.jpg`
+                        : ""),
+                    id: t.identifier || "",
+                  };
+                });
               }
             }
+          }
 
-            if (results.length === 0) {
-              const searchResult = await client.player.search(query);
-              if (searchResult && !searchResult.isEmpty()) {
-                results = searchResult.tracks.slice(0, maxResults).map((video) => ({
+          if (results.length === 0) {
+            const searchResult = await client.player.search(query);
+            if (searchResult && !searchResult.isEmpty()) {
+              results = searchResult.tracks
+                .slice(0, maxResults)
+                .map((video) => ({
                   title: video.title || "Untitled",
                   author: video.author || "Unknown",
                   duration: Math.floor((video.durationMS || 0) / 1000),
@@ -378,14 +444,14 @@ module.exports = function attachMusicApi(client, customPort = null) {
                   thumbnail: video.thumbnail,
                   id: video.id || "",
                 }));
-              }
             }
-            
-            return send(res, 200, { results });
-          } catch (error) {
-            console.error("[Search Error]", error);
-            return send(res, 200, { results: [], error: "Search failed" });
           }
+
+          return send(res, 200, { results });
+        } catch (error) {
+          console.error("[Search Error]", error);
+          return send(res, 200, { results: [], error: "Search failed" });
+        }
       }
 
       return send(res, 404, { error: "Not found" });
@@ -398,15 +464,19 @@ module.exports = function attachMusicApi(client, customPort = null) {
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 66000;
 
-  server.listen(port, "0.0.0.0", () => {
-    console.log(`🎵 Remani Music API listening on port ${port}`);
-  }).on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`❌ Port ${port} is already in use. API server could not start.`);
-    } else {
-      console.error(`❌ API server error:`, err);
-    }
-  });
+  server
+    .listen(port, "0.0.0.0", () => {
+      console.log(`🎵 Remani Music API listening on port ${port}`);
+    })
+    .on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `❌ Port ${port} is already in use. API server could not start.`,
+        );
+      } else {
+        console.error(`❌ API server error:`, err);
+      }
+    });
 
   return server;
 };

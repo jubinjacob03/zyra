@@ -1,4 +1,8 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
+const {
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  MessageFlags,
+} = require("discord.js");
 const { successEmbed, errorEmbed } = require("../utils/embed");
 const { e } = require("../utils/customEmoji");
 

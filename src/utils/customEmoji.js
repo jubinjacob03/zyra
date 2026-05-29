@@ -1,7 +1,7 @@
-const path = require('path');
-const fs = require('fs');
+const path = require("path");
+const fs = require("fs");
 
-const EMOJI_MAP = require('./icon-map.json');
+const EMOJI_MAP = require("./icon-map.json");
 
 const EMOJI_NAMES = {};
 const UNICODE = {};

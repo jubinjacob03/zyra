@@ -29,11 +29,15 @@ if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
-console.log(colorize(COLORS.bold, "🚀 Starting Zyra Bot (Unified Process Mode)"));
+console.log(
+  colorize(COLORS.bold, "🚀 Starting Zyra Bot (Unified Process Mode)"),
+);
 
 const instances = Array.isArray(config.instances) ? config.instances : [];
 
-console.log(colorize(COLORS.cyan, `Launching Main Bot + ${instances.length} instance(s)`));
+console.log(
+  colorize(COLORS.cyan, `Launching Main Bot + ${instances.length} instance(s)`),
+);
 
 const BOX_COLORS = [COLORS.cyan, COLORS.magenta, COLORS.yellow];
 const boxColor = (index) => BOX_COLORS[index % BOX_COLORS.length];
@@ -90,9 +94,14 @@ for (let i = 0; i < boxes.length; i += BOXES_PER_ROW) {
     for (let i = 0; i < instances.length; i++) {
       console.log(colorize(COLORS.dim, `Starting instance ${i + 1}...`));
       await startInstances({ index: i });
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 2000));
     }
-    console.log(colorize(COLORS.bold, "✅ All bots successfully started in single process!"));
+    console.log(
+      colorize(
+        COLORS.bold,
+        "✅ All bots successfully started in single process!",
+      ),
+    );
   } catch (error) {
     console.error("❌ Fatal error during startup:", error);
     process.exit(1);

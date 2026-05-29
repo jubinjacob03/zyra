@@ -308,7 +308,7 @@ player.events.on("playerStart", async (queue, track) => {
   });
 
   setPresenceActivity(track);
-  await setVoiceChannelStatus(queue.channel, `✨ Now playing: ${track.title}`);
+  await setVoiceChannelStatus(queue.channel, `✨ Playing - ${track.title}`);
   console.log("🎵 Now playing:", track.title);
 });
 

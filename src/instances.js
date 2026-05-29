@@ -269,7 +269,7 @@ function startInstance(config, instanceIndex) {
     await setVoiceChannelStatus(
       client,
       queue.channel,
-      `✨ Now playing: ${track.title}`,
+      `✨ Playing - ${track.title}`,
     );
     console.log(`🎵 [${INSTANCE_NAME}] Now playing:`, track.title);
   });

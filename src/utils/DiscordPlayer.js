@@ -496,12 +496,12 @@ async function updateLavalinkPanel(guildId, client) {
       if (typeof client.updateVoiceStatus === "function") {
         await client.updateVoiceStatus(
           voiceChannelId,
-          `✨ Now playing: ${queue.current.info.title}`,
+          `✨ Playing - ${queue.current.info.title}`,
         );
       } else {
         await client.rest.put(`/channels/${voiceChannelId}/voice-status`, {
           body: {
-            status: `✨ Now playing: ${queue.current.info.title}`.slice(0, 500),
+            status: `✨ Playing - ${queue.current.info.title}`.slice(0, 500),
           },
         });
       }

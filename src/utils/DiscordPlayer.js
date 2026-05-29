@@ -222,14 +222,13 @@ async function handleLavalinkPlay(
   const queueKey = getQueueKey(client, voiceChannel.guild.id);
 
   const resolveOnNode = async (node) => {
-    // Implement a 5-second timeout for the REST request
     const searchPromise = node.rest.resolve(searchStr);
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error("REST resolve timeout")), 5000)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("REST resolve timeout")), 5000),
     );
-    
+
     const searchResult = await Promise.race([searchPromise, timeoutPromise]);
-    
+
     if (!searchResult || !searchResult.data) {
       throw new Error("No results found.");
     }

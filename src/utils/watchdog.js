@@ -151,7 +151,6 @@ function initWatchdog(client) {
  */
 function getWatchdog(client) {
   if (!client) {
-    // Fallback: return the first available watchdog if no client provided (legacy support)
     return instances.values().next().value || null;
   }
   const key = client.INSTANCE_NAME || client.user?.id || "main";

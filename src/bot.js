@@ -130,27 +130,33 @@ const setPresenceActivity = (trackOrText) => {
   if (!client?.user) return;
   if (trackOrText && trackOrText.title) {
     client.user.setPresence({
-      activities: [{
-        name: (trackOrText.title || "music").slice(0, 128),
-        type: ActivityType.Listening,
-        timestamps: { start: Date.now() },
-      }],
+      activities: [
+        {
+          name: (trackOrText.title || "music").slice(0, 128),
+          type: ActivityType.Listening,
+          timestamps: { start: Date.now() },
+        },
+      ],
       status: "online",
     });
   } else {
-    const presenceText = typeof trackOrText === "string" ? trackOrText : pickIdlePhrase();
+    const presenceText =
+      typeof trackOrText === "string" ? trackOrText : pickIdlePhrase();
     client.user.setPresence({
-      activities: [{
-        name: presenceText,
-        type: ActivityType.Listening,
-      }],
+      activities: [
+        {
+          name: presenceText,
+          type: ActivityType.Listening,
+        },
+      ],
       status: "online",
     });
   }
 };
 
 client.updateMusicPresence = (track) => setPresenceActivity(track);
-client.updateVoiceStatus = (channel, status) => setVoiceChannelStatus(channel, status);
+client.updateVoiceStatus = (channel, status) =>
+  setVoiceChannelStatus(channel, status);
 
 const isAnyTrackPlaying = () => {
   for (const queue of client.player?.nodes?.cache?.values() || []) {
@@ -161,7 +167,8 @@ const isAnyTrackPlaying = () => {
 
 const setVoiceChannelStatus = async (channel, status) => {
   if (!channel) return;
-  const channelObj = typeof channel === "string" ? client.channels.cache.get(channel) : channel;
+  const channelObj =
+    typeof channel === "string" ? client.channels.cache.get(channel) : channel;
   const channelId = typeof channel === "string" ? channel : channel.id;
 
   if (channelObj && typeof channelObj.setStatus === "function") {
@@ -170,14 +177,12 @@ const setVoiceChannelStatus = async (channel, status) => {
       return;
     } catch {}
   }
-  
+
   try {
     await client.rest.put(`/channels/${channelId}/voice-status`, {
       body: { status: status ? status.slice(0, 500) : "" },
     });
-  } catch (e) {
-    // console.error("Failed to set voice status:", e.message);
-  }
+  } catch (e) {}
 };
 
 /**

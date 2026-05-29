@@ -372,6 +372,7 @@ async function handleLavalinkPlay(
           const onlineNodes = getOnlineNodes(watchdog);
           if (onlineNodes.length > 0) {
             try {
+              client.isRecoveringNode = true;
               q.current = null;
               const newNode = onlineNodes[0];
               if (typeof watchdog.setPreferredNode === "function") {
@@ -387,9 +388,13 @@ async function handleLavalinkPlay(
               attachPlayerListeners(newPlayer, q);
               await playNextLavalink(q);
               await updateLavalinkPanel(voiceChannel.guild.id, client);
+              setTimeout(() => {
+                client.isRecoveringNode = false;
+              }, 3000);
               return;
             } catch (e) {
               console.error("Failed to recover node mid-queue", e);
+              client.isRecoveringNode = false;
             }
           }
         }

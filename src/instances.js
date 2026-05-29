@@ -421,7 +421,11 @@ function startInstance(config, instanceIndex) {
           !newState.channelId ||
           newState.channelId !== INSTANCE_VOICE_CHANNEL_ID
         ) {
-          if (client.isFallingBack || client.player?.nodes?.has(GUILD_ID))
+          if (
+            client.isFallingBack ||
+            client.isRecoveringNode ||
+            client.player?.nodes?.has(GUILD_ID)
+          )
             return;
           setTimeout(forceJoinVC, 1000);
         }

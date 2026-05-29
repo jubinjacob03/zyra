@@ -297,7 +297,7 @@ async function handleLavalinkPlay(
         ? existingPlayer
         : null;
     if (!player) {
-      if (existingPlayer) {
+      if (watchdog.shoukaku.connections.has(voiceChannel.guild.id)) {
         try {
           await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
         } catch (e) {}

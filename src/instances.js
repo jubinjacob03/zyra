@@ -331,10 +331,6 @@ function startInstance(config, instanceIndex) {
     interaction.reply = (options) => previousReply(asEphemeral(options));
     interaction.followUp = (options) => previousFollowUp(asEphemeral(options));
 
-    if (previousDeferUpdate) {
-      interaction.deferUpdate = () => interaction.deferReply({ flags: 64 });
-    }
-
     return originalHandleButtonInteraction(interaction, client);
   };
 
@@ -377,8 +373,8 @@ function startInstance(config, instanceIndex) {
       try {
         const watchdog = getWatchdog(client);
         if (watchdog && watchdog.shoukaku && watchdog.isNodeAvailable()) {
-          const existingPlayer = watchdog.shoukaku.players.get(GUILD_ID);
-          if (!existingPlayer) {
+          const hasConnection = watchdog.shoukaku.connections.has(GUILD_ID);
+          if (!hasConnection) {
             await watchdog.shoukaku.joinVoiceChannel({
               guildId: GUILD_ID,
               channelId: INSTANCE_VOICE_CHANNEL_ID,

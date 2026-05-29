@@ -161,15 +161,23 @@ const isAnyTrackPlaying = () => {
 
 const setVoiceChannelStatus = async (channel, status) => {
   if (!channel) return;
-  if (typeof channel.setStatus === "function") {
+  const channelObj = typeof channel === "string" ? client.channels.cache.get(channel) : channel;
+  const channelId = typeof channel === "string" ? channel : channel.id;
+
+  if (channelObj && typeof channelObj.setStatus === "function") {
     try {
-      await channel.setStatus(status ?? null);
+      await channelObj.setStatus(status ?? null);
       return;
     } catch {}
   }
+  
   try {
-    await channel.edit({ status: status ?? null });
-  } catch {}
+    await client.rest.put(`/channels/${channelId}/voice-status`, {
+      body: { status: status ? status.slice(0, 500) : "" },
+    });
+  } catch (e) {
+    // console.error("Failed to set voice status:", e.message);
+  }
 };
 
 /**
@@ -357,6 +365,7 @@ async function handleButtonInteraction(interaction, client) {
       new TextDisplayBuilder().setContent(message),
     );
     return interaction.followUp({
+      embeds: [],
       components: [container],
       flags: MessageFlags.IsComponentsV2 | 64,
     });

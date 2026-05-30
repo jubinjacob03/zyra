@@ -140,6 +140,11 @@ module.exports = function attachMusicApi(client, customPort = null) {
           username: username || "api",
         };
 
+        const apiFallback = fallbackQuery ? ` fallback=${fallbackQuery}` : "";
+        log.info(
+          `API /play: guild=${guildId} vc=${voiceChannelId} user=${webApiUser.id} query=${query}${apiFallback}`,
+        );
+
         const webApiInteraction = {
           user: webApiUser,
           member: { voice: { channel: voiceChannel } },
@@ -154,6 +159,10 @@ module.exports = function attachMusicApi(client, customPort = null) {
             voiceChannel,
             client,
             fallbackQuery,
+          );
+
+          log.info(
+            `API /play success: guild=${guildId} added=${playResult.count} playlist=${playResult.isPlaylist ? "yes" : "no"}`,
           );
 
           return send(res, 200, {
@@ -174,6 +183,12 @@ module.exports = function attachMusicApi(client, customPort = null) {
                 },
           });
         } catch (e) {
+          log.warn(
+            "API /play failed:",
+            e?.message || e,
+            `guild=${guildId}`,
+            `vc=${voiceChannelId}`,
+          );
           return send(res, 404, {
             error: e.message || "No results found for query",
           });

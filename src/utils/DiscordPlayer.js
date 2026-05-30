@@ -222,9 +222,18 @@ async function playNextLavalink(queue) {
 async function play(interaction, query, voiceChannel, client, fallbackQuery) {
   const watchdog = getWatchdog(client);
   const finalQuery = await resolveSpotifyQuery(query);
-  const discordPlayerQuery = fallbackQuery ? fallbackQuery : finalQuery;
+  const shouldUseFallback =
+    typeof fallbackQuery === "string" &&
+    fallbackQuery.trim().length > 0 &&
+    !String(finalQuery).startsWith("http");
+  const discordPlayerQuery = shouldUseFallback ? fallbackQuery : finalQuery;
   const guildId = voiceChannel.guild.id;
   const queueKey = getQueueKey(client, guildId);
+  const requesterId = interaction?.user?.id || "unknown";
+  const fallbackSuffix = shouldUseFallback ? ` fallback=${fallbackQuery}` : "";
+  log.info(
+    `Play request: guild=${guildId} vc=${voiceChannel.id} requester=${requesterId} query=${finalQuery}${fallbackSuffix}`,
+  );
 
   /**
    * Tears down any Lavalink voice connection and plays via Discord-Player instead.
@@ -265,6 +274,7 @@ async function play(interaction, query, voiceChannel, client, fallbackQuery) {
       !isUsingDiscordPlayer(client, guildId);
 
     if (lavalinkViable) {
+      log.info(`Using Lavalink (guild ${guildId})`);
       try {
         return await handleLavalinkPlay(
           interaction,
@@ -275,11 +285,16 @@ async function play(interaction, query, voiceChannel, client, fallbackQuery) {
         );
       } catch (e) {
         log.warn(
-          `Lavalink play failed: ${e.message}. Falling back to Discord-Player.`,
+          "Lavalink play failed:",
+          e?.message || e,
+          "Falling back to Discord-Player.",
         );
         return fallbackToDiscordPlayer();
       }
     }
+    log.info(
+      `Using Discord-Player fallback (guild ${guildId}, reason=lavalink_unavailable_or_dp_active)`,
+    );
     return fallbackToDiscordPlayer();
   });
 }
@@ -382,6 +397,7 @@ async function handleLavalinkPlay(
   }
 
   const { node, searchResult, tracksToAdd } = resolved;
+  log.info(`Lavalink resolved: node=${node.name} tracks=${tracksToAdd.length}`);
 
   tracksToAdd.forEach((t) => (t.requestedBy = interaction.user));
 
@@ -440,10 +456,6 @@ async function handleLavalinkPlay(
           if (typeof watchdog.clearPreferredNode === "function") {
             watchdog.clearPreferredNode(voiceChannel.guild.id);
           }
-          await swallow(
-            watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
-            "Leave voice channel after queue end",
-          );
         } else {
           await updateLavalinkPanel(voiceChannel.guild.id, client);
         }
@@ -583,12 +595,16 @@ async function handleDiscordPlayerPlay(
       metadata: {
         channel: interaction.channel,
       },
-      leaveOnEmpty: true,
+      leaveOnEmpty: false,
       leaveOnEmptyCooldown: 300000,
       leaveOnEnd: false,
       leaveOnStop: false,
     },
   });
+
+  log.info(
+    `Discord-Player resolved: guild=${voiceChannel.guild.id} track=${track?.title || "Unknown"}`,
+  );
 
   return {
     isPlaylist: result.hasPlaylist(),
@@ -780,11 +796,19 @@ async function stop(guildId, client) {
   const lq = getLavalinkQueue(client, guildId);
   if (lq) {
     lq.tracks = [];
-    await lq.player.stopTrack();
+    lq.history = [];
+    lq.loopMode = 0;
+    lq.paused = false;
+    lq.current = null;
+    await swallow(lq.player.stopTrack(), "Stop Lavalink track");
     return;
   }
   const dp = getDiscordPlayerQueue(client, guildId);
-  if (dp) dp.delete();
+  if (dp) {
+    dp.tracks.clear();
+    dp.setRepeatMode(0);
+    await swallow(Promise.resolve(dp.node.stop()), "Stop Discord-Player node");
+  }
 }
 
 /**

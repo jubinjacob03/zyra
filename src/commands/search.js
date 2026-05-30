@@ -125,10 +125,10 @@ module.exports = {
               metadata: {
                 channel: interaction.channel,
               },
-              leaveOnEmpty: true,
+              leaveOnEmpty: false,
               leaveOnEmptyCooldown: 300000,
-              leaveOnEnd: true,
-              leaveOnStop: true,
+              leaveOnEnd: false,
+              leaveOnStop: false,
             },
           });
 

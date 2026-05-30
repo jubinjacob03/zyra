@@ -12,9 +12,7 @@ const util = require("util");
  */
 
 const REDACTION_PATTERNS = [
-  // Discord bot token: base64 id . crc . hmac
   /\b[A-Za-z0-9_-]{23,28}\.[A-Za-z0-9_-]{6,7}\.[A-Za-z0-9_-]{27,}\b/g,
-  // Bearer / generic API key headers
   /(Bearer\s+)[A-Za-z0-9._-]{8,}/gi,
 ];
 

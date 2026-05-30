@@ -65,12 +65,10 @@ const lavalinkPanelLocks = new Map();
 function serialize(registry, key, fn) {
   const pending = registry.get(key) || Promise.resolve();
   const next = pending.then(fn, fn);
-  registry.set(
-    key,
-    next.finally(() => {
-      if (registry.get(key) === next) registry.delete(key);
-    }),
-  );
+  const tail = next.finally(() => {
+    if (registry.get(key) === tail) registry.delete(key);
+  });
+  registry.set(key, tail);
   return next;
 }
 
@@ -451,8 +449,6 @@ async function handleLavalinkPlay(
         }
       };
 
-      // Lavalink v4 end reasons are lowercase; "replaced" (playTrack mid-playback)
-      // must not advance the queue, every other reason should.
       p.on("end", async (payload) => {
         const reason = String(payload?.reason || "").toLowerCase();
         if (reason === "replaced") return;
@@ -467,7 +463,6 @@ async function handleLavalinkPlay(
         );
       });
 
-      // A stuck track emits no "end" event, so force-stop it to avoid hanging the queue.
       p.on("stuck", async (payload) => {
         log.warn(
           `Track stuck in guild ${voiceChannel.guild.id} (threshold ${
@@ -484,14 +479,12 @@ async function handleLavalinkPlay(
           if (onlineNodes.length > 0) {
             try {
               client.isRecoveringNode = true;
-              // Re-queue the interrupted track so recovery resumes it rather than skipping.
               q.current = null;
               if (interrupted) q.tracks.unshift(interrupted);
               const newNode = onlineNodes[0];
               if (typeof watchdog.setPreferredNode === "function") {
                 watchdog.setPreferredNode(voiceChannel.guild.id, newNode.name);
               }
-              // joinVoiceChannel throws if a stale connection lingers, so clear it first.
               if (watchdog.shoukaku.connections.has(voiceChannel.guild.id)) {
                 await swallow(
                   watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
@@ -634,7 +627,6 @@ async function updateLavalinkPanel(guildId, client) {
   }
 
   await withPanelLock(getQueueKey(client, guildId), async () => {
-    // Re-read inside the lock: state may have changed while awaiting a prior render.
     const liveQueue = lavalinkQueues.get(getQueueKey(client, guildId));
     if (!liveQueue || !liveQueue.current) return;
 

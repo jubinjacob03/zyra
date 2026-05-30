@@ -1,6 +1,10 @@
 require("dotenv").config();
 
-// SECURITY: TLS validation stays on by default; ALLOW_INSECURE_TLS=1 disables it process-wide (MITM risk).
+/**
+ * TLS certificate validation is enforced by default. Setting ALLOW_INSECURE_TLS=1
+ * disables it for the entire process, which exposes all outbound HTTPS to
+ * man-in-the-middle attacks; it exists only as a deliberate escape hatch.
+ */
 if (process.env.ALLOW_INSECURE_TLS === "1") {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
@@ -99,12 +103,15 @@ process.on("uncaughtException", (error) => {
   log.error("Uncaught exception:", error);
 });
 
+const { musicBotCacheConfig } = require("./utils/clientCache");
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
   ],
+  ...musicBotCacheConfig(),
 });
 
 client.commands = new Collection();
@@ -617,7 +624,7 @@ async function updateMusicController(interaction, queue) {
   } catch (error) {
     if (error.code === 10008) {
       log.debug("Message was deleted - cannot update music controller");
-      client.musicPanels.delete(queue.guild.id);
+      queue.guild.client.musicPanels.delete(queue.guild.id);
     } else if (error.code === 10062) {
       log.debug("Interaction expired - cannot update music controller");
     } else {
@@ -689,7 +696,6 @@ client.on(Events.GuildDelete, (guild) => {
   );
 });
 
-// Discord clears VC status server-side when a channel empties; re-assert it when a user rejoins.
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   if (oldState.member?.user?.id === client.user?.id) return;
   const guildId = newState.guild?.id;

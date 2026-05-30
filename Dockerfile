@@ -24,4 +24,4 @@ EXPOSE 8000 8001 8002 8003
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["node", "--max-old-space-size=512", "--expose-gc", "src/index.js"]
+CMD ["node", "--expose-gc", "src/index.js"]

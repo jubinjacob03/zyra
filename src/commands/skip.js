@@ -29,7 +29,9 @@ module.exports = {
 
     try {
       await queue.node.skip();
-      await interaction.reply({ ...successEmbed(`Skipped **${song.name}**`) });
+      await interaction.reply({
+        ...successEmbed(`Skipped **${song?.title || "the current track"}**`),
+      });
     } catch (error) {
       await interaction.reply({ ...errorEmbed("No more songs in the queue.") });
     }

@@ -12,31 +12,25 @@ services:
     environment:
       - NODE_ENV=production
       - TZ=UTC
-      # Optimize V8 garbage collection for 1GB RAM VPS
-      # 512MB gives Node.js enough room for audio buffering while leaving RAM for the OS
-      - NODE_OPTIONS=--max-old-space-size=512
+      - NODE_OPTIONS=--max-old-space-size=440
     ports:
       - "8000:8000"
       - "8001:8001"
       - "8002:8002"
       - "8003:8003"
-    # Resource limits to prevent container from crashing the host
     deploy:
       resources:
         limits:
-          memory: 800M
+          memory: 560M
         reservations:
           memory: 256M
-    # Health check
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    # Network mode
     network_mode: bridge
-    # Logging
     logging:
       driver: "json-file"
       options:

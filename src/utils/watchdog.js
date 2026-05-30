@@ -46,7 +46,7 @@ class Watchdog {
       config.lavalinkNodes || [],
       {
         moveOnDisconnect: false,
-        resumable: false,
+        resume: false,
         reconnectTries: 2,
         restTimeout: 10000,
         nodeResolver,

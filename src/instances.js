@@ -17,11 +17,11 @@ const {
   SpotifyExtractor,
   SoundCloudExtractor,
 } = require("@discord-player/extractor");
-const { resolveSpotifyQuery } = require("./utils/spotify");
 const { initEmojis } = require("./utils/customEmoji");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
 const { createLogger } = require("./utils/logger");
 const { swallow } = require("./utils/resilience");
+const { musicBotCacheConfig } = require("./utils/clientCache");
 
 const log = createLogger("instance");
 
@@ -169,6 +169,7 @@ function startInstance(config, instanceIndex) {
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
     ],
+    ...musicBotCacheConfig(),
   });
 
   client.commands = new Collection();
@@ -363,10 +364,13 @@ function startInstance(config, instanceIndex) {
      * @function forceJoinVC
      * @returns {Promise<void>}
      */
+    let rejoinInProgress = false;
     const forceJoinVC = async () => {
       if (client.isFallingBack) return;
       if (client.player?.nodes?.has(GUILD_ID)) return;
+      if (rejoinInProgress) return;
 
+      rejoinInProgress = true;
       try {
         const watchdog = getWatchdog(client);
         if (watchdog && watchdog.shoukaku && watchdog.isNodeAvailable()) {
@@ -382,6 +386,8 @@ function startInstance(config, instanceIndex) {
         }
       } catch (e) {
         log.error("Failed to force join VC via Shoukaku:", e?.message || e);
+      } finally {
+        rejoinInProgress = false;
       }
     };
 
@@ -454,7 +460,6 @@ function startInstance(config, instanceIndex) {
         return;
       }
 
-      // Discord clears VC status server-side when a channel empties; re-assert on rejoin.
       const joinedBotChannel =
         newState.channelId === INSTANCE_VOICE_CHANNEL_ID &&
         oldState.channelId !== INSTANCE_VOICE_CHANNEL_ID;
@@ -488,7 +493,6 @@ function startInstance(config, instanceIndex) {
           TextInputStyle,
           ActionRowBuilder,
         } = require("discord.js");
-        const { e } = require("./utils/customEmoji");
 
         const modal = new ModalBuilder()
           .setCustomId("song_input_modal")
@@ -504,7 +508,13 @@ function startInstance(config, instanceIndex) {
         const row = new ActionRowBuilder().addComponents(songInput);
         modal.addComponents(row);
 
-        await interaction.showModal(modal);
+        try {
+          await interaction.showModal(modal);
+        } catch (err) {
+          if (err.code !== 10062) {
+            log.warn("Failed to open play modal:", err?.message || err);
+          }
+        }
         return;
       }
 
@@ -526,44 +536,29 @@ function startInstance(config, instanceIndex) {
         return interaction.reply(payload);
       }
 
-      await interaction.deferReply({ flags: 64 });
+      try {
+        await interaction.deferReply({ flags: 64 });
+      } catch (err) {
+        if (err.code !== 10062) {
+          log.warn("Failed to defer modal reply:", err?.message || err);
+        }
+        return;
+      }
 
       try {
         log.info(`Modal search for: "${query}"`);
 
-        const { QueryType } = require("discord-player");
-
-        const finalQuery = await resolveSpotifyQuery(query);
-        const searchEngine = QueryType.AUTO;
-
-        const result = await client.player.search(finalQuery, {
-          requestedBy: interaction.user,
-          searchEngine: searchEngine,
-        });
-
-        if (!result || result.isEmpty()) {
-          const { errorEmbed } = require("./utils/embed");
-          return interaction.editReply(
-            errorEmbed("No results found for your query."),
-          );
-        }
-
-        await client.player.play(voiceChannel, result, {
-          nodeOptions: {
-            metadata: {
-              channel: interaction.channel,
-            },
-            leaveOnEmpty: false,
-            leaveOnEnd: false,
-            leaveOnStop: false,
-          },
-        });
+        const DiscordPlayer = require("./utils/DiscordPlayer");
+        const { isPlaylist, count } = await DiscordPlayer.play(
+          interaction,
+          query,
+          voiceChannel,
+          client,
+        );
 
         const { successEmbed } = require("./utils/embed");
-        if (result.hasPlaylist()) {
-          await interaction.editReply(
-            successEmbed(`Added ${result.playlist.tracks.length} songs`),
-          );
+        if (isPlaylist) {
+          await interaction.editReply(successEmbed(`Added ${count} songs`));
         } else {
           await interaction.editReply(successEmbed("Added to queue"));
         }

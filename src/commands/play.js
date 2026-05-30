@@ -5,7 +5,9 @@ const {
   MessageFlags,
 } = require("discord.js");
 const { e } = require("../utils/customEmoji");
-const { resolveSpotifyQuery } = require("../utils/spotify");
+const { createLogger } = require("../utils/logger");
+
+const log = createLogger("play");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,7 +23,7 @@ module.exports = {
   async execute(interaction, client) {
     const query = interaction.options.getString("query");
     const member = interaction.member;
-    const voiceChannel = member.voice.channel;
+    const voiceChannel = member?.voice?.channel;
 
     if (!voiceChannel) {
       const container = new ContainerBuilder().setAccentColor(0xff4444);
@@ -55,9 +57,7 @@ module.exports = {
     }
 
     try {
-      console.log(`🔍 Starting search for: "${query}"`);
-
-      const { QueryType } = require("discord-player");
+      log.info(`Starting search for: "${query}"`);
 
       const DiscordPlayer = require("../utils/DiscordPlayer");
 
@@ -96,7 +96,7 @@ module.exports = {
         });
       }
     } catch (error) {
-      console.error("Play error:", error);
+      log.error("Play error:", error?.message || error);
 
       const container = new ContainerBuilder().setAccentColor(0xe74c3c);
       container.addTextDisplayComponents(

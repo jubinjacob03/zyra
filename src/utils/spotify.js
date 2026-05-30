@@ -1,3 +1,6 @@
+const { createLogger } = require("./logger");
+const log = createLogger("spotify");
+
 const axios = require("axios");
 
 /**
@@ -39,7 +42,7 @@ async function resolveSpotifyQuery(query) {
       return tracks[0].external_urls.spotify;
     }
   } catch (e) {
-    console.error("Spotify API resolution error:", e.message);
+    log.error("Spotify API resolution error:", e.message);
   }
 
   return query;

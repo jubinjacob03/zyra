@@ -1,4 +1,21 @@
 const http = require("node:http");
+const crypto = require("node:crypto");
+const { createLogger } = require("./utils/logger");
+
+const log = createLogger("api");
+
+/**
+ * Compares two strings in constant time to avoid leaking length/content via timing.
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
 
 /**
  * Attaches the Music API server to the Discord client.
@@ -11,6 +28,15 @@ const http = require("node:http");
 module.exports = function attachMusicApi(client, customPort = null) {
   const port = customPort || parseInt(process.env.MUSIC_API_PORT) || 8000;
   const apiKey = process.env.MUSIC_API_KEY;
+  const allowedOrigin = process.env.MUSIC_API_ALLOWED_ORIGIN || "*";
+
+  const host = process.env.MUSIC_API_HOST || (apiKey ? "0.0.0.0" : "127.0.0.1");
+  if (!apiKey) {
+    log.warn(
+      "MUSIC_API_KEY is not set — API authentication is disabled and the server " +
+        "will bind to 127.0.0.1 only. Set MUSIC_API_KEY to expose it safely.",
+    );
+  }
 
   const send = (res, status, data) => {
     res.writeHead(status, {
@@ -34,7 +60,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
     });
 
   const server = http.createServer(async (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader(
       "Access-Control-Allow-Headers",
@@ -51,8 +77,8 @@ module.exports = function attachMusicApi(client, customPort = null) {
     const path = url.pathname;
 
     if (apiKey) {
-      const auth = req.headers.authorization;
-      if (!auth || auth !== `Bearer ${apiKey}`) {
+      const auth = req.headers.authorization || "";
+      if (!safeEqual(auth, `Bearer ${apiKey}`)) {
         return send(res, 401, { error: "Unauthorized" });
       }
     }
@@ -191,11 +217,13 @@ module.exports = function attachMusicApi(client, customPort = null) {
                 const lq = DiscordPlayer.lavalinkQueues.get(
                   DiscordPlayer.getQueueKey(client, guildId),
                 );
+                if (!lq) return send(res, 404, { error: "Nothing is playing" });
                 if (action === "toggle") lq.paused = !lq.paused;
                 else lq.paused = action === "pause";
                 await lq.player.setPaused(lq.paused);
               } else {
                 const q = client.player.nodes.get(guildId);
+                if (!q) return send(res, 404, { error: "Nothing is playing" });
                 if (action === "toggle")
                   q.node.isPaused() ? q.node.resume() : q.node.pause();
                 else action === "pause" ? q.node.pause() : q.node.resume();
@@ -231,11 +259,13 @@ module.exports = function attachMusicApi(client, customPort = null) {
                 const lq = DiscordPlayer.lavalinkQueues.get(
                   DiscordPlayer.getQueueKey(client, guildId),
                 );
+                if (!lq) return send(res, 404, { error: "Nothing is playing" });
                 if (idx < 0 || idx >= lq.tracks.length)
                   return send(res, 400, { error: "Invalid queue position" });
                 removedTitle = lq.tracks.splice(idx, 1)[0].info.title;
               } else {
                 const q = client.player.nodes.get(guildId);
+                if (!q) return send(res, 404, { error: "Nothing is playing" });
                 const removed = q.tracks.removeOne(idx);
                 if (!removed)
                   return send(res, 400, { error: "Invalid queue position" });
@@ -449,15 +479,15 @@ module.exports = function attachMusicApi(client, customPort = null) {
 
           return send(res, 200, { results });
         } catch (error) {
-          console.error("[Search Error]", error);
+          log.error("Search error:", error?.message || error);
           return send(res, 200, { results: [], error: "Search failed" });
         }
       }
 
       return send(res, 404, { error: "Not found" });
     } catch (err) {
-      console.error("[MusicAPI Error]", err.message);
-      return send(res, 500, { error: err.message });
+      log.error("Unhandled API error:", err?.message || err);
+      return send(res, 500, { error: "Internal server error" });
     }
   });
 
@@ -465,16 +495,14 @@ module.exports = function attachMusicApi(client, customPort = null) {
   server.headersTimeout = 66000;
 
   server
-    .listen(port, "0.0.0.0", () => {
-      console.log(`🎵 Remani Music API listening on port ${port}`);
+    .listen(port, host, () => {
+      log.info(`Remani Music API listening on ${host}:${port}`);
     })
     .on("error", (err) => {
       if (err.code === "EADDRINUSE") {
-        console.error(
-          `❌ Port ${port} is already in use. API server could not start.`,
-        );
+        log.error(`Port ${port} is already in use. API server could not start.`);
       } else {
-        console.error(`❌ API server error:`, err);
+        log.error("API server error:", err?.message || err);
       }
     });
 

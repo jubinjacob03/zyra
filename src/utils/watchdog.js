@@ -1,5 +1,11 @@
 const { Shoukaku, Connectors } = require("shoukaku");
 const config = require("../../config.json");
+const { createLogger } = require("./logger");
+
+const log = createLogger("watchdog");
+
+/** How often node ping/stats metrics are refreshed. */
+const METRICS_INTERVAL_MS = 30_000;
 
 /**
  * @typedef {Object} NodeState
@@ -56,41 +62,36 @@ class Watchdog {
   _initEvents() {
     this.shoukaku.on("ready", (name) => {
       this.nodeStates[name] = { status: "ONLINE", ping: 0, stats: {} };
-      console.log(`🐛 Shoukaku Debug [Lavalink]: [Node] -> [Ready] : ${name}`);
+      log.info(`Lavalink node ready: ${name}`);
     });
 
     this.shoukaku.on("error", (name, error) => {
       this.nodeStates[name] = { status: "ERROR", ping: -1, stats: {} };
-      console.error(
-        `🐛 Shoukaku Debug [Lavalink]: [Node] -> [Error] : ${name} | ${error.message}`,
-      );
+      log.error(`Lavalink node error: ${name} | ${error.message}`);
     });
 
-    this.shoukaku.on("close", (name, code, reason) => {
+    this.shoukaku.on("close", (name, code) => {
       this.nodeStates[name] = { status: "CLOSED", ping: -1, stats: {} };
-      console.log(
-        `🐛 Shoukaku Debug [Lavalink]: [Node] -> [Closed] : ${name} | Code: ${code}`,
-      );
+      log.warn(`Lavalink node closed: ${name} | Code: ${code}`);
     });
 
-    this.shoukaku.on("disconnect", (name, players, moved) => {
+    this.shoukaku.on("disconnect", (name) => {
       this.nodeStates[name] = { status: "DISCONNECTED", ping: -1, stats: {} };
-      console.log(
-        `🐛 Shoukaku Debug [Lavalink]: [Node] -> [Disconnected] : ${name}`,
-      );
+      log.warn(`Lavalink node disconnected: ${name}`);
     });
 
     this.shoukaku.on("debug", (name, info) => {
       if (info.includes("State Update Received")) {
-        console.log(
-          `🐛 Shoukaku Debug [Lavalink]: [Voice] <- [Discord] : ${info}`,
-        );
+        log.debug(`Lavalink voice state update: ${info}`);
       }
     });
 
-    setInterval(() => {
+    this.metricsInterval = setInterval(() => {
       this._updateMetrics();
-    }, 30000);
+    }, METRICS_INTERVAL_MS);
+    if (typeof this.metricsInterval.unref === "function") {
+      this.metricsInterval.unref();
+    }
   }
 
   _updateMetrics() {

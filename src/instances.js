@@ -20,6 +20,10 @@ const {
 const { resolveSpotifyQuery } = require("./utils/spotify");
 const { initEmojis } = require("./utils/customEmoji");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
+const { createLogger } = require("./utils/logger");
+const { swallow } = require("./utils/resilience");
+
+const log = createLogger("instance");
 
 let handleButtonInteraction;
 let updateMusicController;
@@ -46,6 +50,13 @@ const idlePhrases = [
 
 const pickIdlePhrase = () =>
   idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
+
+/** How often the voice-connection watchdog re-checks the instance's channel. */
+const VC_WATCHDOG_INTERVAL_MS = 15_000;
+/** How often, while idle, the instance refreshes its presence/status. */
+const IDLE_REFRESH_INTERVAL_MS = 120_000;
+/** Delay before re-joining after an unexpected voice-state change. */
+const REJOIN_DELAY_MS = 1_000;
 
 const setPresenceActivity = (client, trackOrText) => {
   if (!client?.user) return;
@@ -88,24 +99,24 @@ const setVoiceChannelStatus = async (client, channel, status) => {
       body: { status: status ? status.slice(0, 500) : "" },
     });
   } catch (e) {
-    console.error("Failed to set voice status:", e.message);
+    log.debug("Failed to set voice status:", e.message);
   }
 };
 
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
     if (reason.code === 10008 || reason.code === 10062) {
-      console.log(
+      log.info(
         `Discord API: ${reason.code === 10008 ? "Message deleted" : "Interaction expired"}`,
       );
       return;
     }
   }
-  console.error("Unhandled rejection:", reason);
+  log.error("Unhandled rejection:", reason);
 });
 
 process.on("uncaughtException", (error) => {
-  console.error("Uncaught exception:", error);
+  log.error("Uncaught exception:", error);
 });
 
 /**
@@ -146,12 +157,10 @@ function startInstance(config, instanceIndex) {
     );
   }
 
-  console.log(`🎵 Starting instance: ${INSTANCE_NAME}`);
-  console.log(`   Guild: ${GUILD_ID}`);
-  console.log(
-    `   Voice Channel (with built-in chat): ${INSTANCE_VOICE_CHANNEL_ID}`,
-  );
-  console.log(`   API Port: ${INSTANCE_API_PORT}`);
+  log.info(`Starting instance: ${INSTANCE_NAME}`);
+  log.info(`  Guild: ${GUILD_ID}`);
+  log.info(`  Voice Channel (with built-in chat): ${INSTANCE_VOICE_CHANNEL_ID}`);
+  log.info(`  API Port: ${INSTANCE_API_PORT}`);
 
   const client = new Client({
     intents: [
@@ -167,10 +176,15 @@ function startInstance(config, instanceIndex) {
   client.INSTANCE_NAME = INSTANCE_NAME;
   client.INSTANCE_VOICE_CHANNEL_ID = INSTANCE_VOICE_CHANNEL_ID;
 
+  /** @type {NodeJS.Timeout|null} */
+  let vcWatchdogInterval = null;
+  /** @type {NodeJS.Timeout|null} */
+  let idleRefreshInterval = null;
+
   const { initWatchdog } = require("./utils/watchdog");
   client.watchdog = initWatchdog(client);
 
-  client.on("error", console.error);
+  client.on("error", (err) => log.error("Client error:", err));
 
   /**
    * Initialize Discord Player with optimized settings for low-memory environments.
@@ -197,119 +211,121 @@ function startInstance(config, instanceIndex) {
         DefaultExtractors.filter((e) => e.name !== "SpotifyExtractor"),
       );
     })
-    .catch(console.error);
+    .catch((err) => log.error("Extractor registration failed:", err));
   client.player = player;
 
   player.events.on("playerStart", async (queue, track) => {
-    const { createCompleteMusicController } = require("./utils/componentsV2");
-    const {
-      getControllerPanel,
-      setControllerPanel,
-    } = require("./utils/panelStore");
-    const controller = createCompleteMusicController(queue);
+    try {
+      const { createCompleteMusicController } = require("./utils/componentsV2");
+      const { getControllerPanel, setControllerPanel } =
+        require("./utils/panelStore");
+      const controller = createCompleteMusicController(queue);
 
-    const textChannel =
-      queue.metadata?.channel ||
-      client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
-    if (!textChannel) return;
+      const textChannel =
+        queue.metadata?.channel ||
+        client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
+      if (!textChannel) return;
 
-    let message = null;
-    const existingPanel = client.musicPanels.get(queue.guild.id);
+      let message = null;
+      const existingPanel = client.musicPanels.get(queue.guild.id);
+      if (existingPanel?.message) {
+        message = existingPanel.message;
+      }
 
-    if (existingPanel?.message) {
-      message = existingPanel.message;
-    }
-
-    if (!message) {
-      const storedId = getControllerPanel(textChannel.id);
-      if (storedId) {
-        try {
-          message = await textChannel.messages.fetch(storedId);
-        } catch (error) {
-          message = null;
+      if (!message) {
+        const storedId = getControllerPanel(textChannel.id);
+        if (storedId) {
+          try {
+            message = await textChannel.messages.fetch(storedId);
+          } catch (error) {
+            log.debug(`Stored panel ${storedId} not fetchable:`, error?.message);
+          }
         }
       }
-    }
 
-    if (message && typeof message.edit === "function") {
-      try {
-        await message.edit({
-          embeds: [],
-          components: controller.components,
-          flags: controller.flags,
-        });
-      } catch (error) {
-        message = await textChannel.send({
-          components: controller.components,
-          flags: controller.flags,
-        });
-      }
-    } else {
-      message = await textChannel.send({
+      const payload = {
         components: controller.components,
         flags: controller.flags,
+      };
+      if (message && typeof message.edit === "function") {
+        try {
+          await message.edit({ embeds: [], ...payload });
+        } catch (error) {
+          log.debug("Panel edit failed; resending:", error?.message);
+          message = await textChannel.send(payload);
+        }
+      } else {
+        message = await textChannel.send(payload);
+      }
+
+      if (message?.id && message?.channelId) {
+        setControllerPanel(message.channelId, message.id);
+      }
+
+      client.musicPanels.set(queue.guild.id, {
+        message,
+        song: track,
+        startTime: Date.now(),
       });
+      setPresenceActivity(client, track);
+      await setVoiceChannelStatus(
+        client,
+        queue.channel,
+        `✨ Playing - ${track.title}`,
+      );
+      log.info(`[${INSTANCE_NAME}] Now playing:`, track.title);
+    } catch (error) {
+      log.error(`[${INSTANCE_NAME}] playerStart handler failed:`, error?.message || error);
     }
-
-    if (message?.id && message?.channelId) {
-      setControllerPanel(message.channelId, message.id);
-    }
-
-    client.musicPanels.set(queue.guild.id, {
-      message,
-      song: track,
-      startTime: Date.now(),
-    });
-    setPresenceActivity(client, track);
-    await setVoiceChannelStatus(
-      client,
-      queue.channel,
-      `✨ Playing - ${track.title}`,
-    );
-    console.log(`🎵 [${INSTANCE_NAME}] Now playing:`, track.title);
   });
 
   player.events.on("emptyQueue", async (queue) => {
     if (queue.repeatMode !== 0) return;
-    console.log(`🎵 [${INSTANCE_NAME}] Queue finished`);
-    const textChannel =
-      queue.metadata?.channel ||
-      client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
-    if (textChannel) {
-      const { getControllerPanel } = require("./utils/panelStore");
-      const storedId = getControllerPanel(textChannel.id);
-      if (storedId) {
-        try {
-          const message = await textChannel.messages.fetch(storedId);
-          if (message && typeof message.edit === "function") {
-            const {
-              createIdleMusicController,
-            } = require("./utils/componentsV2");
-            const payload = createIdleMusicController(
-              "Queue finished. Add more songs!",
-              textChannel.client?.user?.username,
-            );
-            await message
-              .edit({
-                embeds: [],
-                components: payload.components,
-                flags: payload.flags,
-              })
-              .catch(() => {});
+    try {
+      log.info(`[${INSTANCE_NAME}] Queue finished`);
+      const textChannel =
+        queue.metadata?.channel ||
+        client.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
+      if (textChannel) {
+        const { getControllerPanel } = require("./utils/panelStore");
+        const storedId = getControllerPanel(textChannel.id);
+        if (storedId) {
+          try {
+            const message = await textChannel.messages.fetch(storedId);
+            if (message && typeof message.edit === "function") {
+              const { createIdleMusicController } =
+                require("./utils/componentsV2");
+              const payload = createIdleMusicController(
+                "Queue finished. Add more songs!",
+                textChannel.client?.user?.username,
+              );
+              await swallow(
+                message.edit({
+                  embeds: [],
+                  components: payload.components,
+                  flags: payload.flags,
+                }),
+                "Edit idle panel on empty queue",
+              );
+            }
+          } catch (e) {
+            log.debug(`Idle panel update skipped:`, e?.message || e);
           }
-        } catch (e) {}
+        }
       }
+      client.musicPanels.delete(queue.guild.id);
+      await applyIdleStatus(client, queue.channel);
+    } catch (error) {
+      log.error(`[${INSTANCE_NAME}] emptyQueue handler failed:`, error?.message || error);
     }
-    client.musicPanels.delete(queue.guild.id);
-    await applyIdleStatus(client, queue.channel);
   });
 
   player.events.on("error", (queue, error) => {
-    console.error(`[${INSTANCE_NAME}] Player error: ${error.message}`);
+    log.error(`[${INSTANCE_NAME}] Player error: ${error.message}`);
   });
 
   player.events.on("playerError", (queue, error) => {
-    console.error(
+    log.error(
       `[${INSTANCE_NAME}] Player error (connection/playback): ${error.message}`,
     );
   });
@@ -317,27 +333,25 @@ function startInstance(config, instanceIndex) {
   client.updateMusicController = updateMusicController;
   client.formatDuration = formatDuration;
 
-  console.log(
-    `✅ Instance configured - no slash commands, message-based control`,
-  );
+  log.info("Instance configured - no slash commands, message-based control");
 
   client.updateMusicPresence = (track) => setPresenceActivity(client, track);
   client.updateVoiceStatus = (channelId, status) =>
     setVoiceChannelStatus(client, channelId, status);
 
   client.once(Events.ClientReady, async (c) => {
-    console.log(`🤖 Instance ready as ${c.user.tag} (name: ${INSTANCE_NAME})`);
+    log.info(`Instance ready as ${c.user.tag} (name: ${INSTANCE_NAME})`);
     await initEmojis(client);
 
     const guild = client.guilds.cache.get(GUILD_ID);
     if (!guild) {
-      console.error(`❌ Guild ${GUILD_ID} not found`);
+      log.error(`Guild ${GUILD_ID} not found`);
       process.exit(1);
     }
 
     const voiceChannel = guild.channels.cache.get(INSTANCE_VOICE_CHANNEL_ID);
     if (!voiceChannel) {
-      console.error(`❌ Voice channel ${INSTANCE_VOICE_CHANNEL_ID} not found`);
+      log.error(`Voice channel ${INSTANCE_VOICE_CHANNEL_ID} not found`);
       process.exit(1);
     }
 
@@ -367,20 +381,14 @@ function startInstance(config, instanceIndex) {
           }
         }
       } catch (e) {
-        console.error("Failed to force join VC via Shoukaku:", e);
+        log.error("Failed to force join VC via Shoukaku:", e?.message || e);
       }
     };
 
     forceJoinVC();
     await applyIdleStatus(client, voiceChannel);
 
-    /**
-     * Watchdog connection monitor.
-     * Aggressively polls the guild cache every 15 seconds to ensure
-     * the instance maintains an active voice channel connection.
-     * Re-establishes the connection if dropped.
-     */
-    setInterval(() => {
+    vcWatchdogInterval = setInterval(() => {
       try {
         const currentGuild = client.guilds.cache.get(GUILD_ID);
         if (!currentGuild) return;
@@ -391,32 +399,46 @@ function startInstance(config, instanceIndex) {
           !me.voice ||
           me.voice.channelId !== INSTANCE_VOICE_CHANNEL_ID
         ) {
-          console.log(
-            `[Watchdog] 🤖 Instance ${INSTANCE_NAME} disconnected! Attempting to reconnect...`,
+          log.info(
+            `[Watchdog] Instance ${INSTANCE_NAME} disconnected; attempting to reconnect...`,
           );
           forceJoinVC();
         }
       } catch (error) {
-        console.error(`[Watchdog Error] Instance ${INSTANCE_NAME}:`, error);
+        log.error(`[Watchdog] Instance ${INSTANCE_NAME}:`, error?.message || error);
       }
-    }, 15000);
+    }, VC_WATCHDOG_INTERVAL_MS);
 
-    setInterval(() => {
+    idleRefreshInterval = setInterval(() => {
       const queue = client.player?.nodes?.cache?.get(GUILD_ID);
-      const lavalinkQueue =
-        require("./utils/DiscordPlayer").lavalinkQueues?.get(
-          `${client.user.id}_${GUILD_ID}`,
-        );
+      const lavalinkQueue = require("./utils/DiscordPlayer").lavalinkQueues?.get(
+        `${client.user.id}_${GUILD_ID}`,
+      );
       if (
         (!queue || !queue.currentTrack) &&
         (!lavalinkQueue || !lavalinkQueue.current)
       ) {
         applyIdleStatus(client, voiceChannel);
       }
-    }, 120000);
+    }, IDLE_REFRESH_INTERVAL_MS);
+
+    /**
+     * Returns the title of whatever is currently playing in this guild across both
+     * playback backends, or null if nothing is playing.
+     * @returns {string|null}
+     */
+    const currentlyPlayingTitle = () => {
+      const dp = client.player?.nodes?.cache?.get(GUILD_ID);
+      if (dp?.currentTrack) return dp.currentTrack.title;
+      const lq = require("./utils/DiscordPlayer").lavalinkQueues?.get(
+        `${client.user.id}_${GUILD_ID}`,
+      );
+      if (lq?.current) return lq.current.info?.title;
+      return null;
+    };
 
     client.on(Events.VoiceStateUpdate, (oldState, newState) => {
-      if (oldState.member.user.id === client.user.id) {
+      if (oldState.member?.user?.id === client.user.id) {
         if (
           !newState.channelId ||
           newState.channelId !== INSTANCE_VOICE_CHANNEL_ID
@@ -427,7 +449,23 @@ function startInstance(config, instanceIndex) {
             client.player?.nodes?.has(GUILD_ID)
           )
             return;
-          setTimeout(forceJoinVC, 1000);
+          setTimeout(forceJoinVC, REJOIN_DELAY_MS);
+        }
+        return;
+      }
+
+      // Discord clears VC status server-side when a channel empties; re-assert on rejoin.
+      const joinedBotChannel =
+        newState.channelId === INSTANCE_VOICE_CHANNEL_ID &&
+        oldState.channelId !== INSTANCE_VOICE_CHANNEL_ID;
+      if (joinedBotChannel) {
+        const title = currentlyPlayingTitle();
+        if (title) {
+          setVoiceChannelStatus(
+            client,
+            INSTANCE_VOICE_CHANNEL_ID,
+            `✨ Playing - ${title}`,
+          );
         }
       }
     });
@@ -435,7 +473,7 @@ function startInstance(config, instanceIndex) {
     try {
       await ensurePlayMusicPanel(voiceChannel, INSTANCE_NAME, c.user.id);
     } catch (error) {
-      console.log("Could not post play panel:", error.message || error);
+      log.warn("Could not post play panel:", error.message || error);
     }
   });
 
@@ -491,7 +529,7 @@ function startInstance(config, instanceIndex) {
       await interaction.deferReply({ flags: 64 });
 
       try {
-        console.log(`🔍 Modal search for: "${query}"`);
+        log.info(`Modal search for: "${query}"`);
 
         const { QueryType } = require("discord-player");
 
@@ -530,7 +568,7 @@ function startInstance(config, instanceIndex) {
           await interaction.editReply(successEmbed("Added to queue"));
         }
       } catch (error) {
-        console.error("Modal play error:", error);
+        log.error("Modal play error:", error?.message || error);
         const { errorEmbed } = require("./utils/embed");
         await interaction.editReply(
           errorEmbed(`${error.message || "Failed to play"}`),
@@ -545,12 +583,18 @@ function startInstance(config, instanceIndex) {
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    if (vcWatchdogInterval) clearInterval(vcWatchdogInterval);
+    if (idleRefreshInterval) clearInterval(idleRefreshInterval);
     try {
       apiServer?.close();
-    } catch {}
+    } catch (error) {
+      log.debug("API server close failed:", error?.message || error);
+    }
     try {
       client.destroy();
-    } catch {}
+    } catch (error) {
+      log.debug("Client destroy failed:", error?.message || error);
+    }
     setTimeout(() => process.exit(0), 5000);
   };
 
@@ -576,7 +620,7 @@ function startInstances({ index } = {}) {
   const instances = instanceConfig.instances || [];
 
   if (!instances.length) {
-    console.log("⚠️ No instances configured");
+    log.warn("No instances configured");
     return [];
   }
 
@@ -598,8 +642,8 @@ if (require.main === module) {
   if (arg) {
     const parsed = parseInt(arg, 10);
     if (Number.isNaN(parsed)) {
-      console.error(
-        `❌ Invalid instance index. Use: node instances.js [1-${instanceConfig.instances.length}]`,
+      log.error(
+        `Invalid instance index. Use: node instances.js [1-${instanceConfig.instances.length}]`,
       );
       process.exit(1);
     }
@@ -609,7 +653,7 @@ if (require.main === module) {
   try {
     startInstances({ index });
   } catch (error) {
-    console.error(error.message || error);
+    log.error(error.message || error);
     process.exit(1);
   }
 }

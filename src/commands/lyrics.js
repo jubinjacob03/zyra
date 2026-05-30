@@ -1,3 +1,6 @@
+const { createLogger } = require("../utils/logger");
+const log = createLogger("lyrics");
+
 const {
   SlashCommandBuilder,
   ContainerBuilder,
@@ -106,7 +109,7 @@ module.exports = {
         flags: MessageFlags.IsComponentsV2,
       });
     } catch (error) {
-      console.error("Lyrics error:", error);
+      log.error("Lyrics error:", error);
       const container = new ContainerBuilder().setAccentColor(0xff4444);
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(

@@ -3,6 +3,32 @@ const { resolveSpotifyQuery } = require("./spotify");
 const { QueryType } = require("discord-player");
 const { createCompleteMusicController } = require("./componentsV2");
 const { setControllerPanel } = require("./panelStore");
+const { createLogger } = require("./logger");
+const { withRetry, swallow, sleep } = require("./resilience");
+
+const log = createLogger("DiscordPlayer");
+
+/**
+ * Upper bound on tracks retained in a single Lavalink queue. Protects against
+ * unbounded memory growth from very large playlists or repeated API calls.
+ * @type {number}
+ */
+const MAX_QUEUE_SIZE = 1000;
+
+/** Backoff used when re-joining a voice channel after a Lavalink node drop. */
+const NODE_RECOVERY_RETRY = { retries: 2, baseDelayMs: 500, maxDelayMs: 3000 };
+
+/**
+ * Settle window (ms) during which the voice auto-rejoin handler must stand down
+ * after an intentional transition (fallback or node recovery), so it does not
+ * race the deliberate leave/join sequence. See `client.isFallingBack` usage.
+ * @type {number}
+ */
+const TRANSITION_SETTLE_MS = 5000;
+const NODE_RECOVERY_SETTLE_MS = 3000;
+
+/** Pause after leaving a Lavalink voice channel before the fallback rejoins. */
+const FALLBACK_LEAVE_SETTLE_MS = 1500;
 
 /**
  * @typedef {Object} LavalinkTrack
@@ -25,25 +51,48 @@ const { setControllerPanel } = require("./panelStore");
 /** @type {Map<string, LavalinkQueue>} */
 const lavalinkQueues = new Map();
 const lavalinkPlayLocks = new Map();
+const lavalinkPanelLocks = new Map();
 
 /**
- * Synchronizes Lavalink queue creation across concurrent requests.
+ * Serializes async work per key by chaining onto a per-key promise. Concurrent
+ * callers for the same key run strictly one after another; different keys run
+ * independently. The chain entry is cleared once it fully drains.
+ * @param {Map<string, Promise<any>>} registry
+ * @param {string} key
+ * @param {() => Promise<any>} fn
+ * @returns {Promise<any>}
+ */
+function serialize(registry, key, fn) {
+  const pending = registry.get(key) || Promise.resolve();
+  const next = pending.then(fn, fn);
+  registry.set(
+    key,
+    next.finally(() => {
+      if (registry.get(key) === next) registry.delete(key);
+    }),
+  );
+  return next;
+}
+
+/**
+ * Synchronizes Lavalink queue creation/playback across concurrent requests.
  * @param {string} key
  * @param {Function} fn
  * @returns {Promise<any>}
  */
 function withLavalinkLock(key, fn) {
-  const pending = lavalinkPlayLocks.get(key) || Promise.resolve();
-  const next = pending.then(fn, fn);
-  lavalinkPlayLocks.set(
-    key,
-    next.finally(() => {
-      if (lavalinkPlayLocks.get(key) === next) {
-        lavalinkPlayLocks.delete(key);
-      }
-    }),
-  );
-  return next;
+  return serialize(lavalinkPlayLocks, key, fn);
+}
+
+/**
+ * Serializes panel renders for a guild so concurrent updates (track progression,
+ * website control actions, manual refresh) cannot race and post duplicate panels.
+ * @param {string} key
+ * @param {() => Promise<any>} fn
+ * @returns {Promise<any>}
+ */
+function withPanelLock(key, fn) {
+  return serialize(lavalinkPanelLocks, key, fn);
 }
 
 /**
@@ -89,6 +138,52 @@ function isUsingDiscordPlayer(client, guildId) {
 }
 
 /**
+ * Returns the active Lavalink queue for a guild, or null. Guards against the race
+ * where a queue is deleted by cleanup between an `isUsingLavalink` check and use.
+ * @param {import('discord.js').Client} client
+ * @param {string} guildId
+ * @returns {LavalinkQueue|null}
+ */
+function getLavalinkQueue(client, guildId) {
+  return lavalinkQueues.get(getQueueKey(client, guildId)) || null;
+}
+
+/**
+ * Returns the active Discord-Player queue node for a guild, or null. Guards against
+ * the same delete-between-check-and-use race as {@link getLavalinkQueue}.
+ * @param {import('discord.js').Client} client
+ * @param {string} guildId
+ * @returns {import('discord-player').GuildQueue|null}
+ */
+function getDiscordPlayerQueue(client, guildId) {
+  return client.player.nodes.get(guildId) || null;
+}
+
+/**
+ * Sets a voice channel's status line, preferring the client helper and falling back
+ * to a raw REST call. Status updates are cosmetic, so failures are logged at debug
+ * level rather than propagated.
+ * @param {import('discord.js').Client} client
+ * @param {string} channelId
+ * @param {string} status
+ * @returns {Promise<void>}
+ */
+async function setVoiceStatus(client, channelId, status) {
+  if (!channelId) return;
+  try {
+    if (typeof client.updateVoiceStatus === "function") {
+      await client.updateVoiceStatus(channelId, status);
+    } else {
+      await client.rest.put(`/channels/${channelId}/voice-status`, {
+        body: { status: status.slice(0, 500) },
+      });
+    }
+  } catch (e) {
+    log.debug(`Voice status update failed for ${channelId}:`, e?.message || e);
+  }
+}
+
+/**
  * Advances the given Lavalink queue to the next track.
  * Handles loop modes and history propagation.
  * @param {LavalinkQueue} queue
@@ -130,14 +225,48 @@ async function play(interaction, query, voiceChannel, client, fallbackQuery) {
   const watchdog = getWatchdog(client);
   const finalQuery = await resolveSpotifyQuery(query);
   const discordPlayerQuery = fallbackQuery ? fallbackQuery : finalQuery;
-  const queueKey = getQueueKey(client, voiceChannel.guild.id);
+  const guildId = voiceChannel.guild.id;
+  const queueKey = getQueueKey(client, guildId);
+
+  /**
+   * Tears down any Lavalink voice connection and plays via Discord-Player instead.
+   * `isFallingBack` is held through a settle window so the voice auto-rejoin handler
+   * does not race this deliberate leave/join sequence.
+   * @returns {Promise<Object>}
+   */
+  const fallbackToDiscordPlayer = async () => {
+    if (watchdog && watchdog.shoukaku.players.has(guildId)) {
+      client.isFallingBack = true;
+      await swallow(
+        watchdog.shoukaku.leaveVoiceChannel(guildId),
+        "Leave Lavalink channel before fallback",
+      );
+      await sleep(FALLBACK_LEAVE_SETTLE_MS);
+    }
+    if (watchdog && typeof watchdog.clearPreferredNode === "function") {
+      watchdog.clearPreferredNode(guildId);
+    }
+    try {
+      return await handleDiscordPlayerPlay(
+        interaction,
+        discordPlayerQuery,
+        voiceChannel,
+        client,
+      );
+    } finally {
+      setTimeout(() => {
+        client.isFallingBack = false;
+      }, TRANSITION_SETTLE_MS);
+    }
+  };
 
   return withLavalinkLock(queueKey, async () => {
-    if (
+    const lavalinkViable =
       watchdog &&
       watchdog.isNodeAvailable() &&
-      !isUsingDiscordPlayer(client, voiceChannel.guild.id)
-    ) {
+      !isUsingDiscordPlayer(client, guildId);
+
+    if (lavalinkViable) {
       try {
         return await handleLavalinkPlay(
           interaction,
@@ -147,54 +276,13 @@ async function play(interaction, query, voiceChannel, client, fallbackQuery) {
           watchdog,
         );
       } catch (e) {
-        console.warn(
-          `[Lavalink] Failed to play: ${e.message}. Falling back to DiscordPlayer.`,
+        log.warn(
+          `Lavalink play failed: ${e.message}. Falling back to Discord-Player.`,
         );
-        if (watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
-          client.isFallingBack = true;
-          await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-        }
-        if (typeof watchdog.clearPreferredNode === "function") {
-          watchdog.clearPreferredNode(voiceChannel.guild.id);
-        }
-        try {
-          const result = await handleDiscordPlayerPlay(
-            interaction,
-            discordPlayerQuery,
-            voiceChannel,
-            client,
-          );
-          return result;
-        } finally {
-          setTimeout(() => {
-            client.isFallingBack = false;
-          }, 5000);
-        }
-      }
-    } else {
-      if (watchdog && watchdog.shoukaku.players.has(voiceChannel.guild.id)) {
-        client.isFallingBack = true;
-        await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
-      if (watchdog && typeof watchdog.clearPreferredNode === "function") {
-        watchdog.clearPreferredNode(voiceChannel.guild.id);
-      }
-      try {
-        const result = await handleDiscordPlayerPlay(
-          interaction,
-          discordPlayerQuery,
-          voiceChannel,
-          client,
-        );
-        return result;
-      } finally {
-        setTimeout(() => {
-          client.isFallingBack = false;
-        }, 5000);
+        return fallbackToDiscordPlayer();
       }
     }
+    return fallbackToDiscordPlayer();
   });
 }
 
@@ -233,7 +321,7 @@ async function handleLavalinkPlay(
       throw new Error("No results found.");
     }
 
-    let tracksToAdd = [];
+    let tracksToAdd;
     if (searchResult.loadType === "playlist") {
       tracksToAdd = searchResult.data.info.tracks;
     } else if (
@@ -267,8 +355,8 @@ async function handleLavalinkPlay(
     try {
       resolved = await resolveOnNode(preferredNode);
     } catch (e) {
-      console.warn(
-        `[Lavalink] Preferred node ${preferredNode.name} failed to resolve: ${e.message}. Trying other nodes...`,
+      log.warn(
+        `Preferred node ${preferredNode.name} failed to resolve: ${e.message}. Trying other nodes...`,
       );
     }
   }
@@ -289,7 +377,9 @@ async function handleLavalinkPlay(
       const errorDetails = error.errors
         ? error.errors.map((e) => e.message).join(" | ")
         : error.message;
-      throw new Error(`All nodes failed to resolve. (${errorDetails})`);
+      throw new Error(`All nodes failed to resolve. (${errorDetails})`, {
+        cause: error,
+      });
     }
   }
 
@@ -304,9 +394,10 @@ async function handleLavalinkPlay(
         : null;
     if (!player) {
       if (watchdog.shoukaku.connections.has(voiceChannel.guild.id)) {
-        try {
-          await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
-        } catch (e) {}
+        await swallow(
+          watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
+          "Leave stale voice channel before rejoin",
+        );
       }
       if (typeof watchdog.setPreferredNode === "function") {
         watchdog.setPreferredNode(voiceChannel.guild.id, node.name);
@@ -334,66 +425,99 @@ async function handleLavalinkPlay(
     lavalinkQueues.set(queueKey, queue);
 
     const attachPlayerListeners = (p, q) => {
-      p.on("end", async (reason) => {
-        if (reason.reason === "REPLACED") return;
+      /**
+       * Advances to the next track, or tears the session down if the queue is now
+       * empty (clear panel, reset status/presence, leave the channel).
+       * @returns {Promise<void>}
+       */
+      const progressQueue = async () => {
         await playNextLavalink(q);
         if (!q.current) {
           lavalinkQueues.delete(queueKey);
           client.musicPanels.delete(voiceChannel.guild.id);
-          if (typeof client.updateVoiceStatus === "function") {
-            await client.updateVoiceStatus(
-              voiceChannel.id,
-              "🎵 /play to start",
-            );
-          } else {
-            try {
-              await client.rest.put(
-                `/channels/${voiceChannel.id}/voice-status`,
-                {
-                  body: { status: "🎵 /play to start" },
-                },
-              );
-            } catch (e) {}
-          }
+          await setVoiceStatus(client, voiceChannel.id, "🎵 /play to start");
           if (typeof client.updateMusicPresence === "function") {
             client.updateMusicPresence(null);
           }
           if (typeof watchdog.clearPreferredNode === "function") {
             watchdog.clearPreferredNode(voiceChannel.guild.id);
           }
-          await watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id);
+          await swallow(
+            watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
+            "Leave voice channel after queue end",
+          );
         } else {
           await updateLavalinkPanel(voiceChannel.guild.id, client);
         }
+      };
+
+      // Lavalink v4 end reasons are lowercase; "replaced" (playTrack mid-playback)
+      // must not advance the queue, every other reason should.
+      p.on("end", async (payload) => {
+        const reason = String(payload?.reason || "").toLowerCase();
+        if (reason === "replaced") return;
+        await progressQueue();
+      });
+
+      p.on("exception", (payload) => {
+        log.warn(
+          `Track exception in guild ${voiceChannel.guild.id}: ${
+            payload?.exception?.message || payload?.error || "unknown"
+          }`,
+        );
+      });
+
+      // A stuck track emits no "end" event, so force-stop it to avoid hanging the queue.
+      p.on("stuck", async (payload) => {
+        log.warn(
+          `Track stuck in guild ${voiceChannel.guild.id} (threshold ${
+            payload?.thresholdMs ?? "?"
+          }ms); skipping.`,
+        );
+        await swallow(q.player.stopTrack(), "Stop stuck track");
       });
 
       p.on("closed", async () => {
-        if (q.tracks.length > 0) {
+        const interrupted = q.current;
+        if (q.tracks.length > 0 || interrupted) {
           const onlineNodes = getOnlineNodes(watchdog);
           if (onlineNodes.length > 0) {
             try {
               client.isRecoveringNode = true;
+              // Re-queue the interrupted track so recovery resumes it rather than skipping.
               q.current = null;
+              if (interrupted) q.tracks.unshift(interrupted);
               const newNode = onlineNodes[0];
               if (typeof watchdog.setPreferredNode === "function") {
                 watchdog.setPreferredNode(voiceChannel.guild.id, newNode.name);
               }
-              const newPlayer = await watchdog.shoukaku.joinVoiceChannel({
-                guildId: voiceChannel.guild.id,
-                channelId: voiceChannel.id,
-                shardId: voiceChannel.guild.shardId,
-                deaf: true,
-              });
+              // joinVoiceChannel throws if a stale connection lingers, so clear it first.
+              if (watchdog.shoukaku.connections.has(voiceChannel.guild.id)) {
+                await swallow(
+                  watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
+                  "Leave stale connection before node recovery",
+                );
+              }
+              const newPlayer = await withRetry(
+                () =>
+                  watchdog.shoukaku.joinVoiceChannel({
+                    guildId: voiceChannel.guild.id,
+                    channelId: voiceChannel.id,
+                    shardId: voiceChannel.guild.shardId,
+                    deaf: true,
+                  }),
+                NODE_RECOVERY_RETRY,
+              );
               q.player = newPlayer;
               attachPlayerListeners(newPlayer, q);
               await playNextLavalink(q);
               await updateLavalinkPanel(voiceChannel.guild.id, client);
               setTimeout(() => {
                 client.isRecoveringNode = false;
-              }, 3000);
+              }, NODE_RECOVERY_SETTLE_MS);
               return;
             } catch (e) {
-              console.error("Failed to recover node mid-queue", e);
+              log.error("Failed to recover node mid-queue:", e?.message || e);
               client.isRecoveringNode = false;
             }
           }
@@ -401,15 +525,7 @@ async function handleLavalinkPlay(
 
         lavalinkQueues.delete(queueKey);
         client.musicPanels.delete(voiceChannel.guild.id);
-        if (typeof client.updateVoiceStatus === "function") {
-          await client.updateVoiceStatus(voiceChannel.id, "🎵 /play to start");
-        } else {
-          try {
-            await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
-              body: { status: "🎵 /play to start" },
-            });
-          } catch (e) {}
-        }
+        await setVoiceStatus(client, voiceChannel.id, "🎵 /play to start");
         if (typeof client.updateMusicPresence === "function") {
           client.updateMusicPresence(null);
         }
@@ -422,19 +538,24 @@ async function handleLavalinkPlay(
     attachPlayerListeners(player, queue);
   }
 
-  queue.tracks.push(...tracksToAdd);
+  const capacity = Math.max(0, MAX_QUEUE_SIZE - queue.tracks.length);
+  const accepted = tracksToAdd.slice(0, capacity);
+  if (accepted.length < tracksToAdd.length) {
+    log.warn(
+      `Queue cap (${MAX_QUEUE_SIZE}) reached for guild ${voiceChannel.guild.id}; dropped ${tracksToAdd.length - accepted.length} track(s).`,
+    );
+  }
+  queue.tracks.push(...accepted);
 
   if (!queue.current) {
     await playNextLavalink(queue);
-    await updateLavalinkPanel(voiceChannel.guild.id, client);
-  } else {
-    await updateLavalinkPanel(voiceChannel.guild.id, client);
   }
+  await updateLavalinkPanel(voiceChannel.guild.id, client);
 
   return {
     isPlaylist: searchResult.loadType === "playlist",
-    count: tracksToAdd.length,
-    track: { title: tracksToAdd[0].info.title },
+    count: accepted.length,
+    track: { title: (accepted[0] || tracksToAdd[0]).info.title },
   };
 }
 
@@ -484,85 +605,89 @@ async function handleDiscordPlayerPlay(
 }
 
 /**
+ * Updates voice-channel status, presence, and the now-playing control panel for a
+ * Lavalink-backed guild. The panel render is serialized per guild so concurrent
+ * callers (track progression, website actions, refresh) edit one shared message
+ * instead of racing to post duplicates.
  * @param {string} guildId
  * @param {import('discord.js').Client} client
+ * @returns {Promise<void>}
  */
 async function updateLavalinkPanel(guildId, client) {
   const queue = lavalinkQueues.get(getQueueKey(client, guildId));
   if (!queue || !queue.current) return;
 
-  try {
-    const voiceChannelId =
-      queue.voiceChannelId ||
-      client.guilds.cache.get(guildId)?.members.me?.voice?.channelId ||
-      client.INSTANCE_VOICE_CHANNEL_ID;
-
-    if (voiceChannelId) {
-      if (typeof client.updateVoiceStatus === "function") {
-        await client.updateVoiceStatus(
-          voiceChannelId,
-          `✨ Playing - ${queue.current.info.title}`,
-        );
-      } else {
-        await client.rest.put(`/channels/${voiceChannelId}/voice-status`, {
-          body: {
-            status: `✨ Playing - ${queue.current.info.title}`.slice(0, 500),
-          },
-        });
-      }
-    }
-  } catch (e) {}
+  const voiceChannelId =
+    queue.voiceChannelId ||
+    client.guilds.cache.get(guildId)?.members.me?.voice?.channelId ||
+    client.INSTANCE_VOICE_CHANNEL_ID;
+  if (voiceChannelId) {
+    await setVoiceStatus(
+      client,
+      voiceChannelId,
+      `✨ Playing - ${queue.current.info.title}`,
+    );
+  }
 
   if (typeof client.updateMusicPresence === "function") {
     client.updateMusicPresence(queue.current.info);
   }
 
-  const pseudoQueue = createPseudoQueue(queue, guildId, client);
-  const controller = createCompleteMusicController(pseudoQueue);
+  await withPanelLock(getQueueKey(client, guildId), async () => {
+    // Re-read inside the lock: state may have changed while awaiting a prior render.
+    const liveQueue = lavalinkQueues.get(getQueueKey(client, guildId));
+    if (!liveQueue || !liveQueue.current) return;
 
-  let message = null;
-  const existingData = client.musicPanels.get(guildId);
+    const pseudoQueue = createPseudoQueue(liveQueue, guildId, client);
+    const controller = createCompleteMusicController(pseudoQueue);
+    if (!controller) return;
 
-  if (existingData && existingData.message) {
-    message = existingData.message;
-  } else {
-    const { getControllerPanel } = require("./panelStore");
-    const storedId = getControllerPanel(queue.textChannel.id);
-    if (storedId) {
-      try {
-        message = await queue.textChannel.messages.fetch(storedId);
-      } catch (e) {}
+    let message = null;
+    const existingData = client.musicPanels.get(guildId);
+    if (existingData && existingData.message) {
+      message = existingData.message;
+    } else {
+      const { getControllerPanel } = require("./panelStore");
+      const storedId = getControllerPanel(liveQueue.textChannel.id);
+      if (storedId) {
+        try {
+          message = await liveQueue.textChannel.messages.fetch(storedId);
+        } catch (e) {
+          log.debug(`Stored panel ${storedId} not fetchable:`, e?.message || e);
+        }
+      }
     }
-  }
 
-  if (message && typeof message.edit === "function") {
-    try {
-      message = await message.edit({
-        embeds: [],
-        components: controller.components,
-        flags: controller.flags,
-      });
-    } catch (e) {
-      message = await queue.textChannel.send({
-        components: controller.components,
-        flags: controller.flags,
-      });
-    }
-  } else {
-    message = await queue.textChannel.send({
+    const payload = {
       components: controller.components,
       flags: controller.flags,
+    };
+
+    try {
+      if (message && typeof message.edit === "function") {
+        try {
+          message = await message.edit({ embeds: [], ...payload });
+        } catch (e) {
+          log.debug("Panel edit failed; resending:", e?.message || e);
+          message = await liveQueue.textChannel.send(payload);
+        }
+      } else {
+        message = await liveQueue.textChannel.send(payload);
+      }
+    } catch (e) {
+      log.warn("Failed to render Lavalink panel:", e?.message || e);
+      return;
+    }
+
+    if (message && message.id && message.channelId) {
+      setControllerPanel(message.channelId, message.id);
+    }
+
+    client.musicPanels.set(guildId, {
+      message,
+      song: pseudoQueue.currentTrack,
+      startTime: Date.now(),
     });
-  }
-
-  if (message && message.id && message.channelId) {
-    setControllerPanel(message.channelId, message.id);
-  }
-
-  client.musicPanels.set(guildId, {
-    message,
-    song: pseudoQueue.currentTrack,
-    startTime: Date.now(),
   });
 }
 
@@ -612,192 +737,217 @@ function formatLavalinkDuration(ms) {
 }
 
 /**
+ * Toggles pause/resume for the active queue.
  * @param {string} guildId
  * @param {import('discord.js').Client} client
+ * @returns {Promise<{isPaused: boolean}>}
+ * @throws {Error} If nothing is playing in the guild.
  */
 async function pause(guildId, client) {
-  if (isUsingLavalink(client, guildId)) {
-    const q = lavalinkQueues.get(getQueueKey(client, guildId));
-    q.paused = !q.paused;
-    await q.player.setPaused(q.paused);
-    return { isPaused: q.paused };
-  } else if (isUsingDiscordPlayer(client, guildId)) {
-    const q = client.player.nodes.get(guildId);
-    if (q.node.isPaused()) {
-      q.node.resume();
+  const lq = getLavalinkQueue(client, guildId);
+  if (lq) {
+    lq.paused = !lq.paused;
+    await lq.player.setPaused(lq.paused);
+    return { isPaused: lq.paused };
+  }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) {
+    if (dp.node.isPaused()) {
+      dp.node.resume();
       return { isPaused: false };
-    } else {
-      q.node.pause();
-      return { isPaused: true };
     }
+    dp.node.pause();
+    return { isPaused: true };
   }
   throw new Error("Nothing is playing.");
 }
 
 /**
+ * Skips the current track.
  * @param {string} guildId
  * @param {import('discord.js').Client} client
+ * @returns {Promise<void>}
  */
 async function skip(guildId, client) {
-  if (isUsingLavalink(client, guildId)) {
-    const q = lavalinkQueues.get(getQueueKey(client, guildId));
-    await q.player.stopTrack();
-  } else if (isUsingDiscordPlayer(client, guildId)) {
-    client.player.nodes.get(guildId).node.skip();
+  const lq = getLavalinkQueue(client, guildId);
+  if (lq) {
+    await lq.player.stopTrack();
+    return;
   }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) dp.node.skip();
 }
 
 /**
+ * Stops playback and clears the queue.
  * @param {string} guildId
  * @param {import('discord.js').Client} client
+ * @returns {Promise<void>}
  */
 async function stop(guildId, client) {
-  if (isUsingLavalink(client, guildId)) {
-    const q = lavalinkQueues.get(getQueueKey(client, guildId));
-    q.tracks = [];
-    await q.player.stopTrack();
-  } else if (isUsingDiscordPlayer(client, guildId)) {
-    client.player.nodes.get(guildId).delete();
+  const lq = getLavalinkQueue(client, guildId);
+  if (lq) {
+    lq.tracks = [];
+    await lq.player.stopTrack();
+    return;
   }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) dp.delete();
 }
 
 /**
+ * Shuffles the pending tracks in place (Fisher-Yates for Lavalink).
  * @param {string} guildId
  * @param {import('discord.js').Client} client
+ * @returns {Promise<void>}
  */
 async function shuffle(guildId, client) {
-  if (isUsingLavalink(client, guildId)) {
-    const q = lavalinkQueues.get(getQueueKey(client, guildId));
-    for (let i = q.tracks.length - 1; i > 0; i--) {
+  const lq = getLavalinkQueue(client, guildId);
+  if (lq) {
+    for (let i = lq.tracks.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [q.tracks[i], q.tracks[j]] = [q.tracks[j], q.tracks[i]];
+      [lq.tracks[i], lq.tracks[j]] = [lq.tracks[j], lq.tracks[i]];
     }
-  } else if (isUsingDiscordPlayer(client, guildId)) {
-    client.player.nodes.get(guildId).tracks.shuffle();
+    return;
   }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) dp.tracks.shuffle();
 }
 
 /**
+ * Cycles or sets the repeat mode (0=off, 1=track, 2=queue, 3=autoplay).
  * @param {string} guildId
  * @param {import('discord.js').Client} client
- * @returns {number}
+ * @param {number|null} [mode=null] - Explicit mode, or null to advance to the next.
+ * @returns {Promise<number>} The resulting repeat mode.
  */
 async function loop(guildId, client, mode = null) {
-  if (isUsingLavalink(client, guildId)) {
-    const q = lavalinkQueues.get(getQueueKey(client, guildId));
-    q.loopMode = mode !== null ? mode : (q.loopMode + 1) % 4;
-    return q.loopMode;
-  } else if (isUsingDiscordPlayer(client, guildId)) {
-    const q = client.player.nodes.get(guildId);
-    const nextMode = mode !== null ? mode : (q.repeatMode + 1) % 4;
-    q.setRepeatMode(nextMode);
+  const lq = getLavalinkQueue(client, guildId);
+  if (lq) {
+    lq.loopMode = mode !== null ? mode : (lq.loopMode + 1) % 4;
+    return lq.loopMode;
+  }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) {
+    const nextMode = mode !== null ? mode : (dp.repeatMode + 1) % 4;
+    dp.setRepeatMode(nextMode);
     return nextMode;
   }
   return 0;
 }
 
 /**
+ * Plays the previous track from history, if available.
  * @param {string} guildId
  * @param {import('discord.js').Client} client
+ * @returns {Promise<boolean>} True if a previous track was started.
  */
 async function previous(guildId, client) {
-  if (isUsingLavalink(client, guildId)) {
-    const q = lavalinkQueues.get(getQueueKey(client, guildId));
-    if (q.history.length > 0) {
-      if (q.current) q.tracks.unshift(q.current);
-      const prev = q.history.pop();
-      q.current = prev;
-      await q.player.playTrack({ track: { encoded: prev.encoded } });
-      return true;
-    }
-    return false;
-  } else if (isUsingDiscordPlayer(client, guildId)) {
-    const q = client.player.nodes.get(guildId);
-    if (q.history.previousTrack) {
-      await q.history.previous();
+  const lq = getLavalinkQueue(client, guildId);
+  if (lq) {
+    if (lq.history.length > 0) {
+      if (lq.current) lq.tracks.unshift(lq.current);
+      const prev = lq.history.pop();
+      lq.current = prev;
+      await lq.player.playTrack({ track: { encoded: prev.encoded } });
       return true;
     }
     return false;
   }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) {
+    if (dp.history.previousTrack) {
+      await dp.history.previous();
+      return true;
+    }
+    return false;
+  }
+  return false;
 }
 
 /**
+ * Adjusts volume by a relative amount, clamped to 0-100.
  * @param {string} guildId
  * @param {import('discord.js').Client} client
  * @param {number} amount
- * @returns {number}
+ * @returns {Promise<number>} The resulting volume.
  */
 async function adjustVolume(guildId, client, amount) {
-  if (isUsingLavalink(client, guildId)) {
-    const q = lavalinkQueues.get(getQueueKey(client, guildId));
-    q.volume = Math.max(0, Math.min(100, q.volume + amount));
-    await q.player.setGlobalVolume(q.volume);
-    return q.volume;
-  } else if (isUsingDiscordPlayer(client, guildId)) {
-    const q = client.player.nodes.get(guildId);
-    const newVol = Math.max(0, Math.min(100, q.node.volume + amount));
-    q.node.setVolume(newVol);
+  const lq = getLavalinkQueue(client, guildId);
+  if (lq) {
+    lq.volume = Math.max(0, Math.min(100, lq.volume + amount));
+    await lq.player.setGlobalVolume(lq.volume);
+    return lq.volume;
+  }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) {
+    const newVol = Math.max(0, Math.min(100, dp.node.volume + amount));
+    dp.node.setVolume(newVol);
     return newVol;
   }
   return 100;
 }
 
 /**
+ * Sets volume to an absolute value, clamped to 0-100.
  * @param {string} guildId
  * @param {import('discord.js').Client} client
  * @param {number} volume
- * @returns {number}
+ * @returns {Promise<number>} The resulting volume.
  */
 async function setVolume(guildId, client, volume) {
   const vol = Math.max(0, Math.min(100, volume));
-  if (isUsingLavalink(client, guildId)) {
-    const q = lavalinkQueues.get(getQueueKey(client, guildId));
-    q.volume = vol;
-    await q.player.setGlobalVolume(q.volume);
-    return q.volume;
-  } else if (isUsingDiscordPlayer(client, guildId)) {
-    const q = client.player.nodes.get(guildId);
-    q.node.setVolume(vol);
+  const lq = getLavalinkQueue(client, guildId);
+  if (lq) {
+    lq.volume = vol;
+    await lq.player.setGlobalVolume(lq.volume);
+    return lq.volume;
+  }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) {
+    dp.node.setVolume(vol);
     return vol;
   }
   return 100;
 }
 
 /**
+ * Returns a normalized snapshot of the queue, or null if nothing is playing.
  * @param {string} guildId
  * @param {import('discord.js').Client} client
- * @returns {Object}
+ * @returns {Object|null}
  */
 function getQueueInfo(guildId, client) {
-  if (isUsingLavalink(client, guildId)) {
-    const q = lavalinkQueues.get(getQueueKey(client, guildId));
+  const lq = getLavalinkQueue(client, guildId);
+  if (lq) {
     return {
-      size: q.tracks.length,
-      current: q.current
+      size: lq.tracks.length,
+      current: lq.current
         ? {
-            title: q.current.info.title,
-            url: q.current.info.uri,
-            duration: formatLavalinkDuration(q.current.info.length),
+            title: lq.current.info.title,
+            url: lq.current.info.uri,
+            duration: formatLavalinkDuration(lq.current.info.length),
           }
         : null,
-      tracks: q.tracks.slice(0, 10).map((t) => ({
+      tracks: lq.tracks.slice(0, 10).map((t) => ({
         title: t.info.title,
         url: t.info.uri,
         duration: formatLavalinkDuration(t.info.length),
       })),
     };
-  } else if (isUsingDiscordPlayer(client, guildId)) {
-    const q = client.player.nodes.get(guildId);
+  }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) {
     return {
-      size: q.tracks.size,
-      current: q.currentTrack
+      size: dp.tracks.size,
+      current: dp.currentTrack
         ? {
-            title: q.currentTrack.title,
-            url: q.currentTrack.url,
-            duration: q.currentTrack.duration,
+            title: dp.currentTrack.title,
+            url: dp.currentTrack.url,
+            duration: dp.currentTrack.duration,
           }
         : null,
-      tracks: q.tracks
+      tracks: dp.tracks
         .toArray()
         .slice(0, 10)
         .map((t) => ({ title: t.title, url: t.url, duration: t.duration })),
@@ -807,21 +957,46 @@ function getQueueInfo(guildId, client) {
 }
 
 /**
+ * Refreshes the now-playing panel for whichever backend is active.
  * @param {string} guildId
  * @param {import('discord.js').Client} client
+ * @returns {Promise<void>}
  */
 async function triggerUpdate(guildId, client) {
-  if (isUsingLavalink(client, guildId)) {
+  if (getLavalinkQueue(client, guildId)) {
     await updateLavalinkPanel(guildId, client);
-  } else if (isUsingDiscordPlayer(client, guildId)) {
+    return;
+  }
+  const dp = getDiscordPlayerQueue(client, guildId);
+  if (dp) {
     const { updateMusicController } = require("../bot");
-    const q = client.player.nodes.get(guildId);
-    if (q) {
-      const interaction = { message: client.musicPanels.get(guildId)?.message };
-      if (interaction.message) {
-        await updateMusicController(interaction, q);
-      }
+    const message = client.musicPanels.get(guildId)?.message;
+    if (message) {
+      await updateMusicController({ message }, dp);
     }
+  }
+}
+
+/**
+ * Releases all Lavalink resources held for a guild. Called when the bot leaves a
+ * guild or is disconnected, so live players and their listeners are not orphaned in
+ * the {@link lavalinkQueues} map. Cosmetic side effects (panels) are cleared too.
+ * @param {import('discord.js').Client} client
+ * @param {string} guildId
+ * @returns {Promise<void>}
+ */
+async function cleanupGuild(client, guildId) {
+  const key = getQueueKey(client, guildId);
+  const queue = lavalinkQueues.get(key);
+  lavalinkQueues.delete(key);
+  client.musicPanels?.delete(guildId);
+  if (!queue) return;
+  const watchdog = getWatchdog(client);
+  if (watchdog?.shoukaku?.connections?.has(guildId)) {
+    await swallow(
+      watchdog.shoukaku.leaveVoiceChannel(guildId),
+      `Cleanup voice channel for guild ${guildId}`,
+    );
   }
 }
 
@@ -837,6 +1012,7 @@ module.exports = {
   setVolume,
   getQueueInfo,
   triggerUpdate,
+  cleanupGuild,
   isUsingLavalink,
   isUsingDiscordPlayer,
   getQueueKey,

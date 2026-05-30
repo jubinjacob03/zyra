@@ -1,5 +1,9 @@
 require("dotenv").config();
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
+// SECURITY: TLS validation stays on by default; ALLOW_INSECURE_TLS=1 disables it process-wide (MITM risk).
+if (process.env.ALLOW_INSECURE_TLS === "1") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
 
 if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
   process.env.DP_SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
@@ -39,7 +43,9 @@ onBeforeCreateStream(async (track, queryType, queue) => {
         }
         return await scTrack.extractor.stream(scTrack);
       }
-    } catch (e) {}
+    } catch (e) {
+      log.debug("Spotify->SoundCloud bridge failed:", e?.message || e);
+    }
   }
   return null;
 });
@@ -48,6 +54,8 @@ const path = require("path");
 const { formatDuration } = require("./utils/embed");
 const { initEmojis, e } = require("./utils/customEmoji");
 const { initRuntimeLogger } = require("./utils/runtimeLogger");
+const { createLogger } = require("./utils/logger");
+const { swallow } = require("./utils/resilience");
 const {
   getControllerPanel,
   setControllerPanel,
@@ -57,20 +65,38 @@ require("dns").setDefaultResultOrder("ipv4first");
 
 initRuntimeLogger({ label: process.env.RUNTIME_LOGGER_LABEL || "main" });
 
+const log = createLogger("bot");
+
+if (process.env.ALLOW_INSECURE_TLS === "1") {
+  log.warn(
+    "ALLOW_INSECURE_TLS=1 — TLS certificate validation is DISABLED for this process.",
+  );
+}
+
+/** How often, while idle, the presence is refreshed to a random idle phrase. */
+const IDLE_PRESENCE_INTERVAL_MS = 120_000;
+/** How often a heartbeat line is logged. */
+const STATUS_LOG_INTERVAL_MS = 900_000;
+
+/** @type {NodeJS.Timeout|null} */
+let idlePresenceInterval = null;
+/** @type {NodeJS.Timeout|null} */
+let statusLogInterval = null;
+
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
     if (reason.code === 10008 || reason.code === 10062) {
-      console.log(
+      log.info(
         `Discord API: ${reason.code === 10008 ? "Message deleted" : "Interaction expired"}`,
       );
       return;
     }
   }
-  console.error("Unhandled rejection:", reason);
+  log.error("Unhandled rejection:", reason);
 });
 
 process.on("uncaughtException", (error) => {
-  console.error("Uncaught exception:", error);
+  log.error("Uncaught exception:", error);
 });
 
 const client = new Client({
@@ -105,7 +131,7 @@ player.extractors
       DefaultExtractors.filter((e) => e.name !== "SpotifyExtractor"),
     );
   })
-  .catch(console.error);
+  .catch((err) => log.error("Extractor registration failed:", err));
 client.player = player;
 
 const idlePhrases = [
@@ -179,14 +205,18 @@ const setVoiceChannelStatus = async (channel, status) => {
     try {
       await channelObj.setStatus(status ?? null);
       return;
-    } catch {}
+    } catch (e) {
+      log.debug("setStatus failed; falling back to REST:", e?.message || e);
+    }
   }
 
   try {
     await client.rest.put(`/channels/${channelId}/voice-status`, {
       body: { status: status ? status.slice(0, 500) : "" },
     });
-  } catch (e) {}
+  } catch (e) {
+    log.debug(`Voice status REST update failed for ${channelId}:`, e?.message || e);
+  }
 };
 
 /**
@@ -268,95 +298,96 @@ async function resolveStoredMusicPanel(client, channelId) {
 }
 
 player.events.on("playerStart", async (queue, track) => {
-  const { createCompleteMusicController } = require("./utils/componentsV2");
-  const {
-    getControllerPanel,
-    setControllerPanel,
-  } = require("./utils/panelStore");
-  const controller = createCompleteMusicController(queue);
+  try {
+    const { createCompleteMusicController } = require("./utils/componentsV2");
+    const { getControllerPanel: getStored, setControllerPanel: setStored } =
+      require("./utils/panelStore");
+    const controller = createCompleteMusicController(queue);
 
-  const textChannel = queue.metadata?.channel;
-  if (!textChannel) return;
+    const textChannel = queue.metadata?.channel;
+    if (!textChannel) return;
 
-  let message = null;
-  const existingData = client.musicPanels.get(queue.guild.id);
+    let message = null;
+    const existingData = client.musicPanels.get(queue.guild.id);
 
-  if (existingData && existingData.message) {
-    message = existingData.message;
-  } else {
-    const storedId = getControllerPanel(textChannel.id);
-    if (storedId) {
-      try {
-        message = await textChannel.messages.fetch(storedId);
-      } catch (e) {}
+    if (existingData && existingData.message) {
+      message = existingData.message;
+    } else {
+      const storedId = getStored(textChannel.id);
+      if (storedId) {
+        try {
+          message = await textChannel.messages.fetch(storedId);
+        } catch (e) {
+          log.debug(`Stored panel ${storedId} not fetchable:`, e?.message || e);
+        }
+      }
     }
-  }
 
-  if (message && typeof message.edit === "function") {
-    try {
-      message = await message.edit({
-        embeds: [],
-        components: controller.components,
-        flags: controller.flags,
-      });
-    } catch (e) {
-      message = await textChannel.send({
-        components: controller.components,
-        flags: controller.flags,
-      });
-    }
-  } else {
-    message = await textChannel.send({
+    const payload = {
       components: controller.components,
       flags: controller.flags,
+    };
+    if (message && typeof message.edit === "function") {
+      try {
+        message = await message.edit({ embeds: [], ...payload });
+      } catch (e) {
+        log.debug("Panel edit failed; resending:", e?.message || e);
+        message = await textChannel.send(payload);
+      }
+    } else {
+      message = await textChannel.send(payload);
+    }
+
+    if (message?.id && message?.channelId) {
+      setStored(message.channelId, message.id);
+    }
+
+    client.musicPanels.set(queue.guild.id, {
+      message,
+      song: track,
+      startTime: Date.now(),
     });
+
+    setPresenceActivity(track);
+    await setVoiceChannelStatus(queue.channel, `✨ Playing - ${track.title}`);
+    log.info("Now playing:", track.title);
+  } catch (error) {
+    log.error("playerStart handler failed:", error?.message || error);
   }
-
-  if (message?.id && message?.channelId) {
-    setControllerPanel(message.channelId, message.id);
-  }
-
-  client.musicPanels.set(queue.guild.id, {
-    message,
-    song: track,
-    startTime: Date.now(),
-  });
-
-  setPresenceActivity(track);
-  await setVoiceChannelStatus(queue.channel, `✨ Playing - ${track.title}`);
-  console.log("🎵 Now playing:", track.title);
 });
 
 player.events.on("audioTrackAdd", (queue, track) => {
-  console.log(`🎵 Track added to queue: ${track.title}`);
+  log.info(`Track added to queue: ${track.title}`);
 });
 
 player.events.on("disconnect", async (queue) => {
-  client.musicPanels.delete(queue.guild.id);
-  setPresenceActivity(pickIdlePhrase());
-
-  setInterval(() => {
-    if (!isAnyTrackPlaying()) {
-      setPresenceActivity(pickIdlePhrase());
-    }
-  }, 120000);
-  await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
+  try {
+    client.musicPanels.delete(queue.guild.id);
+    setPresenceActivity(pickIdlePhrase());
+    await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
+  } catch (error) {
+    log.warn("disconnect handler failed:", error?.message || error);
+  }
 });
 
 player.events.on("emptyQueue", async (queue) => {
   if (queue.repeatMode !== 0) return;
-  console.log("🎵 Queue finished");
-  client.musicPanels.delete(queue.guild.id);
-  setPresenceActivity(pickIdlePhrase());
-  await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
+  try {
+    log.info("Queue finished");
+    client.musicPanels.delete(queue.guild.id);
+    setPresenceActivity(pickIdlePhrase());
+    await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
+  } catch (error) {
+    log.warn("emptyQueue handler failed:", error?.message || error);
+  }
 });
 
 player.events.on("error", (queue, error) => {
-  console.error(`Player error: ${error.message}`);
+  log.error(`Player error: ${error.message}`);
 });
 
 player.events.on("playerError", (queue, error) => {
-  console.error(`Player error: ${error.message}`);
+  log.error(`Player error: ${error.message}`);
 });
 
 /**
@@ -368,7 +399,7 @@ async function handleButtonInteraction(interaction, client) {
   try {
     await interaction.deferUpdate();
   } catch (error) {
-    console.error("Failed to defer button interaction:", error.message);
+    log.warn("Failed to defer button interaction:", error.message);
     return;
   }
 
@@ -393,7 +424,8 @@ async function handleButtonInteraction(interaction, client) {
 
   const DiscordPlayer = require("./utils/DiscordPlayer");
 
-  const botVoiceChannelId = interaction.guild.members.me.voice.channelId;
+  const botVoiceChannelId =
+    interaction.guild?.members?.me?.voice?.channelId || null;
   if (
     !botVoiceChannelId ||
     (!DiscordPlayer.isUsingLavalink(client, interaction.guildId) &&
@@ -406,7 +438,7 @@ async function handleButtonInteraction(interaction, client) {
   }
 
   const member = interaction.member;
-  const voiceChannel = member.voice.channel;
+  const voiceChannel = member?.voice?.channel;
 
   if (!voiceChannel || voiceChannel.id !== botVoiceChannelId) {
     return sendEphemeralEmbed(
@@ -548,14 +580,14 @@ async function handleButtonInteraction(interaction, client) {
 
     await DiscordPlayer.triggerUpdate(interaction.guildId, client);
   } catch (error) {
-    console.error("Button interaction error:", error);
+    log.error("Button interaction error:", error);
     try {
       await sendEphemeralEmbed(
         COLORS.ERROR,
         `${e("ERROR")} An error occurred.`,
       );
     } catch (replyError) {
-      console.error("Failed to send error message:", replyError);
+      log.warn("Failed to send error message:", replyError?.message || replyError);
     }
   }
 }
@@ -568,7 +600,7 @@ async function handleButtonInteraction(interaction, client) {
 async function updateMusicController(interaction, queue) {
   try {
     if (!interaction.message || !interaction.message.id) {
-      console.log("No message to update - interaction message not found");
+      log.debug("No message to update - interaction message not found");
       return;
     }
 
@@ -584,17 +616,17 @@ async function updateMusicController(interaction, queue) {
     }
   } catch (error) {
     if (error.code === 10008) {
-      console.log("Message was deleted - cannot update music controller");
+      log.debug("Message was deleted - cannot update music controller");
       client.musicPanels.delete(queue.guild.id);
     } else if (error.code === 10062) {
-      console.log("Interaction expired - cannot update music controller");
+      log.debug("Interaction expired - cannot update music controller");
     } else {
-      console.error("Error updating music controller:", error.message);
+      log.error("Error updating music controller:", error.message);
     }
   }
 }
 
-client.on("error", console.error);
+client.on("error", (err) => log.error("Client error:", err));
 
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs
@@ -607,35 +639,72 @@ for (const file of commandFiles) {
   const command = require(filePath);
   if ("data" in command && "execute" in command) {
     client.commands.set(command.data.name, command);
-    console.log(`✅ Loaded command: ${command.data.name}`);
+    log.info(`Loaded command: ${command.data.name}`);
   }
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
   initEmojis(readyClient);
 
-  console.log(`\n🎵 Remani Music Bot is online!`);
-  console.log(`📡 Logged in as ${readyClient.user.tag}`);
-  console.log(`🌐 Serving ${readyClient.guilds.cache.size} servers\n`);
+  log.info(`Remani Music Bot is online!`);
+  log.info(`Logged in as ${readyClient.user.tag}`);
+  log.info(`Serving ${readyClient.guilds.cache.size} servers`);
 
   try {
     const avatarPath = path.join(__dirname, "..", "assets", "avatar.jpg");
     if (fs.existsSync(avatarPath)) {
-      await client.user.setAvatar(avatarPath).catch(console.error);
-      console.log("✅ Avatar updated successfully!");
+      await client.user
+        .setAvatar(avatarPath)
+        .catch((err) => log.warn("Avatar update failed:", err?.message || err));
+      log.info("Avatar updated successfully!");
     }
   } catch (error) {
     if (error.code !== 50035) {
-      console.log("ℹ️ Avatar already set or rate limited");
+      log.info("Avatar already set or rate limited");
     }
   }
 
   setPresenceActivity(pickIdlePhrase());
 
-  setInterval(() => {
-    const status = `✅ Bot alive | ${client.guilds.cache.size} servers | ${client.player.nodes.cache.size} active queues`;
-    console.log(status);
-  }, 900000);
+  if (!idlePresenceInterval) {
+    idlePresenceInterval = setInterval(() => {
+      if (!isAnyTrackPlaying()) setPresenceActivity(pickIdlePhrase());
+    }, IDLE_PRESENCE_INTERVAL_MS);
+  }
+
+  if (!statusLogInterval) {
+    statusLogInterval = setInterval(() => {
+      log.info(
+        `Alive | ${client.guilds.cache.size} servers | ${client.player.nodes.cache.size} active queues`,
+      );
+    }, STATUS_LOG_INTERVAL_MS);
+  }
+});
+
+client.on(Events.GuildDelete, (guild) => {
+  const DiscordPlayer = require("./utils/DiscordPlayer");
+  swallow(
+    DiscordPlayer.cleanupGuild(client, guild.id),
+    `Cleanup after leaving guild ${guild.id}`,
+  );
+});
+
+// Discord clears VC status server-side when a channel empties; re-assert it when a user rejoins.
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  if (oldState.member?.user?.id === client.user?.id) return;
+  const guildId = newState.guild?.id;
+  if (!guildId) return;
+
+  const botChannelId =
+    newState.guild.members.me?.voice?.channelId || null;
+  if (!botChannelId || newState.channelId !== botChannelId) return;
+  if (oldState.channelId === botChannelId) return;
+
+  const DiscordPlayer = require("./utils/DiscordPlayer");
+  const info = DiscordPlayer.getQueueInfo(guildId, client);
+  if (info?.current?.title) {
+    setVoiceChannelStatus(botChannelId, `✨ Playing - ${info.current.title}`);
+  }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -650,7 +719,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      console.error(`Error executing ${interaction.commandName}:`, error);
+      log.error(`Error executing ${interaction.commandName}:`, error);
 
       const errorMessage = {
         content: `${e("ERROR")} There was an error executing this command!`,
@@ -667,7 +736,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       } catch (replyError) {
         if (replyError.code !== 10062 && replyError.code !== 40060) {
-          console.error("Failed to send error message:", replyError);
+          log.error("Failed to send error message:", replyError);
         }
       }
     }
@@ -686,7 +755,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
  */
 function startMainBot() {
   if (!process.env.DISCORD_TOKEN) {
-    console.error("❌ DISCORD_TOKEN is not set in .env file!");
+    log.error("DISCORD_TOKEN is not set in .env file!");
     process.exit(1);
   }
 
@@ -702,12 +771,18 @@ function startMainBot() {
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    if (idlePresenceInterval) clearInterval(idlePresenceInterval);
+    if (statusLogInterval) clearInterval(statusLogInterval);
     try {
       apiServer?.close();
-    } catch {}
+    } catch (error) {
+      log.debug("API server close failed:", error?.message || error);
+    }
     try {
       client.destroy();
-    } catch {}
+    } catch (error) {
+      log.debug("Client destroy failed:", error?.message || error);
+    }
     setTimeout(() => process.exit(0), 5000);
   };
 

@@ -1,3 +1,6 @@
+const { createLogger } = require("../utils/logger");
+const log = createLogger("search");
+
 const {
   SlashCommandBuilder,
   ContainerBuilder,
@@ -163,7 +166,7 @@ module.exports = {
         }
       });
     } catch (error) {
-      console.error("Search error:", error);
+      log.error("Search error:", error);
       const errContainer = new ContainerBuilder().setAccentColor(0xff4444);
       errContainer.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`${e("ERROR")} Search failed.`),

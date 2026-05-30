@@ -1,3 +1,6 @@
+const { createLogger } = require("../utils/logger");
+const log = createLogger("spotify-cmd");
+
 const {
   SlashCommandBuilder,
   ContainerBuilder,
@@ -78,7 +81,7 @@ module.exports = {
           flags: MessageFlags.IsComponentsV2,
         });
       } catch (error) {
-        console.error("Spotify status check failed:", error);
+        log.error("Spotify status check failed:", error);
         await interaction.editReply({
           content: null,
           ...errorEmbed(`Spotify authentication failed: ${error.message}`),
@@ -125,7 +128,7 @@ module.exports = {
           flags: MessageFlags.IsComponentsV2,
         });
       } catch (error) {
-        console.error("Spotify search failed:", error);
+        log.error("Spotify search failed:", error);
         await interaction.editReply({
           content: null,
           ...errorEmbed(`Spotify search failed: ${error.message}`),

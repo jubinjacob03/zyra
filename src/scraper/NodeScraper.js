@@ -1,5 +1,8 @@
 const fs = require("fs").promises;
 const path = require("path");
+const { createLogger } = require("../utils/logger");
+
+const log = createLogger("scraper");
 
 const CONFIG_PATH = path.join(__dirname, "../../config.json");
 const API_URL = "https://lavalink-list.ajieblogs.eu.org/All";
@@ -33,7 +36,7 @@ function isValidNodeSchema(node) {
 
 /**
  * Performs an HTTP check against the Lavalink node's version endpoint.
- *A
+ *
  * @param {RawLavalinkNode} node
  * @returns {Promise<boolean>}
  */
@@ -90,7 +93,7 @@ async function atomicWriteConfig(config) {
     await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), "utf-8");
     await fs.rename(tmpPath, CONFIG_PATH);
   } catch (err) {
-    console.error(
+    log.error(
       `❌ [Scraper] Critical failure during atomic config write: ${err.message}`,
     );
     throw err;
@@ -104,9 +107,9 @@ async function atomicWriteConfig(config) {
  * @returns {Promise<void>}
  */
 async function runScrapeCycle(watchdog) {
-  console.log("🔍 [Scraper] Initiating Lavalink node scrape cycle...");
+  log.info("🔍 [Scraper] Initiating Lavalink node scrape cycle...");
 
-  let rawNodes = [];
+  let rawNodes;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -120,14 +123,14 @@ async function runScrapeCycle(watchdog) {
 
     rawNodes = await res.json();
   } catch (err) {
-    console.error(
+    log.error(
       `❌ [Scraper] Failed to fetch node list from community API: ${err.message}`,
     );
     return;
   }
 
   if (!Array.isArray(rawNodes)) {
-    console.error(
+    log.error(
       "❌ [Scraper] Community API returned invalid JSON structure.",
     );
     return;
@@ -143,7 +146,7 @@ async function runScrapeCycle(watchdog) {
     return true;
   });
 
-  console.log(
+  log.info(
     `[Scraper] Validated and deduplicated ${deduplicatedNodes.length} nodes. Testing connectivity...`,
   );
 
@@ -172,10 +175,10 @@ async function runScrapeCycle(watchdog) {
   }
 
   const topNodes = aliveNodes.slice(0, MAX_NODES);
-  console.log(`✅ [Scraper] Found ${topNodes.length} fully functional nodes.`);
+  log.info(`✅ [Scraper] Found ${topNodes.length} fully functional nodes.`);
 
   if (topNodes.length === 0) {
-    console.log(
+    log.info(
       "⚠️ [Scraper] No alive nodes found during this cycle. Retaining existing configuration.",
     );
     return;
@@ -187,15 +190,15 @@ async function runScrapeCycle(watchdog) {
     config.lavalinkNodes = topNodes;
 
     await atomicWriteConfig(config);
-    console.log(
+    log.info(
       "💾 [Scraper] Successfully executed atomic write to config.json.",
     );
   } catch (err) {
-    console.error(`❌ [Scraper] Failed to update config.json: ${err.message}`);
+    log.error(`❌ [Scraper] Failed to update config.json: ${err.message}`);
   }
 
   if (!watchdog || !watchdog.shoukaku || !watchdog.shoukaku.nodes) {
-    console.warn(
+    log.warn(
       "⚠️ [Scraper] Shoukaku instance not fully initialized. Skipping hot-swap.",
     );
     return;
@@ -207,19 +210,19 @@ async function runScrapeCycle(watchdog) {
 
     for (const name of currentNodes) {
       if (!newNames.includes(name)) {
-        console.log(`♻️ [Scraper] Hot-removing dead node: ${name}`);
+        log.info(`♻️ [Scraper] Hot-removing dead node: ${name}`);
         watchdog.shoukaku.removeNode(name);
       }
     }
 
     for (const node of topNodes) {
       if (!currentNodes.includes(node.name)) {
-        console.log(`➕ [Scraper] Hot-adding fresh node: ${node.name}`);
+        log.info(`➕ [Scraper] Hot-adding fresh node: ${node.name}`);
         watchdog.shoukaku.addNode(node);
       }
     }
   } catch (err) {
-    console.error(
+    log.error(
       `❌ [Scraper] Failure during dynamic hot-swap: ${err.message}`,
     );
   }
@@ -232,7 +235,7 @@ async function runScrapeCycle(watchdog) {
  */
 function initScraper(watchdog) {
   runScrapeCycle(watchdog).catch((err) => {
-    console.error(
+    log.error(
       `❌ [Scraper] Unhandled rejection in initial scrape: ${err.message}`,
     );
   });
@@ -240,7 +243,7 @@ function initScraper(watchdog) {
   const INTERVAL_MS = 40 * 60 * 1000;
   setInterval(() => {
     runScrapeCycle(watchdog).catch((err) => {
-      console.error(
+      log.error(
         `❌ [Scraper] Unhandled rejection in scheduled scrape: ${err.message}`,
       );
     });

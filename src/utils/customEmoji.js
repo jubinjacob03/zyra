@@ -1,3 +1,6 @@
+const { createLogger } = require("./logger");
+const log = createLogger("emoji");
+
 const path = require("path");
 const fs = require("fs");
 
@@ -32,7 +35,7 @@ function initEmojis(client) {
     }
   }
   const count = Object.keys(resolved).length;
-  if (count > 0) console.log(`✅ Loaded ${count} custom emojis`);
+  if (count > 0) log.info(`✅ Loaded ${count} custom emojis`);
 }
 
 /**

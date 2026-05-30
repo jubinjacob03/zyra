@@ -1,13 +1,28 @@
 const fs = require("fs");
+const fsp = require("fs/promises");
 const path = require("path");
+const { createLogger } = require("./logger");
+
+/**
+ * Persists music-panel message IDs per channel. Reads are served from an in-memory
+ * cache (the store is loaded once at startup) and writes are debounced and flushed
+ * asynchronously, so the interaction hot path never blocks on disk I/O.
+ *
+ * @module utils/panelStore
+ */
+
+const log = createLogger("panelStore");
 
 const cacheDir = path.join(__dirname, "..", "..", "cache");
 const cacheFile = path.join(cacheDir, "panels.json");
 
+/** Delay before a mutated store is flushed to disk, coalescing rapid writes. */
+const FLUSH_DEBOUNCE_MS = 250;
+
 /**
- * Normalizes the panel store object.
- * @param {Object} store - The raw store object.
- * @returns {Object} The normalized store object.
+ * Normalizes the panel store object so both sub-maps always exist.
+ * @param {Object|null} store
+ * @returns {{play: Object, controller: Object}}
  */
 const normalizeStore = (store) => ({
   play: store?.play || {},
@@ -15,62 +30,79 @@ const normalizeStore = (store) => ({
 });
 
 /**
- * Reads the panel store from the cache file.
- * @returns {Object} The parsed and normalized store object.
+ * Loads the store from disk exactly once at module initialization. A single
+ * synchronous read at startup is acceptable; per-call I/O is not.
+ * @returns {{play: Object, controller: Object}}
  */
-const readStore = () => {
+const loadInitial = () => {
   try {
-    const raw = fs.readFileSync(cacheFile, "utf8");
-    return normalizeStore(JSON.parse(raw));
+    return normalizeStore(JSON.parse(fs.readFileSync(cacheFile, "utf8")));
   } catch {
     return normalizeStore(null);
   }
 };
 
+const store = loadInitial();
+
+/** @type {NodeJS.Timeout|null} */
+let flushTimer = null;
+let flushing = false;
+
 /**
- * Writes the panel store to the cache file.
- * @param {Object} store - The store object to write.
+ * Schedules a debounced asynchronous flush of the in-memory store to disk.
+ * @returns {void}
  */
-const writeStore = (store) => {
-  fs.mkdirSync(cacheDir, { recursive: true });
-  fs.writeFileSync(cacheFile, JSON.stringify(normalizeStore(store), null, 2));
+const scheduleFlush = () => {
+  if (flushTimer) return;
+  flushTimer = setTimeout(async () => {
+    flushTimer = null;
+    if (flushing) {
+      scheduleFlush();
+      return;
+    }
+    flushing = true;
+    try {
+      await fsp.mkdir(cacheDir, { recursive: true });
+      await fsp.writeFile(cacheFile, JSON.stringify(store, null, 2));
+    } catch (error) {
+      log.warn("Failed to persist panel store:", error?.message || error);
+    } finally {
+      flushing = false;
+    }
+  }, FLUSH_DEBOUNCE_MS);
+  if (typeof flushTimer.unref === "function") flushTimer.unref();
 };
 
 /**
  * Gets the play panel message ID for a given channel.
- * @param {string} channelId - The ID of the channel.
- * @returns {string|null} The message ID, or null if not found.
+ * @param {string} channelId
+ * @returns {string|null}
  */
 const getPlayPanel = (channelId) => {
   if (!channelId) return null;
-  const store = readStore();
   return store.play[channelId] || null;
 };
 
 /**
  * Sets or removes the play panel message ID for a given channel.
- * @param {string} channelId - The ID of the channel.
+ * @param {string} channelId
  * @param {string|null} messageId - The message ID to set, or null to remove.
+ * @returns {void}
  */
 const setPlayPanel = (channelId, messageId) => {
   if (!channelId) return;
-  const store = readStore();
-  if (messageId) {
-    store.play[channelId] = messageId;
-  } else {
-    delete store.play[channelId];
-  }
-  writeStore(store);
+  if (messageId) store.play[channelId] = messageId;
+  else delete store.play[channelId];
+  scheduleFlush();
 };
 
 /**
  * Gets the controller panel message ID for a given channel.
- * @param {string} channelId - The ID of the channel.
- * @returns {string|null} The message ID, or null if not found.
+ * @param {string} channelId
+ * @returns {string|null}
  */
 const getControllerPanel = (channelId) => {
   if (!channelId) return null;
-  const store = readStore();
   const value = store.controller[channelId];
   if (!value) return null;
   if (typeof value === "string") return value;
@@ -79,18 +111,15 @@ const getControllerPanel = (channelId) => {
 
 /**
  * Sets or removes the controller panel message ID for a given channel.
- * @param {string} channelId - The ID of the channel.
+ * @param {string} channelId
  * @param {string|null} messageId - The message ID to set, or null to remove.
+ * @returns {void}
  */
 const setControllerPanel = (channelId, messageId) => {
   if (!channelId) return;
-  const store = readStore();
-  if (messageId) {
-    store.controller[channelId] = messageId;
-  } else {
-    delete store.controller[channelId];
-  }
-  writeStore(store);
+  if (messageId) store.controller[channelId] = messageId;
+  else delete store.controller[channelId];
+  scheduleFlush();
 };
 
 module.exports = {

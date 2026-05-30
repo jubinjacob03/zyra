@@ -1,3 +1,6 @@
+const { createLogger } = require("../utils/logger");
+const log = createLogger("join");
+
 const {
   SlashCommandBuilder,
   PermissionFlagsBits,
@@ -67,7 +70,7 @@ module.exports = {
         ),
       });
     } catch (error) {
-      console.error("Join command error:", error);
+      log.error("Join command error:", error);
       await interaction.reply({
         ...errorEmbed("Failed to join voice channel. Please try again."),
         flags: 64,

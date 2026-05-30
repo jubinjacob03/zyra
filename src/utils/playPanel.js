@@ -8,6 +8,9 @@ const {
   MessageFlags,
 } = require("discord.js");
 const { getPlayPanel, setPlayPanel } = require("./panelStore");
+const { createLogger } = require("./logger");
+
+const log = createLogger("playPanel");
 
 /**
  * Checks if a custom ID belongs to the play music panel button.
@@ -144,7 +147,9 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
       setPlayPanel(channel.id, existingPinned.id);
       return existingPinned;
     }
-  } catch {}
+  } catch (e) {
+    log.debug("Pinned-message panel lookup failed:", e?.message || e);
+  }
 
   try {
     const recent = await channel.messages.fetch({ limit: 100 });
@@ -154,7 +159,9 @@ async function ensurePlayMusicPanel(channel, instanceName, clientUserId) {
       setPlayPanel(channel.id, existingRecent.id);
       return existingRecent;
     }
-  } catch {}
+  } catch (e) {
+    log.debug("Recent-message panel lookup failed:", e?.message || e);
+  }
 
   const message = await channel.send(payload);
 

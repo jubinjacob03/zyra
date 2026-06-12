@@ -4,6 +4,9 @@ RUN apk add --no-cache \
     ffmpeg \
     curl \
     ca-certificates \
+    python3 \
+    make \
+    g++ \
     && ffmpeg -version
 
 WORKDIR /app

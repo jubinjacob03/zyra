@@ -84,6 +84,19 @@ module.exports = function attachMusicApi(client, customPort = null) {
     }
 
     try {
+      if (req.method === "GET" && (path === "/" || path === "/index.html")) {
+        const fs = require("fs");
+        const fp = require("path");
+        try {
+          const file = fs.readFileSync(fp.join(__dirname, "../public/index.html"));
+          res.writeHead(200, { "Content-Type": "text/html" });
+          return res.end(file);
+        } catch (err) {
+          log.error("Could not read index.html:", err.message);
+          return send(res, 500, { error: "Could not load activity interface" });
+        }
+      }
+
       if (req.method === "GET" && path === "/health") {
         return send(res, 200, {
           ok: true,
@@ -508,6 +521,29 @@ module.exports = function attachMusicApi(client, customPort = null) {
 
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 66000;
+
+  try {
+    const { Server } = require("socket.io");
+    const io = new Server(server, { cors: { origin: "*" } });
+    
+    io.on("connection", (socket) => {
+      log.debug(`Activity sync client connected: ${socket.id}`);
+      
+      socket.on("join_channel", (channelId) => {
+        socket.join(channelId);
+        log.debug(`Socket ${socket.id} joined VC room: ${channelId}`);
+      });
+      
+      socket.on("video_state_change", (data) => {
+        if (data && data.channelId) {
+          socket.to(data.channelId).emit("sync_video", data);
+        }
+      });
+    });
+    log.info("Activity Sync WebSocket server initialized.");
+  } catch (e) {
+    log.error("Failed to initialize Socket.io for Activity Sync:", e?.message || e);
+  }
 
   server
     .listen(port, host, () => {

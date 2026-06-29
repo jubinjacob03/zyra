@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Zyra Sync Watch Party</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #1e1e2e;
+      color: #cdd6f4;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    h1 {
+      margin-bottom: 20px;
+      color: #89b4fa;
+    }
+    .video-container {
+      width: 80%;
+      max-width: 800px;
+      background: #11111b;
+      padding: 10px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    video {
+      width: 100%;
+      border-radius: 8px;
+    }
+    .status {
+      margin-top: 15px;
+      font-size: 0.9em;
+      color: #a6adc8;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@1.2.0"></script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <h1>Zyra Watch Party 🍿</h1>
+  <div class="video-container">
+    <!-- Using a sample open source video for testing -->
+    <video id="my-video" src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" controls></video>
+  </div>
+  <div class="status" id="status-text">Connecting to Discord...</div>
+
+  <script>
+    const statusText = document.getElementById('status-text');
+    const video = document.getElementById('my-video');
+    
+    // We expect the server to host Socket.io on the same port
+    const socket = io(); 
+    let currentChannelId = null;
+
+    // IMPORTANT: Use the Client ID provided in the .env / developer portal
+    const discordSdk = new Discord.DiscordSDK('1456983456457166859');
+
+    async function setupDiscord() {
+      try {
+        await discordSdk.ready();
+        currentChannelId = discordSdk.channelId;
+        
+        if (currentChannelId) {
+          statusText.innerText = `Connected to Voice Channel! Syncing...`;
+          socket.emit('join_channel', currentChannelId);
+        } else {
+          statusText.innerText = `Not in a voice channel.`;
+        }
+      } catch (err) {
+        console.error("Discord SDK Error:", err);
+        statusText.innerText = `Running outside Discord or SDK Error.`;
+      }
+    }
+    setupDiscord();
+
+    // Prevent endless loops of sync events
+    let isRemoteUpdate = false;
+
+    // Send play event
+    video.addEventListener('play', () => {
+      if (isRemoteUpdate || !currentChannelId) return;
+      socket.emit('video_state_change', {
+        channelId: currentChannelId,
+        state: 'play',
+        timestamp: video.currentTime
+      });
+    });
+
+    // Send pause event
+    video.addEventListener('pause', () => {
+      if (isRemoteUpdate || !currentChannelId) return;
+      socket.emit('video_state_change', {
+        channelId: currentChannelId,
+        state: 'pause',
+        timestamp: video.currentTime
+      });
+    });
+
+    // Receive sync from others
+    socket.on('sync_video', (data) => {
+      isRemoteUpdate = true;
+      
+      // Sync timestamp if drifted more than 1.5 seconds
+      if (Math.abs(video.currentTime - data.timestamp) > 1.5) {
+        video.currentTime = data.timestamp;
+      }
+
+      if (data.state === 'play') {
+        video.play().catch(e => console.error("Play prevented by browser:", e));
+      } else if (data.state === 'pause') {
+        video.pause();
+      }
+
+      // Re-enable local updates after a short delay
+      setTimeout(() => { isRemoteUpdate = false; }, 200);
+    });
+  </script>
+</body>
+</html>

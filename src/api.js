@@ -561,6 +561,12 @@ module.exports = function attachMusicApi(client, customPort = null) {
           socket.to(data.channelId).emit("sync_video", data);
         }
       });
+      
+      socket.on("user_action", (data) => {
+        if (data && data.action) {
+          log.info(`[Activity Log] User: ${data.user || "Unknown"} | Channel: ${data.channelId} | Action: ${data.action} | Details: ${data.details || ""}`);
+        }
+      });
     });
     log.info("Activity Sync WebSocket server initialized.");
   } catch (e) {

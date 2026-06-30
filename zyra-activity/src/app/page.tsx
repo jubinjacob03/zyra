@@ -1,21 +1,15 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Play, X, Search, Loader2, Info, Bell, User, ChevronDown, Volume2, ThumbsUp, Plus } from "lucide-react";
+import { Play, Search, Loader2, Info, User, ChevronDown, Plus, ThumbsUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { useDiscordSync } from "@/lib/discord";
 import { fetchTMDB, searchTMDB, CATEGORIES, TMDB_IMG_URL, TMDB_HERO_IMG_URL } from "@/lib/tmdb";
-
-const SERVERS = [
-  { name: "VidEasy", getUrl: (id: string, type: string) => `https://player.videasy.to/${type}/${id}` },
-  { name: "VidSrc Pro", getUrl: (id: string, type: string) => `https://vidsrc.pro/embed/${type}/${id}` },
-  { name: "VidLink", getUrl: (id: string, type: string) => `https://vidlink.pro/${type}/${id}` },
-  { name: "SuperEmbed", getUrl: (id: string, type: string) => `https://superembed.stream/?video_id=${id}&tmdb=1` },
-  { name: "AutoEmbed", getUrl: (id: string, type: string) => `https://autoembed.co/${type}/tmdb/${id}` },
-];
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
   const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY || "";
   
   const [heroItem, setHeroItem] = useState<any>(null);
@@ -28,40 +22,13 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
 
-  const [playerOpen, setPlayerOpen] = useState(false);
-  const [currentMedia, setCurrentMedia] = useState<{ id: string; type: string } | null>(null);
-  const [serverIndex, setServerIndex] = useState(0);
-  const [iframeLoading, setIframeLoading] = useState(false);
-  const [iframeError, setIframeError] = useState(false);
-
-  const { status, remoteState, broadcastState } = useDiscordSync();
+  const { status, remoteState, broadcastState, logAction } = useDiscordSync();
   const isRemoteUpdate = useRef(false);
-  const iframeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 0);
     window.addEventListener("scroll", handleScroll);
-
-    // Inject popup blocker into our parent window
-    const originalOpen = window.open;
-    window.open = function() {
-      console.log("Popup blocked by Zyra Parent Window!");
-      return null;
-    };
-
-    // Intercept top-level redirects triggered by iframe ads
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = ''; // Required for Chrome to show the prompt
-      return '';
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      window.open = originalOpen;
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   useEffect(() => {
@@ -74,20 +41,13 @@ export default function Home() {
     if (remoteState) {
       isRemoteUpdate.current = true;
       if (remoteState.state === "play_media") {
-        setCurrentMedia(remoteState.media);
-        setServerIndex(remoteState.serverIndex);
-        setPlayerOpen(true);
-        setIframeLoading(true);
-        setIframeError(false);
-      } else if (remoteState.state === "close_media") {
-        setPlayerOpen(false);
-        setCurrentMedia(null);
+        router.push(`/watch?t=${remoteState.media.type}&v=${remoteState.media.id}&server=${remoteState.serverIndex || 0}`);
       }
       setTimeout(() => {
         isRemoteUpdate.current = false;
       }, 500);
     }
-  }, [remoteState]);
+  }, [remoteState, router]);
 
   const loadContent = async () => {
     setIsLoading(true);
@@ -118,6 +78,7 @@ export default function Home() {
       return;
     }
     setIsSearching(true);
+    if (logAction) logAction("search", `Searched for: ${searchQuery}`);
     const results = await searchTMDB(searchQuery, apiKey);
     if (results?.results) {
       setSearchResults(results.results.filter((item: any) => item.poster_path && (item.media_type === "movie" || item.media_type === "tv")));
@@ -125,59 +86,12 @@ export default function Home() {
     setIsSearching(false);
   };
 
-  const openPlayer = (id: string, type: string, srvIdx = 0, broadcast = true) => {
-    setCurrentMedia({ id, type });
-    setServerIndex(srvIdx);
-    setPlayerOpen(true);
-    setIframeLoading(true);
-    setIframeError(false);
-
-    // Set a timeout to detect if the iframe fails to load
-    if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
-    iframeTimeoutRef.current = setTimeout(() => {
-      if (iframeLoading) {
-        setIframeError(true);
-        setIframeLoading(false);
-      }
-    }, 10000); // 10 seconds timeout
-
-    if (broadcast && !isRemoteUpdate.current) {
+  const openPlayer = (id: string, type: string, srvIdx = 0) => {
+    if (logAction) logAction("play", `Navigating to ${type} with id ${id}`);
+    if (!isRemoteUpdate.current) {
       broadcastState("play_media", { media: { id, type }, serverIndex: srvIdx });
     }
-  };
-
-  const closePlayer = (broadcast = true) => {
-    setPlayerOpen(false);
-    setCurrentMedia(null);
-    if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
-
-    if (broadcast && !isRemoteUpdate.current) {
-      broadcastState("close_media");
-    }
-  };
-
-  const changeServer = (idx: number) => {
-    setServerIndex(idx);
-    setIframeLoading(true);
-    setIframeError(false);
-    
-    if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
-    iframeTimeoutRef.current = setTimeout(() => {
-      if (iframeLoading) {
-        setIframeError(true);
-        setIframeLoading(false);
-      }
-    }, 10000);
-
-    if (!isRemoteUpdate.current && currentMedia) {
-      broadcastState("play_media", { media: currentMedia, serverIndex: idx });
-    }
-  };
-
-  const handleIframeLoad = () => {
-    setIframeLoading(false);
-    setIframeError(false);
-    if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
+    router.push(`/watch?t=${type}&v=${id}&server=${srvIdx}`);
   };
 
   return (
@@ -226,7 +140,6 @@ export default function Home() {
             />
             {isSearching && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
           </motion.form>
-          <Bell className="w-5 h-5 cursor-pointer hidden md:block hover:text-gray-300 transition-colors" />
           <div className="w-8 h-8 bg-gray-600 rounded flex items-center justify-center cursor-pointer hover:ring-2 ring-white transition-all">
             <User className="w-5 h-5" />
           </div>
@@ -400,101 +313,6 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Player Modal */}
-      <AnimatePresence>
-        {playerOpen && currentMedia && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black z-[100] flex flex-col"
-          >
-            {/* Auto-hiding Header */}
-            <div className={`p-4 flex justify-between items-center bg-gradient-to-b from-black/90 via-black/60 to-transparent absolute top-0 w-full z-20 transition-opacity duration-300 pt-6 ${iframeLoading || iframeError ? 'opacity-100' : 'opacity-0 hover:opacity-100'}`}>
-              <div className="flex gap-3 overflow-x-auto scrollbar-hide px-4">
-                <span className="text-gray-400 font-medium text-sm flex items-center mr-2 uppercase tracking-wider">Servers:</span>
-                {SERVERS.map((srv, idx) => (
-                  <Button 
-                    key={idx}
-                    variant={idx === serverIndex ? "default" : "secondary"}
-                    className={`rounded-full px-6 transition-all duration-300 ${idx === serverIndex ? "bg-[#e50914] hover:bg-[#f40612] text-white font-bold shadow-[0_0_15px_rgba(229,9,20,0.5)]" : "bg-black/40 text-gray-300 hover:bg-white/20 hover:text-white backdrop-blur-md border border-white/10"}`}
-                    onClick={() => changeServer(idx)}
-                  >
-                    {srv.name}
-                  </Button>
-                ))}
-              </div>
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-full bg-black/40 backdrop-blur-md border border-white/10 w-10 h-10 mr-4" onClick={() => closePlayer()}>
-                <X className="w-6 h-6" />
-              </Button>
-            </div>
-
-            <div className="flex-1 w-full bg-black pt-0 relative flex items-center justify-center">
-              {iframeLoading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#141414] z-10">
-                  <div className="relative w-24 h-24 mb-8">
-                    <div className="absolute inset-0 border-4 border-gray-800 rounded-full"></div>
-                    <div className="absolute inset-0 border-4 border-[#e50914] rounded-full border-t-transparent animate-spin"></div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Play className="w-8 h-8 text-[#e50914] ml-1" />
-                    </div>
-                  </div>
-                  <h3 className="text-2xl font-bold text-white mb-2 tracking-wide">Loading Stream</h3>
-                  <p className="text-gray-400 font-medium">Connecting to <span className="text-white">{SERVERS[serverIndex].name}</span>...</p>
-                </div>
-              )}
-              
-              {iframeError && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-10 px-4 text-center">
-                  <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
-                    <X className="w-8 h-8 text-[#e50914]" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-white mb-2">Server Connection Failed</h3>
-                  <p className="text-gray-400 mb-6 max-w-md">
-                    {SERVERS[serverIndex].name} took too long to respond or refused to connect. Please try selecting a different server from the top menu.
-                  </p>
-                  <div className="flex gap-2 flex-wrap justify-center">
-                    {SERVERS.map((srv, idx) => {
-                      if (idx === serverIndex) return null;
-                      return (
-                        <Button 
-                          key={idx}
-                          variant="outline"
-                          className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
-                          onClick={() => changeServer(idx)}
-                        >
-                          Try {srv.name}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <iframe 
-                src={SERVERS[serverIndex].getUrl(currentMedia.id, currentMedia.type)} 
-                className={`w-full h-full border-0 transition-opacity duration-500 ${iframeLoading || iframeError ? 'opacity-0' : 'opacity-100'}`}
-                allowFullScreen
-                allow="autoplay; encrypted-media; fullscreen"
-                referrerPolicy="no-referrer"
-                onLoad={handleIframeLoad}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Status Bar */}
-      <motion.div 
-        initial={{ y: 50, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="fixed bottom-4 left-4 bg-black/80 text-gray-300 px-4 py-2 rounded-full text-sm z-50 backdrop-blur-md border border-gray-800 shadow-lg flex items-center gap-2"
-      >
-        <div className={`w-2 h-2 rounded-full animate-pulse ${status.includes("Offline") || status.includes("Error") ? "bg-red-500" : "bg-green-500"}`} />
-        {status}
-      </motion.div>
     </div>
   );
 }

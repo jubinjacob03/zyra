@@ -83,5 +83,16 @@ export function useDiscordSync() {
     }
   };
 
-  return { status, remoteState, broadcastState };
+  const logAction = (action: string, details: string) => {
+    if (socket) {
+      socket.emit("user_action", {
+        channelId: channelId || "Unknown",
+        user: socket.id, // Fallback since we aren't doing full OAuth
+        action,
+        details,
+      });
+    }
+  };
+
+  return { status, remoteState, broadcastState, logAction };
 }

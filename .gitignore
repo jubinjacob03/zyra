@@ -47,3 +47,8 @@ cache/
 downloads/
 
 package-lock.json
+
+# Next.js artifacts
+zyra-activity/.next/
+zyra-activity/out/
+zyra-activity/node_modules/

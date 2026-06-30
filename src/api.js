@@ -84,16 +84,38 @@ module.exports = function attachMusicApi(client, customPort = null) {
     }
 
     try {
-      if (req.method === "GET" && (path === "/" || path === "/index.html")) {
+      if (req.method === "GET" && (path === "/" || path === "/index.html" || path === "/netflix" || path === "/netflix.html")) {
         const fs = require("fs");
         const fp = require("path");
         try {
-          const file = fs.readFileSync(fp.join(__dirname, "../public/index.html"));
+          const file = fs.readFileSync(fp.join(__dirname, "../zyra-activity/out/index.html"));
           res.writeHead(200, { "Content-Type": "text/html" });
           return res.end(file);
         } catch (err) {
-          log.error("Could not read index.html:", err.message);
+          log.error("Could not read React index.html:", err.message);
           return send(res, 500, { error: "Could not load activity interface" });
+        }
+      }
+
+      // Serve Next.js static assets (_next folder)
+      if (req.method === "GET" && path.startsWith("/_next/")) {
+        const fs = require("fs");
+        const fp = require("path");
+        try {
+          const filePath = fp.join(__dirname, "../zyra-activity/out", path);
+          if (fs.existsSync(filePath)) {
+            const ext = fp.extname(filePath);
+            let contentType = "text/plain";
+            if (ext === ".js") contentType = "application/javascript";
+            else if (ext === ".css") contentType = "text/css";
+            else if (ext === ".json") contentType = "application/json";
+            
+            const file = fs.readFileSync(filePath);
+            res.writeHead(200, { "Content-Type": contentType });
+            return res.end(file);
+          }
+        } catch (err) {
+          log.error("Could not read static asset:", err.message);
         }
       }
 

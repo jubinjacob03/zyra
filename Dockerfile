@@ -18,6 +18,9 @@ RUN npm install --omit=dev --no-package-lock && \
 
 COPY . .
 
+# Build the Next.js Activity app
+RUN cd zyra-activity && npm install && npm run build
+
 RUN mkdir -p /app/logs /app/cache
 
 ENV NODE_ENV=production

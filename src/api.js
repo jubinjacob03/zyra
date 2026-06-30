@@ -84,15 +84,26 @@ module.exports = function attachMusicApi(client, customPort = null) {
     }
 
     try {
-      if (req.method === "GET" && (path === "/" || path === "/index.html" || path === "/netflix" || path === "/netflix.html")) {
+      if (req.method === "GET" && (path === "/" || path === "/index.html" || path === "/netflix" || path === "/netflix.html" || path === "/watch" || path === "/watch.html")) {
         const fs = require("fs");
         const fp = require("path");
         try {
-          const file = fs.readFileSync(fp.join(__dirname, "../zyra-activity/out/index.html"));
+          const fileToServe = (path === "/watch" || path === "/watch.html") 
+            ? "../zyra-activity/out/watch/page.html" // Next.js exports /watch/page.tsx to /out/watch.html
+            : "../zyra-activity/out/index.html";
+          
+          let file;
+          try {
+            file = fs.readFileSync(fp.join(__dirname, fileToServe));
+          } catch (e) {
+            // Fallback in case Next.js names it watch.html instead of watch/page.html
+            file = fs.readFileSync(fp.join(__dirname, fileToServe === "../zyra-activity/out/watch/page.html" ? "../zyra-activity/out/watch.html" : "../zyra-activity/out/index.html"));
+          }
+          
           res.writeHead(200, { "Content-Type": "text/html" });
           return res.end(file);
         } catch (err) {
-          log.error("Could not read React index.html:", err.message);
+          log.error(`Could not read React HTML file for path ${path}:`, err.message);
           return send(res, 500, { error: "Could not load activity interface" });
         }
       }

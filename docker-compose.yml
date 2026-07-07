@@ -12,7 +12,7 @@ services:
     environment:
       - NODE_ENV=production
       - TZ=UTC
-      - NODE_OPTIONS=--max-old-space-size=440
+      - NODE_OPTIONS=--max-old-space-size=600
     ports:
       - "8000:8000"
       - "8001:8001"
@@ -21,7 +21,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 560M
+          memory: 900M
         reservations:
           memory: 256M
     healthcheck:

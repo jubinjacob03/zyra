@@ -355,9 +355,10 @@ async function handleLavalinkPlay(
 
   let queue = lavalinkQueues.get(queueKey);
   const existingPlayer = watchdog.shoukaku.players.get(voiceChannel.guild.id);
+  const botVoiceChannelId = voiceChannel.guild.members.me.voice?.channelId;
   let resolved = null;
 
-  if (queue && queue.player?.node?.state !== 1) {
+  if (queue && (queue.player?.node?.state !== 1 || !botVoiceChannelId)) {
     lavalinkQueues.delete(queueKey);
     queue = null;
   }

@@ -967,7 +967,8 @@ async function searchSongInternal(query, user) {
     
    
     else {
-        const result = await youtube.searchOne(query);
+        let result = null;
+        try { result = await youtube.searchOne(query); } catch {}
         
         if (result) {
             const url = `https://youtube.com/watch?v=${result.id}`;

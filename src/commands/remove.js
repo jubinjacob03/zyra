@@ -15,16 +15,16 @@ module.exports = {
         const queue = client.getQueue(interaction.guildId);
 
         if (!queue) {
-            return interaction.reply({ embeds: [errorEmbed('Nothing is playing right now.')], flags: 64 });
+            return interaction.reply(Object.assign(errorEmbed('Nothing is playing right now.'), { flags: 64 }));
         }
 
         const position = interaction.options.getInteger('position');
 
         if (position > queue.songs.length) {
-            return interaction.reply({ embeds: [errorEmbed(`Invalid position. Queue has ${queue.songs.length} songs.`)], flags: 64 });
+            return interaction.reply(Object.assign(errorEmbed(`Invalid position. Queue has ${queue.songs.length} songs.`), { flags: 64 }));
         }
 
         const removed = queue.songs.splice(position, 1)[0];
-        await interaction.reply({ embeds: [successEmbed(`Removed **${removed.name}** from the queue.`)] });
+        await interaction.reply(successEmbed(`Removed **${removed.name}** from the queue.`));
     },
 };

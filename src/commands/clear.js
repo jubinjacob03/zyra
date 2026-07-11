@@ -10,11 +10,11 @@ module.exports = {
         const queue = client.getQueue(interaction.guildId);
 
         if (!queue) {
-            return interaction.reply({ embeds: [errorEmbed('Nothing is playing right now.')], flags: 64 });
+            return interaction.reply(Object.assign(errorEmbed('Nothing is playing right now.'), { flags: 64 }));
         }
 
         const count = queue.songs.length - 1;
         queue.songs.splice(1);
-        await interaction.reply({ embeds: [successEmbed(`Cleared **${count}** songs from the queue.`)] });
+        await interaction.reply(successEmbed(`Cleared **${count}** songs from the queue.`));
     },
 };

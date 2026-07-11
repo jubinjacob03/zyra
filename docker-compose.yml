@@ -9,27 +9,32 @@ services:
       - .env
     volumes:
       - ./logs:/app/logs
+      - ./cache:/app/cache
       # Optional: Mount cookies for yt-dlp
       # - ./cookies.txt:/app/cookies.txt:ro
     environment:
       - NODE_ENV=production
       - TZ=UTC
-    # Resource limits (adjust based on your needs)
+      - NODE_OPTIONS=--max-old-space-size=600
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+      - "8003:8003"
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
+          cpus: '2'
+          memory: 900M
         reservations:
           cpus: '0.5'
           memory: 256M
-    # Health check
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'node src/index.js' || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 40s
     # Network mode (optional, for better connectivity)
     network_mode: bridge
     # Logging

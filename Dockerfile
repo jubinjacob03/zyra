@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:22-alpine
 
 # Install system dependencies
 RUN apk add --no-cache \
@@ -6,11 +6,13 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     git \
-    curl
+    curl \
+    deno
 
-# Install yt-dlp (latest version for better bot detection evasion)
-# Using --break-system-packages is safe in Docker containers
-RUN pip3 install --no-cache-dir --upgrade --break-system-packages yt-dlp
+# Install yt-dlp + PO Token provider plugin for VPS/datacenter IP support
+RUN pip3 install --no-cache-dir --upgrade --break-system-packages \
+    yt-dlp \
+    bgutil-ytdlp-pot-provider
 
 # Create app directory
 WORKDIR /app
@@ -31,11 +33,14 @@ COPY cookies.txt* ./
 # Create logs directory
 RUN mkdir -p /app/logs
 
-# Expose health check port (optional)
-EXPOSE 3000
+# Expose API ports
+EXPOSE 8000 8001 8002 8003
 
 # Set environment variables
 ENV NODE_ENV=production
 
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
 # Run the bot
-CMD ["node", "src/index.js"]
+CMD ["node", "--expose-gc", "src/index.js"]

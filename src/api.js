@@ -1,7 +1,15 @@
 const http = require('http');
+const crypto = require('node:crypto');
 
-module.exports = function attachMusicApi(client) {
-  const port = parseInt(process.env.MUSIC_API_PORT) || 3002;
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
+module.exports = function attachMusicApi(client, customPort = null) {
+  const port = customPort || parseInt(process.env.MUSIC_API_PORT) || 8000;
   const apiKey = process.env.MUSIC_API_KEY;
 
   const send = (res, status, data) => {
@@ -27,8 +35,8 @@ module.exports = function attachMusicApi(client) {
     if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
     if (apiKey) {
-      const auth = req.headers.authorization;
-      if (!auth || auth !== `Bearer ${apiKey}`) {
+      const auth = req.headers.authorization || '';
+      if (!safeEqual(auth, `Bearer ${apiKey}`)) {
         return send(res, 401, { error: 'Unauthorized' });
       }
     }
@@ -150,6 +158,27 @@ module.exports = function attachMusicApi(client) {
             thumbnail:        s.thumbnail,
             formattedDuration: s.formattedDuration,
             author:           s.author,
+          })),
+          queueLength: queue.songs.length,
+        });
+      }
+
+      if (req.method === 'GET' && path === '/health') {
+        return send(res, 200, { ok: true, uptime: Math.floor(process.uptime()) });
+      }
+
+      if (req.method === 'GET' && path === '/queue') {
+        const guildId = url.searchParams.get('guildId');
+        const queue = client.getQueue(guildId);
+        if (!queue) return send(res, 200, { queue: [], queueLength: 0 });
+        return send(res, 200, {
+          queue: queue.songs.map((s, i) => ({
+            index: i,
+            name: s.name,
+            url: s.url,
+            thumbnail: s.thumbnail,
+            formattedDuration: s.formattedDuration,
+            author: s.author,
           })),
           queueLength: queue.songs.length,
         });

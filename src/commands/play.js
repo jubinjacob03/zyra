@@ -11,7 +11,7 @@ const {
 const { errorEmbed } = require("../utils/embed");
 const { e } = require("../utils/customEmoji");
 const { createLogger } = require("../utils/logger");
-const youtube = require("youtube-sr").default;
+const { searchYouTube } = require("../utils/ytdlpPath");
 
 const log = createLogger("play");
 
@@ -54,11 +54,10 @@ module.exports = {
       }
 
       log.info(`Searching for: "${query}"`);
-      const searchQuery = `${query} song`;
-      const results = await youtube.search(searchQuery, { limit: 5, type: "video" });
+      const results = await searchYouTube(query, 5);
 
       if (!results || results.length === 0) {
-        return interaction.editReply(errorEmbed("No results found for your query."));
+        return await playDirectly(interaction, client, query, member, voiceChannel);
       }
 
       const container = new ContainerBuilder().setAccentColor(0x00ffff);
@@ -76,7 +75,7 @@ module.exports = {
         const title = r.title.length > 50 ? r.title.slice(0, 50) + "…" : r.title;
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `\`${i + 1}.\` **${title}**\n-# ${r.channel?.name || "Unknown"} · ${formatDur(r.duration)}`,
+            `\`${i + 1}.\` **${title}**\n-# ${r.channel || "Unknown"} · ${formatDur(r.duration)}`,
           ),
         );
       }
@@ -91,8 +90,8 @@ module.exports = {
         .addOptions(
           results.map((r, i) => ({
             label: `${i + 1}. ${r.title}`.slice(0, 100),
-            description: `${formatDur(r.duration)} • ${r.channel?.name || "Unknown"}`.slice(0, 100),
-            value: `https://youtube.com/watch?v=${r.id}`,
+            description: `${formatDur(r.duration)} • ${r.channel || "Unknown"}`.slice(0, 100),
+            value: r.url,
           })),
         );
 

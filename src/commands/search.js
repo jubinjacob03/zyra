@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const { errorEmbed } = require("../utils/embed");
 const { e } = require("../utils/customEmoji");
-const play = require("play-dl");
+const { searchYouTube } = require("../utils/ytdlpPath");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -35,15 +35,16 @@ module.exports = {
     await interaction.reply({ content: `${e("INFO")} Searching...` });
 
     try {
-      const results = await play.search(query, { limit: 10 });
+      const results = await searchYouTube(query, 10);
 
-      if (!results.length) {
+      if (!results || !results.length) {
         return interaction.editReply(errorEmbed("No results found."));
       }
 
+      const formatDur = (s) => { if (!s) return "0:00"; const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, "0")}`; };
       const icon = e("INFO");
       const description = results
-        .map((r, i) => `**${i + 1}.** [${r.title}](${r.url}) - \`${client.formatDuration(r.durationInSec)}\``)
+        .map((r, i) => `**${i + 1}.** [${r.title}](${r.url}) - \`${formatDur(r.duration)}\``)
         .join("\n");
 
       const container = new ContainerBuilder().setAccentColor(0x00ffff);
@@ -59,7 +60,7 @@ module.exports = {
         .addOptions(
           results.map((r) => ({
             label: r.title.slice(0, 100),
-            description: `${client.formatDuration(r.durationInSec)} • ${r.channel?.name || "Unknown"}`.slice(0, 100),
+            description: `${formatDur(r.duration)} • ${r.channel || "Unknown"}`.slice(0, 100),
             value: r.url,
           })),
         );

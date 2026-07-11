@@ -17,9 +17,7 @@ const {
     NoSubscriberBehavior,
     StreamType
 } = require('@discordjs/voice');
-const play = require('play-dl');
 const youtubedlExec = require('youtube-dl-exec');
-const youtube = require('youtube-sr').default;
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -29,17 +27,14 @@ const SpotifyAPI = require('./utils/spotify');
 const YouTubeSearchEngine = require('./utils/youtubeSearch');
 const { createCompleteMusicController, createIdleMusicController } = require('./utils/componentsV2');
 const { getControllerPanel, setControllerPanel } = require('./utils/panelStore');
+const { binaryPath: ytdlpBinaryPath } = require('./utils/ytdlpPath');
 
 // Cross-platform yt-dlp configuration
-// Windows: Use WinGet system installation (no spaces in path)
-// Linux/Mac: Use bundled binary from youtube-dl-exec or system yt-dlp
 let youtubedl;
-let ytdlpBinaryPath = 'yt-dlp';
 if (os.platform() === 'win32') {
     const systemYtdlp = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'WinGet', 'Packages', 'yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe', 'yt-dlp.exe');
     if (fs.existsSync(systemYtdlp)) {
         youtubedl = youtubedlExec.create(systemYtdlp);
-        ytdlpBinaryPath = systemYtdlp;
         console.log('✅ Using system yt-dlp (Windows)');
     } else {
         youtubedl = youtubedlExec;
@@ -49,7 +44,6 @@ if (os.platform() === 'win32') {
     const systemYtdlp = '/root/.nix-profile/bin/yt-dlp';
     if (fs.existsSync(systemYtdlp)) {
         youtubedl = youtubedlExec.create(systemYtdlp);
-        ytdlpBinaryPath = systemYtdlp;
         console.log('✅ Using system yt-dlp (Nix)');
     } else {
         youtubedl = youtubedlExec;
@@ -196,7 +190,7 @@ class MusicQueue {
                 '--geo-bypass',
                 '--no-check-certificates',
                 '--no-update',
-                '--extractor-args', 'youtube:player_client=mweb',
+                '--extractor-args', 'youtube:player_client=web_embedded,default',
                 '--add-header', 'referer:youtube.com',
                 '--add-header', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             ];
@@ -248,12 +242,12 @@ class MusicQueue {
             
             streamTimeout = setTimeout(() => {
                 if (!this.streamStarted) {
-                    console.error('Audio stream failed to start within 20 seconds');
+                    console.error('Audio stream failed to start within 30 seconds');
                     ytdlpProcess.kill();
                     ffmpegProcess.kill();
                     this.processQueue();
                 }
-            }, 20000);
+            }, 30000);
 
             this.ytdlpProcess = ytdlpProcess;
             this.ffmpegProcess = ffmpegProcess;
@@ -656,6 +650,7 @@ async function searchSongInternal(query, user) {
     // Enhanced anti-detection options
     const antiDetectionOpts = {
         ...cookieOpts,
+        extractorArgs: 'youtube:player_client=web_embedded,default',
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         referer: 'https://www.youtube.com/',
         addHeader: [
@@ -676,28 +671,26 @@ async function searchSongInternal(query, user) {
             const youtubeVideo = await YouTubeSearchEngine.findBestMatch(spotifyTrack);
             
             if (!youtubeVideo) {
-               
                 const fallbackQuery = `${spotifyTrack.name} ${spotifyTrack.artists[0]?.name}`;
                 
                 try {
-                    const fallbackResult = await youtube.searchOne(fallbackQuery);
+                    const fallbackResult = await youtubedl(`ytsearch1:${fallbackQuery}`, {
+                        dumpSingleJson: true,
+                        noWarnings: true,
+                        noCheckCertificates: true,
+                        skipDownload: true,
+                        ...antiDetectionOpts
+                    });
+                    const entry = fallbackResult.entries?.[0] || fallbackResult;
                     
-                    if (fallbackResult) {
-                        const info = await youtubedl(fallbackResult.url, {
-                            dumpSingleJson: true,
-                            noWarnings: true,
-                            noCheckCertificates: true,
-                            skipDownload: true,
-                            ...antiDetectionOpts
-                        });
-                        
+                    if (entry && entry.title) {
                         return {
                             type: 'song',
                             name: spotifyTrack.name,
-                            url: info.webpage_url || fallbackResult.url,
-                            duration: parseInt(info.duration) || fallbackResult.duration || 0,
-                            formattedDuration: formatDuration(parseInt(info.duration) || fallbackResult.duration || 0),
-                            thumbnail: spotifyTrack.album?.images?.[0]?.url || info.thumbnail,
+                            url: entry.webpage_url || `https://www.youtube.com/watch?v=${entry.id}`,
+                            duration: parseInt(entry.duration) || 0,
+                            formattedDuration: formatDuration(parseInt(entry.duration) || 0),
+                            thumbnail: spotifyTrack.album?.images?.[0]?.url || entry.thumbnail,
                             author: spotifyTrack.artists.map(a => a.name).join(', '),
                             user: user,
                             spotifyData: {
@@ -728,8 +721,8 @@ async function searchSongInternal(query, user) {
                 type: 'song',
                 name: spotifyTrack.name,
                 url: info.webpage_url || youtubeVideo.url,
-                duration: parseInt(info.duration) || youtubeVideo.correctedDuration || youtubeVideo.duration || 0,
-                formattedDuration: formatDuration(parseInt(info.duration) || youtubeVideo.correctedDuration || youtubeVideo.duration || 0),
+                duration: parseInt(info.duration) || youtubeVideo.duration || 0,
+                formattedDuration: formatDuration(parseInt(info.duration) || youtubeVideo.duration || 0),
                 thumbnail: spotifyTrack.album?.images?.[0]?.url || info.thumbnail,
                 author: spotifyTrack.artists.map(a => a.name).join(', '),
                 user: user,
@@ -967,31 +960,6 @@ async function searchSongInternal(query, user) {
     
    
     else {
-        let result = null;
-        try { result = await youtube.searchOne(query); } catch {}
-        
-        if (result) {
-            const url = `https://youtube.com/watch?v=${result.id}`;
-            const info = await youtubedl(url, {
-                dumpSingleJson: true,
-                noWarnings: true,
-                skipDownload: true,
-                noCheckCertificates: true,
-                ...antiDetectionOpts
-            });
-            
-            return {
-                type: 'song',
-                name: info.title,
-                url: info.webpage_url || url,
-                duration: parseInt(info.duration) || 0,
-                formattedDuration: formatDuration(parseInt(info.duration) || 0),
-                thumbnail: info.thumbnail,
-                author: info.uploader || info.channel || 'Unknown',
-                user: user,
-            };
-        }
-
         const searchResult = await youtubedl(`ytsearch1:${query}`, {
             dumpSingleJson: true,
             noWarnings: true,
@@ -999,8 +967,8 @@ async function searchSongInternal(query, user) {
             noCheckCertificates: true,
             ...antiDetectionOpts
         });
-        const entry = searchResult.entries?.[0];
-        if (!entry) return null;
+        const entry = searchResult.entries?.[0] || searchResult;
+        if (!entry || !entry.title) return null;
 
         return {
             type: 'song',

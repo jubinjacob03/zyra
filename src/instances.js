@@ -94,6 +94,7 @@ function startInstance(config, instanceIndex) {
     formatDuration,
     youtubedl,
   } = require("./bot");
+  const { searchYouTube } = require("./utils/ytdlpPath");
 
   if (!config) {
     throw new Error(`Invalid instance index: ${instanceIndex + 1}`);
@@ -351,8 +352,7 @@ function startInstance(config, instanceIndex) {
 
       try {
         log.info(`Modal search for: "${query}"`);
-        const youtube = require("youtube-sr").default;
-        const results = await youtube.search(`${query} song`, { limit: 5, type: "video" });
+        const results = await searchYouTube(query, 5);
 
         if (!results || results.length === 0) {
           const { errorEmbed } = require("./utils/embed");
@@ -380,7 +380,7 @@ function startInstance(config, instanceIndex) {
           const title = r.title.length > 50 ? r.title.slice(0, 50) + "…" : r.title;
           container.addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
-              `\`${i + 1}.\` **${title}**\n-# ${r.channel?.name || "Unknown"} · ${fmtDur(r.duration)}`,
+              `\`${i + 1}.\` **${title}**\n-# ${r.channel || "Unknown"} · ${fmtDur(r.duration)}`,
             ),
           );
         }
@@ -394,8 +394,8 @@ function startInstance(config, instanceIndex) {
           .setPlaceholder("Select a song to play")
           .addOptions(results.map((r, i) => ({
             label: `${i + 1}. ${r.title}`.slice(0, 100),
-            description: `${fmtDur(r.duration)} • ${r.channel?.name || "Unknown"}`.slice(0, 100),
-            value: `https://youtube.com/watch?v=${r.id}`,
+            description: `${fmtDur(r.duration)} • ${r.channel || "Unknown"}`.slice(0, 100),
+            value: r.url,
           })));
 
         const row = new ActionRowBuilder().addComponents(selectMenu);

@@ -1,8 +1,8 @@
-const youtube = require('youtube-sr').default;
+const { searchYouTube } = require('./ytdlpPath');
 
 /**
- * Advanced YouTube Search Engine for Spotify-to-YouTube conversion
- * Uses multiple search strategies and similarity scoring for accurate matching
+ * YouTube Search Engine for Spotify-to-YouTube conversion.
+ * Uses yt-dlp search with similarity scoring for accurate matching.
  */
 class YouTubeSearchEngine {
     /**
@@ -15,57 +15,24 @@ class YouTubeSearchEngine {
         const artistNames = artists.map(a => a.name).join(' ');
         const primaryArtist = artists[0]?.name || '';
         const durationSeconds = Math.floor(duration_ms / 1000);
-
-       
         const cleanTitle = this.cleanTrackTitle(title);
 
-       
         const searchQueries = [
             `${cleanTitle} ${primaryArtist} official audio`,
-            `${cleanTitle} ${primaryArtist} official video`,
-            `${cleanTitle} ${primaryArtist} official`,
-            `${title} ${primaryArtist} lyrics`,
-            `${title} ${primaryArtist} music video`,
-            `${title} ${artistNames}`,
             `${title} ${primaryArtist}`,
             `${cleanTitle} ${primaryArtist}`,
-           
-            `${title.split(' ')[0]} ${primaryArtist}`,
+            `${title} ${artistNames}`,
             `${primaryArtist} ${title}`,
-           
-            `${title}`,
-            `${primaryArtist}`
         ];
 
-        for (let i = 0; i < searchQueries.length; i++) {
-            const query = searchQueries[i];
-            
+        for (const query of searchQueries) {
             try {
-                const results = await Promise.race([
-                    youtube.search(query, { 
-                        limit: i < 4 ? 10 : 8,
-                        type: 'video'
-                    }),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Search timeout')), 10000)
-                    )
-                ]);
-                
-                if (!results || results.length === 0) {
-                    continue;
-                }
+                const results = await searchYouTube(query, 8);
+                if (!results || results.length === 0) continue;
 
-               
                 const bestMatch = this.selectBestMatch(results, title, artistNames, durationSeconds);
-                
-                if (bestMatch) {
-                    return bestMatch;
-                }
-                
-               
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-            } catch (error) {
+                if (bestMatch) return bestMatch;
+            } catch {
                 continue;
             }
         }
@@ -86,41 +53,28 @@ class YouTubeSearchEngine {
 
         for (let i = 0; i < results.length; i++) {
             const video = results[i];
-            if (!video || !video.title) {
-                continue;
-            }
+            if (!video || !video.title) continue;
 
-            if (!video.duration || video.duration === 0) {
-                continue;
-            }
+            let duration = video.duration || 0;
+            if (duration > 10000) duration = Math.floor(duration / 1000);
+            if (duration < 10 || duration > 1200) continue;
 
-           
-            let duration = video.duration;
-            if (duration > 10000) {
-                duration = Math.floor(duration / 1000);
-            }
-
-           
-            if (duration < 10 || duration > 1200) {
-                continue;
-            }
-
-           
             const titleScore = this.calculateTitleSimilarity(video.title, originalTitle);
             const artistScore = this.calculateArtistSimilarity(video.title, artistNames);
             const durationScore = this.calculateDurationSimilarity(duration, targetDuration);
-            const channelScore = this.calculateChannelScore(video.channel?.name || '');
+            const channelScore = this.calculateChannelScore(video.channel || '');
             
-           
             const totalScore = (titleScore * 0.50) + (artistScore * 0.35) + (durationScore * 0.10) + (channelScore * 0.05);
 
-           
             if (totalScore > bestScore && totalScore > 0.05) {
                 bestScore = totalScore;
-                bestMatch = video;
-                bestMatch.matchScore = totalScore;
-               
-                bestMatch.correctedDuration = duration;
+                bestMatch = {
+                    url: video.url,
+                    title: video.title,
+                    duration: duration,
+                    channel: video.channel,
+                    matchScore: totalScore,
+                };
             }
         }
 

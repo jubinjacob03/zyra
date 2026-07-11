@@ -7,10 +7,7 @@ RUN apk add --no-cache \
     py3-pip \
     git \
     curl \
-    deno \
-    make \
-    g++ \
-    opus-dev
+    deno
 
 # Install yt-dlp + PO Token provider plugin for VPS/datacenter IP support
 RUN pip3 install --no-cache-dir --upgrade --break-system-packages \

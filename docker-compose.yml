@@ -1,17 +1,15 @@
-version: '3.8'
-
 services:
-  remani-bot:
+  zyra-bot:
+    image: zyra-bot
     build: .
-    container_name: remani-discord-bot
+    container_name: zyra-bot
     restart: unless-stopped
     env_file:
       - .env
     volumes:
       - ./logs:/app/logs
       - ./cache:/app/cache
-      # Optional: Mount cookies for yt-dlp
-      # - ./cookies.txt:/app/cookies.txt:ro
+      - ./cookies.txt:/app/cookies.txt:ro
     environment:
       - NODE_ENV=production
       - TZ=UTC
@@ -19,10 +17,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
           memory: 900M
         reservations:
-          cpus: '0.5'
           memory: 256M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -31,7 +27,6 @@ services:
       retries: 3
       start_period: 40s
     network_mode: host
-    # Logging
     logging:
       driver: "json-file"
       options:

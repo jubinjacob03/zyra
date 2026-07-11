@@ -10,9 +10,7 @@ RUN apk add --no-cache \
     g++ \
     && ffmpeg -version
 
-RUN pip3 install --no-cache-dir --upgrade --break-system-packages \
-    yt-dlp \
-    bgutil-ytdlp-pot-provider
+RUN pip3 install --no-cache-dir --upgrade --break-system-packages yt-dlp
 
 WORKDIR /app
 

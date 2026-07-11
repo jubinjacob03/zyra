@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, Events, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, ActivityType, ContainerBuilder, TextDisplayBuilder, MessageFlags } = require('discord.js');
 const { initRuntimeLogger } = require('./utils/runtimeLogger');
 const { initEmojis, e } = require('./utils/customEmoji');
 const { createLogger } = require('./utils/logger');
@@ -23,9 +23,12 @@ const youtube = require('youtube-sr').default;
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { spawn } = require('child_process');
 const { formatDuration } = require('./utils/embed');
 const SpotifyAPI = require('./utils/spotify');
 const YouTubeSearchEngine = require('./utils/youtubeSearch');
+const { createCompleteMusicController, createIdleMusicController } = require('./utils/componentsV2');
+const { getControllerPanel, setControllerPanel } = require('./utils/panelStore');
 
 // Cross-platform yt-dlp configuration
 // Windows: Use WinGet system installation (no spaces in path)
@@ -183,8 +186,6 @@ class MusicQueue {
         this.killStreams();
 
         try {
-            const { spawn } = require('child_process');
-            
             const ytdlpArgs = [
                 song.url,
                 '-o', '-',
@@ -265,8 +266,6 @@ class MusicQueue {
             
             this.player.play(this.currentResource);
             
-            const { createCompleteMusicController } = require('./utils/componentsV2');
-            const { getControllerPanel, setControllerPanel } = require('./utils/panelStore');
             const controller = createCompleteMusicController(this);
 
             const panelClient = this.client || client;
@@ -344,7 +343,6 @@ class MusicQueue {
                     const panelClient = this.client || client;
                     const panelData = panelClient.musicPanels.get(this.guildId);
                     if (panelData?.message) {
-                        const { createIdleMusicController } = require('./utils/componentsV2');
                         const idle = createIdleMusicController("Queue finished. Add more songs!", panelClient.user?.username);
                         panelData.message.edit(idle).catch(() => {});
                     }
@@ -495,7 +493,6 @@ class MusicQueue {
            
             await panelData.message.fetch();
             
-            const { createCompleteMusicController } = require('./utils/componentsV2');
             const controller = createCompleteMusicController(this);
             if (!controller) return;
 
@@ -743,44 +740,6 @@ async function searchSongInternal(query, user) {
                 }
             };
         } catch (error) {
-           
-            if (error.message.includes('Could not find a matching YouTube video')) {
-                try {
-                    const trackId = SpotifyAPI.extractSpotifyId(query, 'track');
-                    const spotifyTrack = await spotifyAPI.getTrack(trackId);
-                    const fallbackQuery = `${spotifyTrack.name} ${spotifyTrack.artists[0]?.name}`;
-                    
-                    const fallbackResult = await youtube.searchOne(fallbackQuery);
-                    if (fallbackResult) {
-                        const info = await youtubedl(fallbackResult.url, {
-                            dumpSingleJson: true,
-                            noWarnings: true,
-                            noCheckCertificates: true,
-                            skipDownload: true,
-                            ...antiDetectionOpts
-                        });
-                        
-                        return {
-                            type: 'song',
-                            name: spotifyTrack.name,
-                            url: info.webpage_url || fallbackResult.url,
-                            duration: parseInt(info.duration) || fallbackResult.duration || 0,
-                            formattedDuration: formatDuration(parseInt(info.duration) || fallbackResult.duration || 0),
-                            thumbnail: spotifyTrack.album?.images?.[0]?.url || info.thumbnail,
-                            author: spotifyTrack.artists.map(a => a.name).join(', '),
-                            user: user,
-                            spotifyData: {
-                                originalUrl: query,
-                                trackId: trackId,
-                                isSpotify: true,
-                                fallbackUsed: true
-                            }
-                        };
-                    }
-                } catch (fallbackError) {
-                   
-                }
-            }
             throw new Error(`Unable to find this Spotify track on YouTube. Try a different song or search manually.`);
         }
     }
@@ -1037,6 +996,7 @@ async function searchSongInternal(query, user) {
             noWarnings: true,
             skipDownload: true,
             noCheckCertificates: true,
+            ...antiDetectionOpts
         });
         const entry = searchResult.entries?.[0];
         if (!entry) return null;
@@ -1273,10 +1233,9 @@ async function handleButtonInteraction(interaction, client) {
                 const queueList = songs.map((song, i) => 
                     `${i === 0 ? `**${playIcon} Now:**` : `**${i}.**`} [${song.name}](${song.url}) - \`${song.formattedDuration}\``
                 ).join('\n');
-                const { ContainerBuilder: QCB, TextDisplayBuilder: QTDB, MessageFlags: QMF } = require('discord.js');
-                const qContainer = new QCB().setAccentColor(0x00ffff);
-                qContainer.addTextDisplayComponents(new QTDB().setContent(`${queueIcon} **Queue** (${queue.songs.length} songs)\n\n${queueList}`));
-                await interaction.followUp({ components: [qContainer], flags: QMF.IsComponentsV2 | 64 });
+                const qContainer = new ContainerBuilder().setAccentColor(0x00ffff);
+                qContainer.addTextDisplayComponents(new TextDisplayBuilder().setContent(`${queueIcon} **Queue** (${queue.songs.length} songs)\n\n${queueList}`));
+                await interaction.followUp({ components: [qContainer], flags: MessageFlags.IsComponentsV2 | 64 });
                 break;
 
             case 'music_voldown':
@@ -1322,7 +1281,6 @@ async function updateMusicController(interaction, queue) {
             return;
         }
 
-        const { createCompleteMusicController } = require('./utils/componentsV2');
         const controller = createCompleteMusicController(queue);
         
         if (controller && interaction.message) {

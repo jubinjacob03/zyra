@@ -7,7 +7,10 @@ RUN apk add --no-cache \
     py3-pip \
     git \
     curl \
-    deno
+    deno \
+    make \
+    g++ \
+    opus-dev
 
 # Install yt-dlp + PO Token provider plugin for VPS/datacenter IP support
 RUN pip3 install --no-cache-dir --upgrade --break-system-packages \
@@ -21,7 +24,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install app dependencies
-RUN npm ci --only=production
+RUN npm install --omit=dev --no-package-lock && \
+    npm cache clean --force
 
 # Copy app source
 COPY . .

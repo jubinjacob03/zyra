@@ -16,11 +16,6 @@ services:
       - NODE_ENV=production
       - TZ=UTC
       - NODE_OPTIONS=--max-old-space-size=600
-    ports:
-      - "8000:8000"
-      - "8001:8001"
-      - "8002:8002"
-      - "8003:8003"
     deploy:
       resources:
         limits:
@@ -35,8 +30,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    # Network mode (optional, for better connectivity)
-    network_mode: bridge
+    network_mode: host
     # Logging
     logging:
       driver: "json-file"

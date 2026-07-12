@@ -191,6 +191,8 @@ class MusicQueue {
                 '--no-check-certificates',
                 '--no-update',
                 '--extractor-args', 'youtube:player_client=web_embedded,default',
+                '--buffer-size', '16K',
+                '--http-chunk-size', '10485760',
                 '--add-header', 'referer:youtube.com',
                 '--add-header', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             ];
@@ -204,26 +206,30 @@ class MusicQueue {
             });
 
             const ffmpegProcess = spawn(ffmpegPath, [
+                '-thread_queue_size', '4096',
                 '-i', 'pipe:0',
-                '-analyzeduration', '0',
-                '-probesize', '32000',
+                '-analyzeduration', '2000000',
+                '-probesize', '1048576',
+                '-fflags', '+discardcorrupt',
                 '-loglevel', '0',
                 '-vn',
                 '-c:a', 'libopus',
                 '-f', 'ogg',
                 '-ar', '48000',
                 '-ac', '2',
-                '-b:a', '64k',
+                '-b:a', '96k',
                 '-application', 'audio',
                 '-frame_duration', '20',
-                '-vbr', 'off',
+                '-vbr', 'on',
+                '-compression_level', '5',
+                '-packet_loss', '3',
                 'pipe:1',
             ], {
                 stdio: ['pipe', 'pipe', 'ignore'],
                 windowsHide: true,
             });
 
-            ytdlpProcess.stdout.pipe(ffmpegProcess.stdin);
+            ytdlpProcess.stdout.pipe(ffmpegProcess.stdin, { end: false });
             ytdlpProcess.stdout.on('error', () => {});
             ytdlpProcess.on('error', () => {});
             ffmpegProcess.stdin.on('error', () => {});

@@ -1,12 +1,13 @@
-FROM node:22-alpine
+FROM node:20-bookworm-slim
 
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
     ca-certificates \
     python3 \
     make \
     g++ \
+    && rm -rf /var/lib/apt/lists/* \
     && ffmpeg -version
 
 WORKDIR /app

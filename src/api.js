@@ -84,152 +84,6 @@ module.exports = function attachMusicApi(client, customPort = null) {
     }
 
     try {
-      if (req.method === "GET" && (path === "/" || path === "/index.html" || path === "/netflix" || path === "/netflix.html")) {
-        const fs = require("fs");
-        const fp = require("path");
-        try {
-          const file = fs.readFileSync(fp.join(__dirname, "../zyra-activity/out/index.html"));
-          res.writeHead(200, { "Content-Type": "text/html" });
-          return res.end(file);
-        } catch (err) {
-          log.error("Could not read React index.html:", err.message);
-          return send(res, 500, { error: "Could not load activity interface" });
-        }
-      }
-
-      // Serve Next.js static assets (_next folder)
-      if (req.method === "GET" && path.startsWith("/_next/")) {
-        const fs = require("fs");
-        const fp = require("path");
-        try {
-          const filePath = fp.join(__dirname, "../zyra-activity/out", path);
-          if (fs.existsSync(filePath)) {
-            const ext = fp.extname(filePath);
-            let contentType = "text/plain";
-            if (ext === ".js") contentType = "application/javascript";
-            else if (ext === ".css") contentType = "text/css";
-            else if (ext === ".json") contentType = "application/json";
-            
-            const file = fs.readFileSync(filePath);
-            res.writeHead(200, { "Content-Type": contentType });
-            return res.end(file);
-          }
-        } catch (err) {
-          log.error("Could not read static asset:", err.message);
-        }
-      }
-
-      if (req.method === "GET" && path === "/health") {
-        return send(res, 200, {
-          ok: true,
-          uptime: Math.floor(process.uptime()),
-        });
-      }
-
-      if (req.method === "POST" && path === "/play") {
-        const {
-          guildId,
-          voiceChannelId,
-          query,
-          userId,
-          username,
-          fallbackQuery,
-        } = await parseBody(req);
-
-        if (!guildId || !voiceChannelId || !query)
-          return send(res, 400, {
-            error: "guildId, voiceChannelId, query are required",
-          });
-
-        const guild = client.guilds.cache.get(guildId);
-        if (!guild)
-          return send(res, 404, { error: "Bot is not in this guild" });
-
-        const voiceChannel = client.channels.cache.get(voiceChannelId);
-        if (!voiceChannel)
-          return send(res, 404, { error: "Voice channel not found" });
-
-        let textChannel = null;
-        if (client.INSTANCE_VOICE_CHANNEL_ID) {
-          textChannel = voiceChannel;
-        }
-        if (!textChannel || typeof textChannel.send !== "function") {
-          const fallbackId = process.env.FALLBACK_TEXT_CHANNEL_ID;
-          textChannel =
-            (fallbackId ? guild.channels.cache.get(fallbackId) : null) ||
-            guild.systemChannel ||
-            guild.channels.cache.find(
-              (c) =>
-                c.type === 0 &&
-                c.permissionsFor(guild.members.me)?.has("SendMessages"),
-            );
-        }
-        if (!textChannel)
-          return send(res, 500, {
-            error: "No accessible text channel in guild",
-          });
-
-        const webApiUser = {
-          id: userId || "api",
-          displayName: username || "API Player",
-          username: username || "api",
-        };
-
-        const apiFallback = fallbackQuery ? ` fallback=${fallbackQuery}` : "";
-        log.info(
-          `API /play: guild=${guildId} vc=${voiceChannelId} user=${webApiUser.id} query=${query}${apiFallback}`,
-        );
-
-        const webApiInteraction = {
-          user: webApiUser,
-          member: { voice: { channel: voiceChannel } },
-          channel: textChannel,
-        };
-
-        const DiscordPlayer = require("./utils/DiscordPlayer");
-        try {
-          const playResult = await DiscordPlayer.play(
-            webApiInteraction,
-            query,
-            voiceChannel,
-            client,
-            fallbackQuery,
-          );
-
-          log.info(
-            `API /play success: guild=${guildId} added=${playResult.count} playlist=${playResult.isPlaylist ? "yes" : "no"}`,
-          );
-
-          return send(res, 200, {
-            success: true,
-            isNewQueue: true,
-            added: playResult.count,
-            song: playResult.isPlaylist
-              ? null
-              : {
-                  name:
-                    playResult.track.title ||
-                    playResult.track.name ||
-                    "Unknown",
-                  url: playResult.track.url || playResult.track.uri || query,
-                  thumbnail: playResult.track.thumbnail || "",
-                  formattedDuration: playResult.track.duration || "0:00",
-                  author: playResult.track.author || "Unknown Artist",
-                },
-          });
-        } catch (e) {
-          log.warn(
-            "API /play failed:",
-            e?.message || e,
-            `guild=${guildId}`,
-            `vc=${voiceChannelId}`,
-          );
-          return send(res, 404, {
-            error: e.message || "No results found for query",
-          });
-        }
-      }
-
       const directActions = [
         "/skip",
         "/pause",
@@ -241,6 +95,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
         "/volume",
         "/remove",
       ];
+
       if (
         req.method === "POST" &&
         (path === "/control" || directActions.includes(path))
@@ -274,9 +129,13 @@ module.exports = function attachMusicApi(client, customPort = null) {
               } else {
                 const q = client.player.nodes.get(guildId);
                 if (!q) return send(res, 404, { error: "Nothing is playing" });
-                if (action === "toggle")
+                if (action === "toggle") {
                   q.node.isPaused() ? q.node.resume() : q.node.pause();
-                else action === "pause" ? q.node.pause() : q.node.resume();
+                } else if (action === "pause") {
+                  q.node.pause();
+                } else {
+                  q.node.resume();
+                }
               }
               break;
             case "skip":
@@ -310,15 +169,17 @@ module.exports = function attachMusicApi(client, customPort = null) {
                   DiscordPlayer.getQueueKey(client, guildId),
                 );
                 if (!lq) return send(res, 404, { error: "Nothing is playing" });
-                if (idx < 0 || idx >= lq.tracks.length)
+                if (idx < 0 || idx >= lq.tracks.length) {
                   return send(res, 400, { error: "Invalid queue position" });
+                }
                 removedTitle = lq.tracks.splice(idx, 1)[0].info.title;
               } else {
                 const q = client.player.nodes.get(guildId);
                 if (!q) return send(res, 404, { error: "Nothing is playing" });
                 const removed = q.tracks.removeOne(idx);
-                if (!removed)
+                if (!removed) {
                   return send(res, 400, { error: "Invalid queue position" });
+                }
                 removedTitle = removed.title;
               }
               await DiscordPlayer.triggerUpdate(guildId, client);
@@ -327,6 +188,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
             default:
               return send(res, 400, { error: `Unknown action: ${action}` });
           }
+
           await DiscordPlayer.triggerUpdate(guildId, client);
           return send(res, 200, { success: true, action });
         } catch (e) {
@@ -381,7 +243,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
           const lq = DiscordPlayer.lavalinkQueues.get(
             DiscordPlayer.getQueueKey(client, guildId),
           );
-          if (!lq || !lq.current)
+          if (!lq || !lq.current) {
             return send(res, 200, {
               playing: false,
               paused: false,
@@ -389,6 +251,8 @@ module.exports = function attachMusicApi(client, customPort = null) {
               queue: [],
               queueLength: 0,
             });
+          }
+
           const elapsed = lq.player.position || 0;
           return send(res, 200, {
             playing: !lq.paused,
@@ -425,7 +289,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
         }
 
         const queue = client.player.nodes.get(guildId);
-        if (!queue || !queue.currentTrack)
+        if (!queue || !queue.currentTrack) {
           return send(res, 200, {
             playing: false,
             paused: false,
@@ -433,6 +297,7 @@ module.exports = function attachMusicApi(client, customPort = null) {
             queue: [],
             queueLength: 0,
           });
+        }
 
         const elapsed = queue.node.getTimestamp()?.current?.value || 0;
 
@@ -465,75 +330,6 @@ module.exports = function attachMusicApi(client, customPort = null) {
         });
       }
 
-      if (req.method === "POST" && path === "/search") {
-        const { query, limit } = await parseBody(req);
-        if (!query) return send(res, 400, { error: "query is required" });
-
-        try {
-          const { getWatchdog } = require("./utils/watchdog");
-          const watchdog = getWatchdog(client);
-          let results = [];
-          const maxResults = Math.min(Number(limit) || 10, 25);
-
-          if (watchdog && watchdog.isNodeAvailable()) {
-            const node = watchdog.shoukaku.options.nodeResolver(
-              watchdog.shoukaku.nodes,
-            );
-            if (node) {
-              const searchStr =
-                query.startsWith("http") || query.startsWith("ytsearch:")
-                  ? query
-                  : `ytsearch:${query}`;
-              const searchResult = await node.rest.resolve(searchStr);
-              if (searchResult && searchResult.data) {
-                let tracks =
-                  searchResult.data.tracks ||
-                  (Array.isArray(searchResult.data)
-                    ? searchResult.data
-                    : [searchResult.data]);
-                if (!Array.isArray(tracks)) tracks = [];
-                results = tracks.slice(0, maxResults).map((track) => {
-                  const t = track.info;
-                  return {
-                    title: t.title || "Untitled",
-                    author: t.author || "Unknown",
-                    duration: Math.floor((t.length || 0) / 1000),
-                    url: t.uri || "",
-                    thumbnail:
-                      t.artworkUrl ||
-                      (t.uri && t.identifier
-                        ? `https://i.ytimg.com/vi/${t.identifier}/hqdefault.jpg`
-                        : ""),
-                    id: t.identifier || "",
-                  };
-                });
-              }
-            }
-          }
-
-          if (results.length === 0) {
-            const searchResult = await client.player.search(query);
-            if (searchResult && !searchResult.isEmpty()) {
-              results = searchResult.tracks
-                .slice(0, maxResults)
-                .map((video) => ({
-                  title: video.title || "Untitled",
-                  author: video.author || "Unknown",
-                  duration: Math.floor((video.durationMS || 0) / 1000),
-                  url: video.url,
-                  thumbnail: video.thumbnail,
-                  id: video.id || "",
-                }));
-            }
-          }
-
-          return send(res, 200, { results });
-        } catch (error) {
-          log.error("Search error:", error?.message || error);
-          return send(res, 200, { results: [], error: "Search failed" });
-        }
-      }
-
       return send(res, 404, { error: "Not found" });
     } catch (err) {
       log.error("Unhandled API error:", err?.message || err);
@@ -544,36 +340,15 @@ module.exports = function attachMusicApi(client, customPort = null) {
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 66000;
 
-  try {
-    const { Server } = require("socket.io");
-    const io = new Server(server, { cors: { origin: "*" } });
-    
-    io.on("connection", (socket) => {
-      log.debug(`Activity sync client connected: ${socket.id}`);
-      
-      socket.on("join_channel", (channelId) => {
-        socket.join(channelId);
-        log.debug(`Socket ${socket.id} joined VC room: ${channelId}`);
-      });
-      
-      socket.on("video_state_change", (data) => {
-        if (data && data.channelId) {
-          socket.to(data.channelId).emit("sync_video", data);
-        }
-      });
-    });
-    log.info("Activity Sync WebSocket server initialized.");
-  } catch (e) {
-    log.error("Failed to initialize Socket.io for Activity Sync:", e?.message || e);
-  }
-
   server
     .listen(port, host, () => {
       log.info(`Remani Music API listening on ${host}:${port}`);
     })
     .on("error", (err) => {
       if (err.code === "EADDRINUSE") {
-        log.error(`Port ${port} is already in use. API server could not start.`);
+        log.error(
+          `Port ${port} is already in use. API server could not start.`,
+        );
       } else {
         log.error("API server error:", err?.message || err);
       }

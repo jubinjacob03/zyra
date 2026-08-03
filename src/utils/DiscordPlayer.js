@@ -1,6 +1,4 @@
 const { getWatchdog } = require("./watchdog");
-const { resolveSpotifyQuery } = require("./spotify");
-const { QueryType } = require("discord-player");
 const { createCompleteMusicController } = require("./componentsV2");
 const { setControllerPanel } = require("./panelStore");
 const { createLogger } = require("./logger");
@@ -26,9 +24,6 @@ const NODE_RECOVERY_RETRY = { retries: 2, baseDelayMs: 500, maxDelayMs: 3000 };
  */
 const TRANSITION_SETTLE_MS = 5000;
 const NODE_RECOVERY_SETTLE_MS = 3000;
-
-/** Pause after leaving a Lavalink voice channel before the fallback rejoins. */
-const FALLBACK_LEAVE_SETTLE_MS = 1500;
 
 /**
  * @typedef {Object} LavalinkTrack
@@ -126,16 +121,6 @@ function isUsingLavalink(client, guildId) {
 }
 
 /**
- * Checks if a specific guild has an active Discord-Player queue.
- * @param {import('discord.js').Client} client
- * @param {string} guildId
- * @returns {boolean}
- */
-function isUsingDiscordPlayer(client, guildId) {
-  return client.player.nodes.has(guildId);
-}
-
-/**
  * Returns the active Lavalink queue for a guild, or null. Guards against the race
  * where a queue is deleted by cleanup between an `isUsingLavalink` check and use.
  * @param {import('discord.js').Client} client
@@ -211,91 +196,35 @@ async function playNextLavalink(queue) {
 
 /**
  * Entrypoint for playing media on a voice channel.
- * Implements concurrency locks, Lavalink fallback strategies, and dual-layer orchestrator delegation.
+ * Implements concurrency locks and Lavalink queue orchestration.
  * @param {import('discord.js').CommandInteraction} interaction
  * @param {string} query
  * @param {import('discord.js').VoiceChannel} voiceChannel
  * @param {import('discord.js').Client} client
- * @param {string} [fallbackQuery]
  * @returns {Promise<Object>} Playback initialization metadata
  */
-async function play(interaction, query, voiceChannel, client, fallbackQuery) {
+async function play(interaction, query, voiceChannel, client) {
   const watchdog = getWatchdog(client);
-  const finalQuery = await resolveSpotifyQuery(query);
-  const shouldUseFallback =
-    typeof fallbackQuery === "string" &&
-    fallbackQuery.trim().length > 0 &&
-    !String(finalQuery).startsWith("http");
-  const discordPlayerQuery = shouldUseFallback ? fallbackQuery : finalQuery;
+  const finalQuery = query;
   const guildId = voiceChannel.guild.id;
   const queueKey = getQueueKey(client, guildId);
   const requesterId = interaction?.user?.id || "unknown";
-  const fallbackSuffix = shouldUseFallback ? ` fallback=${fallbackQuery}` : "";
   log.info(
-    `Play request: guild=${guildId} vc=${voiceChannel.id} requester=${requesterId} query=${finalQuery}${fallbackSuffix}`,
+    `Play request: guild=${guildId} vc=${voiceChannel.id} requester=${requesterId} query=${finalQuery}`,
   );
 
-  /**
-   * Tears down any Lavalink voice connection and plays via Discord-Player instead.
-   * `isFallingBack` is held through a settle window so the voice auto-rejoin handler
-   * does not race this deliberate leave/join sequence.
-   * @returns {Promise<Object>}
-   */
-  const fallbackToDiscordPlayer = async () => {
-    if (watchdog && watchdog.shoukaku.players.has(guildId)) {
-      client.isFallingBack = true;
-      await swallow(
-        watchdog.shoukaku.leaveVoiceChannel(guildId),
-        "Leave Lavalink channel before fallback",
-      );
-      await sleep(FALLBACK_LEAVE_SETTLE_MS);
-    }
-    if (watchdog && typeof watchdog.clearPreferredNode === "function") {
-      watchdog.clearPreferredNode(guildId);
-    }
-    try {
-      return await handleDiscordPlayerPlay(
-        interaction,
-        discordPlayerQuery,
-        voiceChannel,
-        client,
-      );
-    } finally {
-      setTimeout(() => {
-        client.isFallingBack = false;
-      }, TRANSITION_SETTLE_MS);
-    }
-  };
-
   return withLavalinkLock(queueKey, async () => {
-    const lavalinkViable =
-      watchdog &&
-      watchdog.isNodeAvailable() &&
-      !isUsingDiscordPlayer(client, guildId);
-
-    if (lavalinkViable) {
-      log.info(`Using Lavalink (guild ${guildId})`);
-      try {
-        return await handleLavalinkPlay(
-          interaction,
-          finalQuery,
-          voiceChannel,
-          client,
-          watchdog,
-        );
-      } catch (e) {
-        log.warn(
-          "Lavalink play failed:",
-          e?.message || e,
-          "Falling back to Discord-Player.",
-        );
-        return fallbackToDiscordPlayer();
-      }
+    if (!watchdog || !watchdog.isNodeAvailable()) {
+      throw new Error("No available Lavalink nodes.");
     }
-    log.info(
-      `Using Discord-Player fallback (guild ${guildId}, reason=lavalink_unavailable_or_dp_active)`,
+    log.info(`Using Lavalink (guild ${guildId})`);
+    return handleLavalinkPlay(
+      interaction,
+      finalQuery,
+      voiceChannel,
+      client,
+      watchdog,
     );
-    return fallbackToDiscordPlayer();
   });
 }
 
@@ -562,55 +491,6 @@ async function handleLavalinkPlay(
     isPlaylist: searchResult.loadType === "playlist",
     count: accepted.length,
     track: { title: (accepted[0] || tracksToAdd[0]).info.title },
-  };
-}
-
-/**
- * Handles Discord-Player fallback playback logic.
- * @param {import('discord.js').CommandInteraction} interaction
- * @param {string} query
- * @param {import('discord.js').VoiceChannel} voiceChannel
- * @param {import('discord.js').Client} client
- * @returns {Promise<Object>} Playback initialization metadata
- */
-async function handleDiscordPlayerPlay(
-  interaction,
-  query,
-  voiceChannel,
-  client,
-) {
-  const searchEngine = query.startsWith("http")
-    ? QueryType.AUTO
-    : QueryType.SOUNDCLOUD_SEARCH;
-  const result = await client.player.search(query, {
-    requestedBy: interaction.user,
-    searchEngine: searchEngine,
-  });
-
-  if (!result || result.isEmpty()) {
-    throw new Error("No results found.");
-  }
-
-  const { track } = await client.player.play(voiceChannel, result, {
-    nodeOptions: {
-      metadata: {
-        channel: interaction.channel,
-      },
-      leaveOnEmpty: false,
-      leaveOnEmptyCooldown: 300000,
-      leaveOnEnd: false,
-      leaveOnStop: false,
-    },
-  });
-
-  log.info(
-    `Discord-Player resolved: guild=${voiceChannel.guild.id} track=${track?.title || "Unknown"}`,
-  );
-
-  return {
-    isPlaylist: result.hasPlaylist(),
-    count: result.playlist ? result.playlist.tracks.length : 1,
-    track,
   };
 }
 
@@ -1031,7 +911,6 @@ module.exports = {
   triggerUpdate,
   cleanupGuild,
   isUsingLavalink,
-  isUsingDiscordPlayer,
   getQueueKey,
   lavalinkQueues,
   formatLavalinkDuration,

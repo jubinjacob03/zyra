@@ -40,13 +40,12 @@ module.exports = {
       { name: "/search", desc: "Search for songs" },
       { name: "/lyrics", desc: "Get song lyrics" },
       { name: "/join", desc: "Join your voice channel" },
-      { name: "/spotify", desc: "Test Spotify integration and show status" },
     ];
 
     const container = new ContainerBuilder().setAccentColor(0x9b59b6);
     const botName = interaction.client?.user?.username || "Music Bot";
 
-    let description = `### ${e("MUSIC")} ${botName}\nYour premium music experience\n*Supports Spotify, SoundCloud, and YouTube!*\n\n`;
+    let description = `### ${e("MUSIC")} ${botName}\nYour premium music experience\n*Lavalink-only playback*\n\n`;
 
     commands.forEach((cmd) => {
       description += `**${cmd.name}** - ${cmd.desc}\n`;

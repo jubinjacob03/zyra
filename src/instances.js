@@ -1,8 +1,4 @@
 require("dotenv").config();
-if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
-  process.env.DP_SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-  process.env.DP_SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-}
 
 const {
   Client,
@@ -12,12 +8,7 @@ const {
   ActivityType,
 } = require("discord.js");
 const { Player } = require("discord-player");
-const {
-  DefaultExtractors,
-  SpotifyExtractor,
-  SoundCloudExtractor,
-} = require("@discord-player/extractor");
-const { initEmojis } = require("./utils/customEmoji");
+const { initEmojis, e } = require("./utils/customEmoji");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
 const { createLogger } = require("./utils/logger");
 const { swallow } = require("./utils/resilience");
@@ -159,7 +150,9 @@ function startInstance(config, instanceIndex) {
 
   log.info(`Starting instance: ${INSTANCE_NAME}`);
   log.info(`  Guild: ${GUILD_ID}`);
-  log.info(`  Voice Channel (with built-in chat): ${INSTANCE_VOICE_CHANNEL_ID}`);
+  log.info(
+    `  Voice Channel (with built-in chat): ${INSTANCE_VOICE_CHANNEL_ID}`,
+  );
   log.info(`  API Port: ${INSTANCE_API_PORT}`);
 
   const client = new Client({
@@ -189,7 +182,7 @@ function startInstance(config, instanceIndex) {
 
   /**
    * Initialize Discord Player with optimized settings for low-memory environments.
-   * Blocks YouTube extractors to bypass rate limits and forces fallback to SoundCloud/Spotify.
+   * Keeps the instance aligned with the Lavalink-only music pipeline.
    */
   const player = new Player(client, {
     blockExtractors: ["YouTubeExtractor", "YoutubeExtractor"],
@@ -200,26 +193,15 @@ function startInstance(config, instanceIndex) {
     },
     skipFFmpeg: false,
   });
-
-  player.extractors
-    .register(SpotifyExtractor, {
-      clientId: process.env.SPOTIFY_CLIENT_ID,
-      clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-      bridgeProvider: SoundCloudExtractor,
-    })
-    .then(() => {
-      player.extractors.loadMulti(
-        DefaultExtractors.filter((e) => e.name !== "SpotifyExtractor"),
-      );
-    })
-    .catch((err) => log.error("Extractor registration failed:", err));
   client.player = player;
 
   player.events.on("playerStart", async (queue, track) => {
     try {
       const { createCompleteMusicController } = require("./utils/componentsV2");
-      const { getControllerPanel, setControllerPanel } =
-        require("./utils/panelStore");
+      const {
+        getControllerPanel,
+        setControllerPanel,
+      } = require("./utils/panelStore");
       const controller = createCompleteMusicController(queue);
 
       const textChannel =
@@ -239,7 +221,10 @@ function startInstance(config, instanceIndex) {
           try {
             message = await textChannel.messages.fetch(storedId);
           } catch (error) {
-            log.debug(`Stored panel ${storedId} not fetchable:`, error?.message);
+            log.debug(
+              `Stored panel ${storedId} not fetchable:`,
+              error?.message,
+            );
           }
         }
       }
@@ -276,7 +261,10 @@ function startInstance(config, instanceIndex) {
       );
       log.info(`[${INSTANCE_NAME}] Now playing:`, track.title);
     } catch (error) {
-      log.error(`[${INSTANCE_NAME}] playerStart handler failed:`, error?.message || error);
+      log.error(
+        `[${INSTANCE_NAME}] playerStart handler failed:`,
+        error?.message || error,
+      );
     }
   });
 
@@ -294,8 +282,9 @@ function startInstance(config, instanceIndex) {
           try {
             const message = await textChannel.messages.fetch(storedId);
             if (message && typeof message.edit === "function") {
-              const { createIdleMusicController } =
-                require("./utils/componentsV2");
+              const {
+                createIdleMusicController,
+              } = require("./utils/componentsV2");
               const payload = createIdleMusicController(
                 "Queue finished. Add more songs!",
                 textChannel.client?.user?.username,
@@ -317,7 +306,10 @@ function startInstance(config, instanceIndex) {
       client.musicPanels.delete(queue.guild.id);
       await applyIdleStatus(client, queue.channel);
     } catch (error) {
-      log.error(`[${INSTANCE_NAME}] emptyQueue handler failed:`, error?.message || error);
+      log.error(
+        `[${INSTANCE_NAME}] emptyQueue handler failed:`,
+        error?.message || error,
+      );
     }
   });
 
@@ -411,15 +403,19 @@ function startInstance(config, instanceIndex) {
           forceJoinVC();
         }
       } catch (error) {
-        log.error(`[Watchdog] Instance ${INSTANCE_NAME}:`, error?.message || error);
+        log.error(
+          `[Watchdog] Instance ${INSTANCE_NAME}:`,
+          error?.message || error,
+        );
       }
     }, VC_WATCHDOG_INTERVAL_MS);
 
     idleRefreshInterval = setInterval(() => {
       const queue = client.player?.nodes?.cache?.get(GUILD_ID);
-      const lavalinkQueue = require("./utils/DiscordPlayer").lavalinkQueues?.get(
-        `${client.user.id}_${GUILD_ID}`,
-      );
+      const lavalinkQueue =
+        require("./utils/DiscordPlayer").lavalinkQueues?.get(
+          `${client.user.id}_${GUILD_ID}`,
+        );
       if (
         (!queue || !queue.currentTrack) &&
         (!lavalinkQueue || !lavalinkQueue.current)
@@ -546,35 +542,148 @@ function startInstance(config, instanceIndex) {
       }
 
       try {
-        log.info(`Modal search for: "${query}"`);
-
         const DiscordPlayer = require("./utils/DiscordPlayer");
-        const { isPlaylist, count } = await DiscordPlayer.play(
-          interaction,
+        const { errorEmbed, successEmbed } = require("./utils/embed");
+        const { searchWithPriority } = require("./utils/musicSearch");
+        const { buildSearchResultsUi } = require("./utils/searchUi");
+        const { MessageFlags } = require("discord.js");
+
+        const isUrl = (value) => /^https?:\/\//i.test(value);
+
+        if (isUrl(query)) {
+          log.info(`Modal direct play for: "${query}"`);
+          const { isPlaylist, count } = await DiscordPlayer.play(
+            interaction,
+            query,
+            voiceChannel,
+            client,
+          );
+
+          if (isPlaylist) {
+            await interaction.editReply(successEmbed(`Added ${count} songs`));
+          } else {
+            await interaction.editReply(successEmbed("Added to queue"));
+          }
+          return;
+        }
+
+        log.info(`Modal search for: "${query}"`);
+        const results = await searchWithPriority(
           query,
-          voiceChannel,
+          interaction.user,
           client,
+          5,
         );
 
-        const { successEmbed } = require("./utils/embed");
-        if (isPlaylist) {
-          await interaction.editReply(successEmbed(`Added ${count} songs`));
-        } else {
-          await interaction.editReply(successEmbed("Added to queue"));
+        if (!results.length) {
+          await interaction.editReply(
+            errorEmbed("No results found. Try a direct YouTube URL."),
+          );
+          return;
         }
-      } catch (error) {
-        log.error("Modal play error:", error?.message || error);
-        const { errorEmbed } = require("./utils/embed");
-        await interaction.editReply(
-          errorEmbed(`${error.message || "Failed to play"}`),
+
+        const container = buildSearchResultsUi(
+          results,
+          "instance_search_select",
+          query,
         );
+
+        const response = await interaction.editReply({
+          content: null,
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
+
+        const collector = response.createMessageComponentCollector({
+          filter: (i) => i.user.id === interaction.user.id,
+          time: 60000,
+        });
+
+        collector.on("collect", async (i) => {
+          await i.deferUpdate();
+          collector.stop("selected");
+
+          try {
+            const selectedUrl = i.values[0];
+            const { isPlaylist, count } = await DiscordPlayer.play(
+              interaction,
+              selectedUrl,
+              voiceChannel,
+              client,
+            );
+
+            if (isPlaylist) {
+              await interaction.editReply(successEmbed(`Added ${count} songs`));
+            } else {
+              await interaction.editReply(successEmbed("Added to queue"));
+            }
+          } catch (error) {
+            await interaction.editReply(
+              errorEmbed(`Failed to play: ${error.message}`),
+            );
+          }
+        });
+
+        collector.on("end", async (_, reason) => {
+          if (reason === "time") {
+            await interaction.editReply({ components: [] }).catch(() => {});
+          }
+        });
+      } catch (error) {
+        log.warn("Failed to handle modal submit:", error?.message || error);
+        const { errorEmbed } = require("./utils/embed");
+        const payload = errorEmbed(
+          error?.message || "Could not play the song.",
+        );
+        payload.flags = payload.flags | 64;
+        try {
+          await interaction.editReply(payload);
+        } catch {
+          await interaction.followUp(payload).catch(() => {});
+        }
       }
     }
   });
 
-  let apiServer = null;
   let shuttingDown = false;
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    if (vcWatchdogInterval) clearInterval(vcWatchdogInterval);
+    if (idleRefreshInterval) clearInterval(idleRefreshInterval);
+    try {
+      apiServer?.close();
+    } catch (error) {
+      log.debug("API server close failed:", error?.message || error);
+    }
+    try {
+      client.destroy();
+    } catch (error) {
+      log.debug("Client destroy failed:", error?.message || error);
+    }
+    setTimeout(() => process.exit(0), 5000);
+  };
 
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  client.login(INSTANCE_BOT_TOKEN).then(() => {});
+
+  setTimeout(() => {
+    apiServer = require("./api")(client, INSTANCE_API_PORT);
+  }, 3000);
+
+  return client;
+}
+
+/**
+ * Starts all configured instances or a specific instance by index.
+ * @param {Object} options - Options object.
+ * @param {number} [options.index] - The specific instance index to start.
+ * @returns {Array<Promise<import('discord.js').Client>>} Array of promises resolving to the started clients.
+ */
+function startInstances({ index } = {}) {
+  let shuttingDown = false;
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;

@@ -1,19 +1,5 @@
 require("dotenv").config();
 
-/**
- * TLS certificate validation is enforced by default. Setting ALLOW_INSECURE_TLS=1
- * disables it for the entire process, which exposes all outbound HTTPS to
- * man-in-the-middle attacks; it exists only as a deliberate escape hatch.
- */
-if (process.env.ALLOW_INSECURE_TLS === "1") {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
-
-if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
-  process.env.DP_SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-  process.env.DP_SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-}
-
 const {
   Client,
   GatewayIntentBits,
@@ -21,38 +7,8 @@ const {
   Events,
   ActivityType,
 } = require("discord.js");
-const { Player, onBeforeCreateStream } = require("discord-player");
-const {
-  DefaultExtractors,
-  SpotifyExtractor,
-  SoundCloudExtractor,
-} = require("@discord-player/extractor");
+const { Player } = require("discord-player");
 
-onBeforeCreateStream(async (track, queryType, queue) => {
-  if (track.source === "spotify") {
-    try {
-      let q = track.title + " " + track.author;
-      let scRes = await queue.player.search(q, { searchEngine: "soundcloud" });
-
-      if (scRes.tracks.length === 0) {
-        scRes = await queue.player.search(track.title, {
-          searchEngine: "soundcloud",
-        });
-      }
-
-      if (scRes.tracks.length > 0) {
-        const scTrack = scRes.tracks[0];
-        if (scTrack.thumbnail) {
-          track.thumbnail = scTrack.thumbnail;
-        }
-        return await scTrack.extractor.stream(scTrack);
-      }
-    } catch (e) {
-      log.debug("Spotify->SoundCloud bridge failed:", e?.message || e);
-    }
-  }
-  return null;
-});
 const fs = require("fs");
 const path = require("path");
 const { formatDuration } = require("./utils/embed");
@@ -126,19 +82,6 @@ const player = new Player(client, {
   },
   skipFFmpeg: false,
 });
-
-player.extractors
-  .register(SpotifyExtractor, {
-    clientId: process.env.SPOTIFY_CLIENT_ID,
-    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-    bridgeProvider: SoundCloudExtractor,
-  })
-  .then(() => {
-    player.extractors.loadMulti(
-      DefaultExtractors.filter((e) => e.name !== "SpotifyExtractor"),
-    );
-  })
-  .catch((err) => log.error("Extractor registration failed:", err));
 client.player = player;
 
 const idlePhrases = [
@@ -222,7 +165,10 @@ const setVoiceChannelStatus = async (channel, status) => {
       body: { status: status ? status.slice(0, 500) : "" },
     });
   } catch (e) {
-    log.debug(`Voice status REST update failed for ${channelId}:`, e?.message || e);
+    log.debug(
+      `Voice status REST update failed for ${channelId}:`,
+      e?.message || e,
+    );
   }
 };
 
@@ -307,8 +253,10 @@ async function resolveStoredMusicPanel(client, channelId) {
 player.events.on("playerStart", async (queue, track) => {
   try {
     const { createCompleteMusicController } = require("./utils/componentsV2");
-    const { getControllerPanel: getStored, setControllerPanel: setStored } =
-      require("./utils/panelStore");
+    const {
+      getControllerPanel: getStored,
+      setControllerPanel: setStored,
+    } = require("./utils/panelStore");
     const controller = createCompleteMusicController(queue);
 
     const textChannel = queue.metadata?.channel;
@@ -594,7 +542,10 @@ async function handleButtonInteraction(interaction, client) {
         `${e("ERROR")} An error occurred.`,
       );
     } catch (replyError) {
-      log.warn("Failed to send error message:", replyError?.message || replyError);
+      log.warn(
+        "Failed to send error message:",
+        replyError?.message || replyError,
+      );
     }
   }
 }
@@ -701,8 +652,7 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   const guildId = newState.guild?.id;
   if (!guildId) return;
 
-  const botChannelId =
-    newState.guild.members.me?.voice?.channelId || null;
+  const botChannelId = newState.guild.members.me?.voice?.channelId || null;
   if (!botChannelId || newState.channelId !== botChannelId) return;
   if (oldState.channelId === botChannelId) return;
 
@@ -755,7 +705,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 /**
  * Initializes and starts the primary Remani Discord bot instance.
- * Sets up Lavalink watchdogs, scrapers, and the Music API server.
+ * Sets up Lavalink watchdogs and the Music API server.
  * Ensures graceful shutdown on process termination.
  * @returns {Promise<string>} A promise that resolves with the client token when logged in.
  */
@@ -767,9 +717,6 @@ function startMainBot() {
 
   const { initWatchdog } = require("./utils/watchdog");
   const watchdog = initWatchdog(client);
-
-  const { initScraper } = require("./scraper/NodeScraper");
-  initScraper(watchdog);
 
   const apiServer = require("./api")(client);
 

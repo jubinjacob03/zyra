@@ -1,7 +1,7 @@
 {
   "name": "remani-music-bot",
   "version": "1.0.0",
-  "description": "Remani - A premium Discord music bot with YouTube, Spotify & SoundCloud support",
+  "description": "Remani - A premium Discord music bot with Lavalink-backed music playback",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -14,16 +14,13 @@
     "music",
     "bot",
     "youtube",
-    "spotify",
     "playlist"
   ],
   "author": "God BlazXx",
   "license": "MIT",
   "dependencies": {
-    "@discord-player/extractor": "^7.2.0",
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.0",
-    "@distube/ytdl-core": "^4.16.12",
     "@snazzah/davey": "^0.1.9",
     "axios": "^1.6.7",
     "discord-player": "^7.2.0",
@@ -31,7 +28,6 @@
     "dotenv": "^16.4.5",
     "genius-lyrics": "^4.4.7",
     "libsodium-wrappers": "^0.7.16",
-    "mediaplex": "^1.0.0",
     "opusscript": "^0.0.8",
     "prism-media": "^1.3.5",
     "shoukaku": "^4.3.0",
@@ -44,7 +40,6 @@
     "@napi-rs/canvas": "^0.1.96",
     "eslint": "^10.4.0",
     "eslint-plugin-unused-imports": "^4.4.1",
-    "ffmpeg-static": "^5.3.0",
     "nodemon": "^3.1.7"
   },
   "nodemonConfig": {

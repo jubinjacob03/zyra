@@ -158,7 +158,12 @@ function getWatchdog(client) {
   return instances.get(key) || instances.values().next().value || null;
 }
 
+function getAllWatchdogs() {
+  return Array.from(instances.values());
+}
+
 module.exports = {
   initWatchdog,
   getWatchdog,
+  getAllWatchdogs,
 };

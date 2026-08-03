@@ -1,15 +1,12 @@
 const { createLogger } = require("../utils/logger");
 const log = createLogger("search");
 
-const {
-  SlashCommandBuilder,
-  ContainerBuilder,
-  TextDisplayBuilder,
-  ActionRowBuilder,
-  StringSelectMenuBuilder,
-  MessageFlags,
-} = require("discord.js");
-const { e } = require("../utils/customEmoji");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
+const { errorEmbed } = require("../utils/embed");
+const DiscordPlayer = require("../utils/DiscordPlayer");
+const { searchWithPriority } = require("../utils/musicSearch");
+const { buildSearchResultsUi } = require("../utils/searchUi");
+const MAX_RESULTS = 5;
 
 /**
  * Search command module.
@@ -37,70 +34,28 @@ module.exports = {
     const voiceChannel = member.voice.channel;
 
     if (!voiceChannel) {
-      const container = new ContainerBuilder().setAccentColor(0xff4444);
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `${e("ERROR")} You need to be in a voice channel!`,
-        ),
+      return interaction.reply(
+        Object.assign(errorEmbed("You need to be in a voice channel!"), {
+          flags: 64,
+        }),
       );
-      return interaction.reply({
-        components: [container],
-        flags: MessageFlags.IsComponentsV2 | 64,
-      });
     }
 
     await interaction.reply({ content: `${e("INFO")} Searching...` });
 
     try {
-      const searchResult = await client.player.search(query, {
-        requestedBy: interaction.user,
-      });
-
-      if (!searchResult || searchResult.isEmpty()) {
-        const container = new ContainerBuilder().setAccentColor(0xff4444);
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `${e("ERROR")} No results found.`,
-          ),
-        );
-        return interaction.editReply({
-          content: null,
-          components: [container],
-          flags: MessageFlags.IsComponentsV2,
-        });
-      }
-
-      const results = searchResult.tracks.slice(0, 10);
-
-      const container = new ContainerBuilder().setAccentColor(0x00ffff);
-      let description = `### ${e("INFO")} Search Results\n\n`;
-      description += results
-        .map(
-          (r, i) => `**${i + 1}.** [${r.title}](${r.url}) - \`${r.duration}\``,
-        )
-        .join("\n");
-      description += `\n\n*Select a song from the dropdown below*`;
-
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(description),
+      const results = await searchWithPriority(
+        query,
+        interaction.user,
+        client,
+        MAX_RESULTS,
       );
 
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId("search_select")
-        .setPlaceholder("Select a song to play")
-        .addOptions(
-          results.map((r, i) => ({
-            label: r.title.slice(0, 100),
-            description: `${r.duration} • ${r.author || "Unknown"}`.slice(
-              0,
-              100,
-            ),
-            value: i.toString(),
-          })),
-        );
+      if (!results.length) {
+        return interaction.editReply(errorEmbed("No results found."));
+      }
 
-      const row = new ActionRowBuilder().addComponents(selectMenu);
-      container.addActionRowComponents(row);
+      const container = buildSearchResultsUi(results, "search_select", query);
 
       const response = await interaction.editReply({
         content: null,
@@ -117,65 +72,30 @@ module.exports = {
         await i.deferUpdate();
 
         try {
-          const trackIndex = parseInt(i.values[0]);
-          const track = results[trackIndex];
-
-          await client.player.play(voiceChannel, track, {
-            nodeOptions: {
-              metadata: {
-                channel: interaction.channel,
-              },
-              leaveOnEmpty: false,
-              leaveOnEmptyCooldown: 300000,
-              leaveOnEnd: false,
-              leaveOnStop: false,
-            },
-          });
+          const selectedUrl = i.values[0];
+          await DiscordPlayer.play(
+            interaction,
+            selectedUrl,
+            voiceChannel,
+            client,
+          );
 
           await interaction.deleteReply();
         } catch (error) {
-          const errContainer = new ContainerBuilder().setAccentColor(0xff4444);
-          errContainer.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `${e("ERROR")} Failed to play: ${error.message}`,
-            ),
+          await interaction.editReply(
+            errorEmbed(`Failed to play: ${error.message}`),
           );
-          await interaction.editReply({
-            components: [errContainer],
-            flags: MessageFlags.IsComponentsV2,
-          });
         }
       });
 
       collector.on("end", async (collected, reason) => {
         if (reason === "time") {
-          const timeoutContainer = new ContainerBuilder().setAccentColor(
-            0x00ffff,
-          );
-          timeoutContainer.addTextDisplayComponents(
-            new TextDisplayBuilder().setContent(
-              `${e("WARNING")} Search timed out.`,
-            ),
-          );
-          await interaction
-            .editReply({
-              components: [timeoutContainer],
-              flags: MessageFlags.IsComponentsV2,
-            })
-            .catch(() => {});
+          await interaction.editReply({ components: [] }).catch(() => {});
         }
       });
     } catch (error) {
       log.error("Search error:", error);
-      const errContainer = new ContainerBuilder().setAccentColor(0xff4444);
-      errContainer.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`${e("ERROR")} Search failed.`),
-      );
-      await interaction.editReply({
-        content: null,
-        components: [errContainer],
-        flags: MessageFlags.IsComponentsV2,
-      });
+      await interaction.editReply(errorEmbed("Search failed."));
     }
   },
 };

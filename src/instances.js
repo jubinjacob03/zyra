@@ -359,7 +359,6 @@ function startInstance(config, instanceIndex) {
     let rejoinInProgress = false;
     const forceJoinVC = async () => {
       if (client.isFallingBack) return;
-      if (client.player?.nodes?.has(GUILD_ID)) return;
       if (rejoinInProgress) return;
 
       rejoinInProgress = true;
@@ -412,10 +411,10 @@ function startInstance(config, instanceIndex) {
 
     idleRefreshInterval = setInterval(() => {
       const queue = client.player?.nodes?.cache?.get(GUILD_ID);
-      const lavalinkQueue =
-        require("./utils/DiscordPlayer").lavalinkQueues?.get(
-          `${client.user.id}_${GUILD_ID}`,
-        );
+      const DiscordPlayer = require("./utils/DiscordPlayer");
+      const lavalinkQueue = DiscordPlayer.lavalinkQueues?.get(
+        DiscordPlayer.getQueueKey(client, GUILD_ID),
+      );
       if (
         (!queue || !queue.currentTrack) &&
         (!lavalinkQueue || !lavalinkQueue.current)
@@ -432,8 +431,9 @@ function startInstance(config, instanceIndex) {
     const currentlyPlayingTitle = () => {
       const dp = client.player?.nodes?.cache?.get(GUILD_ID);
       if (dp?.currentTrack) return dp.currentTrack.title;
-      const lq = require("./utils/DiscordPlayer").lavalinkQueues?.get(
-        `${client.user.id}_${GUILD_ID}`,
+      const DiscordPlayer = require("./utils/DiscordPlayer");
+      const lq = DiscordPlayer.lavalinkQueues?.get(
+        DiscordPlayer.getQueueKey(client, GUILD_ID),
       );
       if (lq?.current) return lq.current.info?.title;
       return null;
@@ -445,12 +445,7 @@ function startInstance(config, instanceIndex) {
           !newState.channelId ||
           newState.channelId !== INSTANCE_VOICE_CHANNEL_ID
         ) {
-          if (
-            client.isFallingBack ||
-            client.isRecoveringNode ||
-            client.player?.nodes?.has(GUILD_ID)
-          )
-            return;
+          if (client.isFallingBack || client.isRecoveringNode) return;
           setTimeout(forceJoinVC, REJOIN_DELAY_MS);
         }
         return;
@@ -552,10 +547,21 @@ function startInstance(config, instanceIndex) {
 
         if (isUrl(query)) {
           log.info(`Modal direct play for: "${query}"`);
+          const liveMember = await interaction.guild?.members
+            ?.fetch(interaction.user.id)
+            .catch(() => null);
+          const targetVoiceChannel =
+            liveMember?.voice?.channel || member?.voice?.channel;
+          if (!targetVoiceChannel) {
+            await interaction.editReply(
+              errorEmbed("Join a voice channel before adding songs."),
+            );
+            return;
+          }
           const { isPlaylist, count } = await DiscordPlayer.play(
             interaction,
             query,
-            voiceChannel,
+            targetVoiceChannel,
             client,
           );
 
@@ -605,10 +611,21 @@ function startInstance(config, instanceIndex) {
 
           try {
             const selectedUrl = i.values[0];
+            const liveMember = await interaction.guild?.members
+              ?.fetch(interaction.user.id)
+              .catch(() => null);
+            const targetVoiceChannel =
+              liveMember?.voice?.channel || i.member?.voice?.channel;
+            if (!targetVoiceChannel) {
+              await interaction.editReply(
+                errorEmbed("Join a voice channel before adding songs."),
+              );
+              return;
+            }
             const { isPlaylist, count } = await DiscordPlayer.play(
               interaction,
               selectedUrl,
-              voiceChannel,
+              targetVoiceChannel,
               client,
             );
 
@@ -645,44 +662,6 @@ function startInstance(config, instanceIndex) {
     }
   });
 
-  let shuttingDown = false;
-  const shutdown = () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    if (vcWatchdogInterval) clearInterval(vcWatchdogInterval);
-    if (idleRefreshInterval) clearInterval(idleRefreshInterval);
-    try {
-      apiServer?.close();
-    } catch (error) {
-      log.debug("API server close failed:", error?.message || error);
-    }
-    try {
-      client.destroy();
-    } catch (error) {
-      log.debug("Client destroy failed:", error?.message || error);
-    }
-    setTimeout(() => process.exit(0), 5000);
-  };
-
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-
-  client.login(INSTANCE_BOT_TOKEN).then(() => {});
-
-  setTimeout(() => {
-    apiServer = require("./api")(client, INSTANCE_API_PORT);
-  }, 3000);
-
-  return client;
-}
-
-/**
- * Starts all configured instances or a specific instance by index.
- * @param {Object} options - Options object.
- * @param {number} [options.index] - The specific instance index to start.
- * @returns {Array<Promise<import('discord.js').Client>>} Array of promises resolving to the started clients.
- */
-function startInstances({ index } = {}) {
   let shuttingDown = false;
   const shutdown = () => {
     if (shuttingDown) return;

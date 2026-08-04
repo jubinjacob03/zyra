@@ -27,16 +27,11 @@ module.exports = {
     const queue = client.player.nodes.get(interaction.guildId);
 
     if (!queue) {
-      return interaction.reply({
-        ...errorEmbed("Nothing is playing right now."),
-        flags: 64,
-      });
+      return interaction.reply(errorEmbed("Nothing is playing right now."));
     }
 
     const volume = interaction.options.getInteger("level");
     await queue.node.setVolume(volume);
-    await interaction.reply({
-      ...successEmbed(`Volume set to **${volume}%**`),
-    });
+    await interaction.reply(successEmbed(`Volume set to **${volume}%**`));
   },
 };

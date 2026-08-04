@@ -522,9 +522,9 @@ function startInstance(config, instanceIndex) {
 
       if (!voiceChannel) {
         const { errorEmbed } = require("./utils/embed");
-        const payload = errorEmbed("You need to be in a voice channel!");
-        payload.flags = payload.flags | 64;
-        return interaction.reply(payload);
+        return interaction.reply(
+          errorEmbed("You need to be in a voice channel!"),
+        );
       }
 
       try {
@@ -652,7 +652,6 @@ function startInstance(config, instanceIndex) {
         const payload = errorEmbed(
           error?.message || "Could not play the song.",
         );
-        payload.flags = payload.flags | 64;
         try {
           await interaction.editReply(payload);
         } catch {

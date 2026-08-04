@@ -30,18 +30,15 @@ module.exports = {
     const queue = client.player.nodes.get(interaction.guildId);
 
     if (!queue) {
-      return interaction.reply({
-        ...errorEmbed("Nothing is playing right now."),
-        flags: 64,
-      });
+      return interaction.reply(errorEmbed("Nothing is playing right now."));
     }
 
     const mode = parseInt(interaction.options.getString("mode"));
     const modeNames = ["Off", "Song", "Queue"];
 
     await queue.setRepeatMode(mode);
-    await interaction.reply({
-      ...successEmbed(`Loop mode set to **${modeNames[mode]}**`),
-    });
+    await interaction.reply(
+      successEmbed(`Loop mode set to **${modeNames[mode]}**`),
+    );
   },
 };

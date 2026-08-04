@@ -35,9 +35,7 @@ module.exports = {
 
     if (!voiceChannel) {
       return interaction.reply(
-        Object.assign(errorEmbed("You need to be in a voice channel!"), {
-          flags: 64,
-        }),
+        errorEmbed("You need to be in a voice channel!"),
       );
     }
 

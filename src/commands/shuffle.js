@@ -19,22 +19,16 @@ module.exports = {
     const queue = client.player.nodes.get(interaction.guildId);
 
     if (!queue) {
-      return interaction.reply({
-        ...errorEmbed("Nothing is playing right now."),
-        flags: 64,
-      });
+      return interaction.reply(errorEmbed("Nothing is playing right now."));
     }
 
     if (queue.tracks.toArray().length < 3) {
-      return interaction.reply({
-        ...errorEmbed("Need at least 3 songs to shuffle."),
-        flags: 64,
-      });
+      return interaction.reply(errorEmbed("Need at least 3 songs to shuffle."));
     }
 
     await queue.tracks.shuffle();
-    await interaction.reply({
-      ...successEmbed(`Shuffled ${queue.tracks.toArray().length} songs.`),
-    });
+    await interaction.reply(
+      successEmbed(`Shuffled ${queue.tracks.toArray().length} songs.`),
+    );
   },
 };

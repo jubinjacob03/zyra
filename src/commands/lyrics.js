@@ -13,10 +13,6 @@ const { e } = require("../utils/customEmoji");
 const Genius = require("genius-lyrics");
 const genius = new Genius.Client();
 
-/**
- * Lyrics command module.
- * Fetches and displays lyrics for the current song or a search query.
- */
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("lyrics")
@@ -25,11 +21,6 @@ module.exports = {
       option.setName("query").setDescription("Song name to search (optional)"),
     ),
 
-  /**
-   * Executes the lyrics command.
-   * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
-   * @param {import('discord.js').Client} client - The Discord client.
-   */
   async execute(interaction, client) {
     let searchQuery = interaction.options.getString("query");
 

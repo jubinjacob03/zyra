@@ -2,7 +2,7 @@ const { getWatchdog } = require("./watchdog");
 const { createCompleteMusicController } = require("./componentsV2");
 const { setControllerPanel } = require("./panelStore");
 const { createLogger } = require("./logger");
-const { withRetry, swallow, sleep } = require("./resilience");
+const { withRetry, swallow } = require("./resilience");
 const log = createLogger("DiscordPlayer");
 const MAIN_PANEL_CHANNEL_ID = "1473105751575760917";
 
@@ -24,6 +24,9 @@ const NODE_RECOVERY_RETRY = { retries: 2, baseDelayMs: 500, maxDelayMs: 3000 };
  */
 const TRANSITION_SETTLE_MS = 5000;
 const NODE_RECOVERY_SETTLE_MS = 3000;
+const JOIN_VOICE_TIMEOUT_MS = 12000;
+const PLAY_TRACK_TIMEOUT_MS = 12000;
+const PANEL_IO_TIMEOUT_MS = 10000;
 
 /**
  * @typedef {Object} LavalinkTrack
@@ -88,6 +91,23 @@ function withPanelLock(key, fn) {
   return serialize(lavalinkPanelLocks, key, fn);
 }
 
+async function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Retrieves all currently connected Lavalink nodes.
  * @param {import('./lavalinkWatchdog').LavalinkWatchdog} watchdog
@@ -118,6 +138,16 @@ function getQueueKey(client, guildId) {
  */
 function isUsingLavalink(client, guildId) {
   return lavalinkQueues.has(getQueueKey(client, guildId));
+}
+
+/**
+ * Checks if a guild has an active Discord-Player queue.
+ * @param {import('discord.js').Client} client
+ * @param {string} guildId
+ * @returns {boolean}
+ */
+function isUsingDiscordPlayer(client, guildId) {
+  return !!client.player?.nodes?.get(guildId);
 }
 
 /**
@@ -295,7 +325,15 @@ async function playNextLavalink(queue) {
   }
 
   queue.current = nextTrack;
-  await queue.player.playTrack({ track: { encoded: nextTrack.encoded } });
+  try {
+    await withTimeout(
+      queue.player.playTrack({ track: { encoded: nextTrack.encoded } }),
+      PLAY_TRACK_TIMEOUT_MS,
+      `playTrack ${nextTrack.info?.title || "unknown"}`,
+    );
+  } catch (e) {
+    log.warn(`playTrack failed: ${e?.message || e}`);
+  }
 }
 
 /**
@@ -309,27 +347,15 @@ async function playNextLavalink(queue) {
  */
 async function play(interaction, query, voiceChannel, client) {
   const watchdog = getWatchdog(client);
-  const finalQuery = query;
   const guildId = voiceChannel.guild.id;
   const queueKey = getQueueKey(client, guildId);
-  const requesterId = interaction?.user?.id || "unknown";
-  const requesterName =
-    interaction?.user?.tag || interaction?.user?.username || "unknown";
-  log.info(
-    `Play request: guild=${guildId} vc=${voiceChannel.id} requester=${requesterId} query=${finalQuery}`,
-  );
-  log.info(
-    `Play trace: requester=${requesterName} song=${finalQuery} requestChannel=${interaction?.channelId || "unknown"}`,
-  );
-
   return withLavalinkLock(queueKey, async () => {
     if (!watchdog || !watchdog.isNodeAvailable()) {
       throw new Error("No available Lavalink nodes.");
     }
-    log.info(`Using Lavalink (guild ${guildId})`);
     return handleLavalinkPlay(
       interaction,
-      finalQuery,
+      query,
       voiceChannel,
       client,
       watchdog,
@@ -355,13 +381,18 @@ async function handleLavalinkPlay(
   watchdog,
 ) {
   const pinnedChannelId = getPinnedPanelChannelId(client);
-  const messageChannel =
-    (await resolveMessageChannel(interaction, client)) ||
-    (await findFallbackPanelChannel(
-      client,
-      voiceChannel.guild.id,
-      interaction?.channelId,
-    ));
+  const messageChannel = pinnedChannelId
+    ? await findFallbackPanelChannel(
+        client,
+        voiceChannel.guild.id,
+        pinnedChannelId,
+      )
+    : (await resolveMessageChannel(interaction, client)) ||
+      (await findFallbackPanelChannel(
+        client,
+        voiceChannel.guild.id,
+        interaction?.channelId,
+      ));
   const searchTargets = /^https?:\/\//i.test(query)
     ? [query]
     : [`ytmsearch:${query}`, `ytsearch:${query}`];
@@ -449,7 +480,6 @@ async function handleLavalinkPlay(
   }
 
   const { node, searchResult, tracksToAdd } = resolved;
-  log.info(`Lavalink resolved: node=${node.name} tracks=${tracksToAdd.length}`);
 
   tracksToAdd.forEach((t) => (t.requestedBy = interaction.user));
 
@@ -573,12 +603,16 @@ async function handleLavalinkPlay(
       if (typeof watchdog.setPreferredNode === "function") {
         watchdog.setPreferredNode(voiceChannel.guild.id, node.name);
       }
-      player = await watchdog.shoukaku.joinVoiceChannel({
-        guildId: voiceChannel.guild.id,
-        channelId: voiceChannel.id,
-        shardId: voiceChannel.guild.shardId,
-        deaf: true,
-      });
+      player = await withTimeout(
+        watchdog.shoukaku.joinVoiceChannel({
+          guildId: voiceChannel.guild.id,
+          channelId: voiceChannel.id,
+          shardId: voiceChannel.guild.shardId,
+          deaf: true,
+        }),
+        JOIN_VOICE_TIMEOUT_MS,
+        `joinVoiceChannel guild=${voiceChannel.guild.id}`,
+      );
     }
 
     queue = {
@@ -622,12 +656,16 @@ async function handleLavalinkPlay(
       if (typeof watchdog.setPreferredNode === "function") {
         watchdog.setPreferredNode(voiceChannel.guild.id, node.name);
       }
-      const movedPlayer = await watchdog.shoukaku.joinVoiceChannel({
-        guildId: voiceChannel.guild.id,
-        channelId: voiceChannel.id,
-        shardId: voiceChannel.guild.shardId,
-        deaf: true,
-      });
+      const movedPlayer = await withTimeout(
+        watchdog.shoukaku.joinVoiceChannel({
+          guildId: voiceChannel.guild.id,
+          channelId: voiceChannel.id,
+          shardId: voiceChannel.guild.shardId,
+          deaf: true,
+        }),
+        JOIN_VOICE_TIMEOUT_MS,
+        `move joinVoiceChannel guild=${voiceChannel.guild.id}`,
+      );
       queue.player = movedPlayer;
       queue.voiceChannelId = voiceChannel.id;
       attachPlayerListeners(movedPlayer, queue);
@@ -643,10 +681,11 @@ async function handleLavalinkPlay(
   }
   queue.tracks.push(...accepted);
 
-  if (!queue.current) {
+  const isNewSession = !queue.current;
+  if (isNewSession) {
     await playNextLavalink(queue);
   }
-  await updateLavalinkPanel(voiceChannel.guild.id, client);
+  await updateLavalinkPanel(voiceChannel.guild.id, client, isNewSession);
 
   return {
     isPlaylist: searchResult.loadType === "playlist",
@@ -664,9 +703,30 @@ async function handleLavalinkPlay(
  * @param {import('discord.js').Client} client
  * @returns {Promise<void>}
  */
-async function updateLavalinkPanel(guildId, client) {
+async function updateLavalinkPanel(guildId, client, forceNew = false) {
   const queue = lavalinkQueues.get(getQueueKey(client, guildId));
   if (!queue || !queue.current) return;
+
+  const pinnedChannelId = getPinnedPanelChannelId(client);
+  if (pinnedChannelId) {
+    let pinned = client.channels.cache.get(pinnedChannelId);
+    if (!pinned) {
+      try {
+        pinned = await client.channels.fetch(pinnedChannelId);
+      } catch {
+        pinned = null;
+      }
+    }
+    if (pinned?.send && pinned?.messages?.fetch) {
+      queue.textChannel = pinned;
+      queue.textChannelId = pinned.id;
+    } else {
+      log.warn(
+        `Pinned panel channel unavailable during render: guild=${guildId}`,
+      );
+      return;
+    }
+  }
 
   if ((!queue.textChannel || !queue.textChannel.send) && queue.textChannelId) {
     let recovered = client.channels.cache.get(queue.textChannelId);
@@ -710,11 +770,10 @@ async function updateLavalinkPanel(guildId, client) {
     client.updateMusicPresence(queue.current.info);
   }
 
-  await withPanelLock(getQueueKey(client, guildId), async () => {
+  const renderPanel = async () => {
     const liveQueue = lavalinkQueues.get(getQueueKey(client, guildId));
     if (!liveQueue || !liveQueue.current) return;
     if (!liveQueue.textChannel || !liveQueue.textChannel.send) {
-      log.warn(`No message channel available for panel in guild ${guildId}`);
       return;
     }
 
@@ -723,25 +782,32 @@ async function updateLavalinkPanel(guildId, client) {
     if (!controller) return;
 
     let message = null;
-    const existingData = client.musicPanels.get(guildId);
-    if (existingData && existingData.message) {
-      const sameChannel =
-        existingData.message.channelId === liveQueue.textChannel.id;
-      message =
-        sameChannel && isEditableMessage(existingData.message, client.user?.id)
-          ? existingData.message
-          : null;
-    } else {
-      const { getControllerPanel } = require("./panelStore");
-      const storedId = getControllerPanel(liveQueue.textChannel.id);
-      if (storedId) {
-        try {
-          const fetched = await liveQueue.textChannel.messages.fetch(storedId);
-          message = isEditableMessage(fetched, client.user?.id)
-            ? fetched
+    if (!forceNew) {
+      const existingData = client.musicPanels.get(guildId);
+      if (existingData && existingData.message) {
+        const sameChannel =
+          existingData.message.channelId === liveQueue.textChannel.id;
+        message =
+          sameChannel &&
+          isEditableMessage(existingData.message, client.user?.id)
+            ? existingData.message
             : null;
-        } catch (e) {
-          log.debug(`Stored panel ${storedId} not fetchable:`, e?.message || e);
+      } else {
+        const { getControllerPanel } = require("./panelStore");
+        const storedId = getControllerPanel(liveQueue.textChannel.id);
+        if (storedId) {
+          try {
+            const fetched = await withTimeout(
+              liveQueue.textChannel.messages.fetch(storedId),
+              PANEL_IO_TIMEOUT_MS,
+              `panel fetch`,
+            );
+            message = isEditableMessage(fetched, client.user?.id)
+              ? fetched
+              : null;
+          } catch {
+            message = null;
+          }
         }
       }
     }
@@ -754,16 +820,27 @@ async function updateLavalinkPanel(guildId, client) {
     try {
       if (message && typeof message.edit === "function") {
         try {
-          message = await message.edit({ embeds: [], ...payload });
-        } catch (e) {
-          log.debug("Panel edit failed; resending:", e?.message || e);
-          message = await liveQueue.textChannel.send(payload);
+          message = await withTimeout(
+            message.edit({ embeds: [], ...payload }),
+            PANEL_IO_TIMEOUT_MS,
+            `panel edit`,
+          );
+        } catch {
+          message = await withTimeout(
+            liveQueue.textChannel.send(payload),
+            PANEL_IO_TIMEOUT_MS,
+            `panel resend`,
+          );
         }
       } else {
-        message = await liveQueue.textChannel.send(payload);
+        message = await withTimeout(
+          liveQueue.textChannel.send(payload),
+          PANEL_IO_TIMEOUT_MS,
+          `panel send`,
+        );
       }
     } catch (e) {
-      log.warn("Failed to render Lavalink panel:", e?.message || e);
+      log.warn(`Failed to render panel: ${e?.message || e}`);
       return;
     }
 
@@ -776,7 +853,14 @@ async function updateLavalinkPanel(guildId, client) {
       song: pseudoQueue.currentTrack,
       startTime: Date.now(),
     });
-  });
+  };
+
+  if (pinnedChannelId) {
+    await renderPanel();
+    return;
+  }
+
+  await withPanelLock(getQueueKey(client, guildId), renderPanel);
 }
 
 /**
@@ -1110,6 +1194,7 @@ module.exports = {
   triggerUpdate,
   cleanupGuild,
   isUsingLavalink,
+  isUsingDiscordPlayer,
   getQueueKey,
   lavalinkQueues,
   formatLavalinkDuration,

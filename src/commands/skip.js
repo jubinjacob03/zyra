@@ -19,21 +19,18 @@ module.exports = {
     const queue = client.player.nodes.get(interaction.guildId);
 
     if (!queue) {
-      return interaction.reply({
-        ...errorEmbed("Nothing is playing right now."),
-        flags: 64,
-      });
+      return interaction.reply(errorEmbed("Nothing is playing right now."));
     }
 
     const song = queue.tracks.toArray()[0];
 
     try {
       await queue.node.skip();
-      await interaction.reply({
-        ...successEmbed(`Skipped **${song?.title || "the current track"}**`),
-      });
+      await interaction.reply(
+        successEmbed(`Skipped **${song?.title || "the current track"}**`),
+      );
     } catch (error) {
-      await interaction.reply({ ...errorEmbed("No more songs in the queue.") });
+      await interaction.reply(errorEmbed("No more songs in the queue."));
     }
   },
 };

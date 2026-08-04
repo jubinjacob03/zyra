@@ -26,26 +26,20 @@ module.exports = {
     const queue = client.player.nodes.get(interaction.guildId);
 
     if (!queue) {
-      return interaction.reply({
-        ...errorEmbed("Nothing is playing right now."),
-        flags: 64,
-      });
+      return interaction.reply(errorEmbed("Nothing is playing right now."));
     }
 
     const position = interaction.options.getInteger("position");
 
     if (position > queue.tracks.size) {
-      return interaction.reply({
-        ...errorEmbed(
-          `Invalid position. Queue has ${queue.tracks.size} songs.`,
-        ),
-        flags: 64,
-      });
+      return interaction.reply(
+        errorEmbed(`Invalid position. Queue has ${queue.tracks.size} songs.`),
+      );
     }
 
     queue.node.skipTo(position - 1);
-    await interaction.reply({
-      ...successEmbed(`Skipped to position **${position}**`),
-    });
+    await interaction.reply(
+      successEmbed(`Skipped to position **${position}**`),
+    );
   },
 };

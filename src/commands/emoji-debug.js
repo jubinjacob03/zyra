@@ -1,19 +1,11 @@
 const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { UNICODE } = require("../utils/customEmoji");
 
-/**
- * Emoji Debug command module.
- * Debugs the loading and availability of custom emojis in the server.
- */
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("emoji-debug")
     .setDescription("Debug custom emoji loading"),
 
-  /**
-   * Executes the emoji-debug command.
-   * @param {import('discord.js').ChatInputCommandInteraction} interaction - The interaction object.
-   */
   async execute(interaction) {
     const guild = interaction.guild;
     if (!guild) {

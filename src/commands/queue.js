@@ -22,14 +22,11 @@ module.exports = {
     const queue = client.player.nodes.get(interaction.guildId);
 
     if (!queue || !queue.tracks.size) {
-      return interaction.reply({
-        ...errorEmbed("The queue is empty."),
-        flags: 64,
-      });
+      return interaction.reply(errorEmbed("The queue is empty."));
     }
 
     const page = (interaction.options.getInteger("page") || 1) - 1;
     const container = queueEmbed(queue, page);
-    await interaction.reply({ ...container });
+    await interaction.reply(container);
   },
 };

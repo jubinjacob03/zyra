@@ -20,15 +20,12 @@ module.exports = {
     const queue = client.player.nodes.get(interaction.guildId);
 
     if (!queue) {
-      return interaction.reply({
-        ...errorEmbed("Nothing is playing right now."),
-        flags: 64,
-      });
+      return interaction.reply(errorEmbed("Nothing is playing right now."));
     }
 
     queue.delete();
-    await interaction.reply({
-      ...successEmbed(`${e("STOP")} Stopped the music and cleared the queue.`),
-    });
+    await interaction.reply(
+      successEmbed(`${e("STOP")} Stopped the music and cleared the queue.`),
+    );
   },
 };

@@ -3,7 +3,6 @@ const { createCompleteMusicController } = require("./componentsV2");
 const { setControllerPanel } = require("./panelStore");
 const { createLogger } = require("./logger");
 const { withRetry, swallow, sleep } = require("./resilience");
-
 const log = createLogger("DiscordPlayer");
 
 /**
@@ -245,41 +244,46 @@ async function handleLavalinkPlay(
   client,
   watchdog,
 ) {
-  const searchStr =
-    query.startsWith("http") || query.startsWith("ytsearch:")
-      ? query
-      : `ytsearch:${query}`;
+  const searchTargets = /^https?:\/\//i.test(query)
+    ? [query]
+    : [`ytmsearch:${query}`, `ytsearch:${query}`];
   const queueKey = getQueueKey(client, voiceChannel.guild.id);
 
   const resolveOnNode = async (node) => {
-    const searchPromise = node.rest.resolve(searchStr);
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("REST resolve timeout")), 5000),
-    );
+    for (const searchStr of searchTargets) {
+      const searchPromise = node.rest.resolve(searchStr);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("REST resolve timeout")), 5000),
+      );
 
-    const searchResult = await Promise.race([searchPromise, timeoutPromise]);
+      const searchResult = await Promise.race([searchPromise, timeoutPromise]);
 
-    if (!searchResult || !searchResult.data) {
-      throw new Error("No results found.");
+      if (!searchResult || !searchResult.data) {
+        continue;
+      }
+
+      let tracksToAdd;
+      if (searchResult.loadType === "playlist") {
+        tracksToAdd = searchResult.data.info.tracks;
+      } else if (
+        searchResult.loadType === "search" ||
+        searchResult.loadType === "track"
+      ) {
+        tracksToAdd = [
+          searchResult.loadType === "search"
+            ? searchResult.data[0]
+            : searchResult.data,
+        ];
+      } else {
+        continue;
+      }
+
+      if (tracksToAdd?.length) {
+        return { node, searchResult, tracksToAdd };
+      }
     }
 
-    let tracksToAdd;
-    if (searchResult.loadType === "playlist") {
-      tracksToAdd = searchResult.data.info.tracks;
-    } else if (
-      searchResult.loadType === "search" ||
-      searchResult.loadType === "track"
-    ) {
-      tracksToAdd = [
-        searchResult.loadType === "search"
-          ? searchResult.data[0]
-          : searchResult.data,
-      ];
-    } else {
-      throw new Error("No results found.");
-    }
-
-    return { node, searchResult, tracksToAdd };
+    throw new Error("No results found.");
   };
 
   let queue = lavalinkQueues.get(queueKey);

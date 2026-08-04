@@ -15,22 +15,35 @@ async function searchWithLavalink(query, user, client, limit) {
   );
   if (!nodes.length) return [];
 
-  const searchStr = `ytsearch:${query}`;
-  const attempts = nodes.map((node) =>
-    Promise.race([
-      node.rest.resolve(searchStr),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("resolve timeout")), 5000),
-      ),
-    ]),
-  );
+  const prefixes = ["ytmsearch", "ytsearch"];
 
   let result;
-  try {
-    result = await Promise.any(attempts);
-  } catch {
-    return [];
+  for (const prefix of prefixes) {
+    const searchStr = `${prefix}:${query}`;
+    const attempts = nodes.map((node) =>
+      Promise.race([
+        node.rest.resolve(searchStr),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("resolve timeout")), 5000),
+        ),
+      ]),
+    );
+
+    try {
+      const candidate = await Promise.any(attempts);
+      const hasData =
+        candidate &&
+        ((candidate.loadType === "search" && Array.isArray(candidate.data)) ||
+          (candidate.loadType === "track" && candidate.data) ||
+          (candidate.loadType === "playlist" && candidate.data?.info?.tracks));
+      if (hasData) {
+        result = candidate;
+        break;
+      }
+    } catch {}
   }
+
+  if (!result) return [];
 
   if (!result || !result.data) return [];
 

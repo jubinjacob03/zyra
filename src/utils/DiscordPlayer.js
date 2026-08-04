@@ -331,9 +331,114 @@ async function handleLavalinkPlay(
 
   tracksToAdd.forEach((t) => (t.requestedBy = interaction.user));
 
+  const attachPlayerListeners = (p, q) => {
+    const progressQueue = async () => {
+      await playNextLavalink(q);
+      if (!q.current) {
+        lavalinkQueues.delete(queueKey);
+        client.musicPanels.delete(voiceChannel.guild.id);
+        await setVoiceStatus(client, voiceChannel.id, "🎵 /play to start");
+        if (watchdog.shoukaku.connections.has(voiceChannel.guild.id)) {
+          await swallow(
+            watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
+            "Leave voice channel after queue finished",
+          );
+        }
+        if (typeof client.updateMusicPresence === "function") {
+          client.updateMusicPresence(null);
+        }
+        if (typeof watchdog.clearPreferredNode === "function") {
+          watchdog.clearPreferredNode(voiceChannel.guild.id);
+        }
+      } else {
+        await updateLavalinkPanel(voiceChannel.guild.id, client);
+      }
+    };
+
+    p.on("end", async (payload) => {
+      const reason = String(payload?.reason || "").toLowerCase();
+      if (reason === "replaced") return;
+      await progressQueue();
+    });
+
+    p.on("exception", (payload) => {
+      log.warn(
+        `Track exception in guild ${voiceChannel.guild.id}: ${
+          payload?.exception?.message || payload?.error || "unknown"
+        }`,
+      );
+    });
+
+    p.on("stuck", async (payload) => {
+      log.warn(
+        `Track stuck in guild ${voiceChannel.guild.id} (threshold ${
+          payload?.thresholdMs ?? "?"
+        }ms); skipping.`,
+      );
+      await swallow(q.player.stopTrack(), "Stop stuck track");
+    });
+
+    p.on("closed", async () => {
+      const interrupted = q.current;
+      if (q.tracks.length > 0 || interrupted) {
+        const onlineNodes = getOnlineNodes(watchdog);
+        if (onlineNodes.length > 0) {
+          try {
+            client.isRecoveringNode = true;
+            q.current = null;
+            if (interrupted) q.tracks.unshift(interrupted);
+            const newNode = onlineNodes[0];
+            if (typeof watchdog.setPreferredNode === "function") {
+              watchdog.setPreferredNode(voiceChannel.guild.id, newNode.name);
+            }
+            if (watchdog.shoukaku.connections.has(voiceChannel.guild.id)) {
+              await swallow(
+                watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
+                "Leave stale connection before node recovery",
+              );
+            }
+            const newPlayer = await withRetry(
+              () =>
+                watchdog.shoukaku.joinVoiceChannel({
+                  guildId: voiceChannel.guild.id,
+                  channelId: voiceChannel.id,
+                  shardId: voiceChannel.guild.shardId,
+                  deaf: true,
+                }),
+              NODE_RECOVERY_RETRY,
+            );
+            q.player = newPlayer;
+            attachPlayerListeners(newPlayer, q);
+            await playNextLavalink(q);
+            await updateLavalinkPanel(voiceChannel.guild.id, client);
+            setTimeout(() => {
+              client.isRecoveringNode = false;
+            }, NODE_RECOVERY_SETTLE_MS);
+            return;
+          } catch (e) {
+            log.error("Failed to recover node mid-queue:", e?.message || e);
+            client.isRecoveringNode = false;
+          }
+        }
+      }
+
+      lavalinkQueues.delete(queueKey);
+      client.musicPanels.delete(voiceChannel.guild.id);
+      await setVoiceStatus(client, voiceChannel.id, "🎵 /play to start");
+      if (typeof client.updateMusicPresence === "function") {
+        client.updateMusicPresence(null);
+      }
+      if (typeof watchdog.clearPreferredNode === "function") {
+        watchdog.clearPreferredNode(voiceChannel.guild.id);
+      }
+    });
+  };
+
   if (!queue) {
     let player =
-      existingPlayer && existingPlayer.node?.name === node.name
+      existingPlayer &&
+      existingPlayer.node?.name === node.name &&
+      botVoiceChannelId === voiceChannel.id
         ? existingPlayer
         : null;
     if (!player) {
@@ -368,109 +473,35 @@ async function handleLavalinkPlay(
 
     lavalinkQueues.set(queueKey, queue);
 
-    const attachPlayerListeners = (p, q) => {
-      /**
-       * Advances to the next track, or tears the session down if the queue is now
-       * empty (clear panel, reset status/presence, leave the channel).
-       * @returns {Promise<void>}
-       */
-      const progressQueue = async () => {
-        await playNextLavalink(q);
-        if (!q.current) {
-          lavalinkQueues.delete(queueKey);
-          client.musicPanels.delete(voiceChannel.guild.id);
-          await setVoiceStatus(client, voiceChannel.id, "🎵 /play to start");
-          if (typeof client.updateMusicPresence === "function") {
-            client.updateMusicPresence(null);
-          }
-          if (typeof watchdog.clearPreferredNode === "function") {
-            watchdog.clearPreferredNode(voiceChannel.guild.id);
-          }
-        } else {
-          await updateLavalinkPanel(voiceChannel.guild.id, client);
-        }
-      };
-
-      p.on("end", async (payload) => {
-        const reason = String(payload?.reason || "").toLowerCase();
-        if (reason === "replaced") return;
-        await progressQueue();
-      });
-
-      p.on("exception", (payload) => {
-        log.warn(
-          `Track exception in guild ${voiceChannel.guild.id}: ${
-            payload?.exception?.message || payload?.error || "unknown"
-          }`,
-        );
-      });
-
-      p.on("stuck", async (payload) => {
-        log.warn(
-          `Track stuck in guild ${voiceChannel.guild.id} (threshold ${
-            payload?.thresholdMs ?? "?"
-          }ms); skipping.`,
-        );
-        await swallow(q.player.stopTrack(), "Stop stuck track");
-      });
-
-      p.on("closed", async () => {
-        const interrupted = q.current;
-        if (q.tracks.length > 0 || interrupted) {
-          const onlineNodes = getOnlineNodes(watchdog);
-          if (onlineNodes.length > 0) {
-            try {
-              client.isRecoveringNode = true;
-              q.current = null;
-              if (interrupted) q.tracks.unshift(interrupted);
-              const newNode = onlineNodes[0];
-              if (typeof watchdog.setPreferredNode === "function") {
-                watchdog.setPreferredNode(voiceChannel.guild.id, newNode.name);
-              }
-              if (watchdog.shoukaku.connections.has(voiceChannel.guild.id)) {
-                await swallow(
-                  watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
-                  "Leave stale connection before node recovery",
-                );
-              }
-              const newPlayer = await withRetry(
-                () =>
-                  watchdog.shoukaku.joinVoiceChannel({
-                    guildId: voiceChannel.guild.id,
-                    channelId: voiceChannel.id,
-                    shardId: voiceChannel.guild.shardId,
-                    deaf: true,
-                  }),
-                NODE_RECOVERY_RETRY,
-              );
-              q.player = newPlayer;
-              attachPlayerListeners(newPlayer, q);
-              await playNextLavalink(q);
-              await updateLavalinkPanel(voiceChannel.guild.id, client);
-              setTimeout(() => {
-                client.isRecoveringNode = false;
-              }, NODE_RECOVERY_SETTLE_MS);
-              return;
-            } catch (e) {
-              log.error("Failed to recover node mid-queue:", e?.message || e);
-              client.isRecoveringNode = false;
-            }
-          }
-        }
-
-        lavalinkQueues.delete(queueKey);
-        client.musicPanels.delete(voiceChannel.guild.id);
-        await setVoiceStatus(client, voiceChannel.id, "🎵 /play to start");
-        if (typeof client.updateMusicPresence === "function") {
-          client.updateMusicPresence(null);
-        }
-        if (typeof watchdog.clearPreferredNode === "function") {
-          watchdog.clearPreferredNode(voiceChannel.guild.id);
-        }
-      });
-    };
-
     attachPlayerListeners(player, queue);
+  } else {
+    queue.textChannel = interaction.channel;
+    const connectedChannelId = voiceChannel.guild.members.me.voice?.channelId;
+    const shouldMoveToRequester =
+      connectedChannelId &&
+      connectedChannelId !== voiceChannel.id &&
+      !queue.current;
+
+    if (shouldMoveToRequester) {
+      if (watchdog.shoukaku.connections.has(voiceChannel.guild.id)) {
+        await swallow(
+          watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
+          "Leave old voice channel before migration",
+        );
+      }
+      if (typeof watchdog.setPreferredNode === "function") {
+        watchdog.setPreferredNode(voiceChannel.guild.id, node.name);
+      }
+      const movedPlayer = await watchdog.shoukaku.joinVoiceChannel({
+        guildId: voiceChannel.guild.id,
+        channelId: voiceChannel.id,
+        shardId: voiceChannel.guild.shardId,
+        deaf: true,
+      });
+      queue.player = movedPlayer;
+      queue.voiceChannelId = voiceChannel.id;
+      attachPlayerListeners(movedPlayer, queue);
+    }
   }
 
   const capacity = Math.max(0, MAX_QUEUE_SIZE - queue.tracks.length);

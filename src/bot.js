@@ -318,8 +318,9 @@ player.events.on("audioTrackAdd", (queue, track) => {
 player.events.on("disconnect", async (queue) => {
   try {
     client.musicPanels.delete(queue.guild.id);
-    setPresenceActivity(pickIdlePhrase());
-    await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
+    const phrase = pickIdlePhrase();
+    setPresenceActivity(phrase);
+    await setVoiceChannelStatus(queue.channel, phrase);
   } catch (error) {
     log.warn("disconnect handler failed:", error?.message || error);
   }
@@ -330,8 +331,9 @@ player.events.on("emptyQueue", async (queue) => {
   try {
     log.info("Queue finished");
     client.musicPanels.delete(queue.guild.id);
-    setPresenceActivity(pickIdlePhrase());
-    await setVoiceChannelStatus(queue.channel, "🎵 /play to start");
+    const phrase = pickIdlePhrase();
+    setPresenceActivity(phrase);
+    await setVoiceChannelStatus(queue.channel, phrase);
   } catch (error) {
     log.warn("emptyQueue handler failed:", error?.message || error);
   }
@@ -626,7 +628,13 @@ client.once(Events.ClientReady, async (readyClient) => {
 
   if (!idlePresenceInterval) {
     idlePresenceInterval = setInterval(() => {
-      if (!isAnyTrackPlaying()) setPresenceActivity(pickIdlePhrase());
+      if (!isAnyTrackPlaying()) {
+        const phrase = pickIdlePhrase();
+        setPresenceActivity(phrase);
+        const botChannel =
+          client.guilds.cache.first()?.members?.me?.voice?.channelId;
+        if (botChannel) setVoiceChannelStatus(botChannel, phrase);
+      }
     }, IDLE_PRESENCE_INTERVAL_MS);
   }
 

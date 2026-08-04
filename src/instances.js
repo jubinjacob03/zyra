@@ -80,7 +80,7 @@ const setPresenceActivity = (client, trackOrText) => {
 const applyIdleStatus = async (client, channel) => {
   const phrase = pickIdlePhrase();
   setPresenceActivity(client, phrase);
-  await setVoiceChannelStatus(client, channel, "🎵 /play to start");
+  await setVoiceChannelStatus(client, channel, phrase);
 };
 
 const setVoiceChannelStatus = async (client, channel, status) => {

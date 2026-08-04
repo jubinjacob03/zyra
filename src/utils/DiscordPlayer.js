@@ -6,6 +6,24 @@ const { withRetry, swallow } = require("./resilience");
 const log = createLogger("DiscordPlayer");
 const MAIN_PANEL_CHANNEL_ID = "1473105751575760917";
 
+const idlePhrases = [
+  "🎧 /play to start",
+  "✨ Vibe check: passed",
+  "🫧 Breathing between beats",
+  "🌙 Lowkey online",
+  "🧊 Chill rn",
+  "💫 Just vibing",
+  "📻 Static-free",
+  "🪩 Mood: playlist",
+  "☕ Coffee break, still tuned in",
+  "🎯 Energy: steady",
+  "🍀 Good vibes only",
+  "🛰️ Ready when you are",
+];
+
+const pickIdlePhrase = () =>
+  idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
+
 /**
  * Upper bound on tracks retained in a single Lavalink queue. Protects against
  * unbounded memory growth from very large playlists or repeated API calls.
@@ -489,7 +507,7 @@ async function handleLavalinkPlay(
       if (!q.current) {
         lavalinkQueues.delete(queueKey);
         client.musicPanels.delete(voiceChannel.guild.id);
-        await setVoiceStatus(client, voiceChannel.id, "🎵 /play to start");
+        await setVoiceStatus(client, voiceChannel.id, pickIdlePhrase());
         if (watchdog.shoukaku.connections.has(voiceChannel.guild.id)) {
           await swallow(
             watchdog.shoukaku.leaveVoiceChannel(voiceChannel.guild.id),
@@ -576,7 +594,7 @@ async function handleLavalinkPlay(
 
       lavalinkQueues.delete(queueKey);
       client.musicPanels.delete(voiceChannel.guild.id);
-      await setVoiceStatus(client, voiceChannel.id, "🎵 /play to start");
+      await setVoiceStatus(client, voiceChannel.id, pickIdlePhrase());
       if (typeof client.updateMusicPresence === "function") {
         client.updateMusicPresence(null);
       }

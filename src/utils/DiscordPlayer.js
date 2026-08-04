@@ -304,8 +304,13 @@ async function play(interaction, query, voiceChannel, client) {
   const guildId = voiceChannel.guild.id;
   const queueKey = getQueueKey(client, guildId);
   const requesterId = interaction?.user?.id || "unknown";
+  const requesterName =
+    interaction?.user?.tag || interaction?.user?.username || "unknown";
   log.info(
     `Play request: guild=${guildId} vc=${voiceChannel.id} requester=${requesterId} query=${finalQuery}`,
+  );
+  log.info(
+    `Play trace: requester=${requesterName} song=${finalQuery} requestChannel=${interaction?.channelId || "unknown"}`,
   );
 
   return withLavalinkLock(queueKey, async () => {
@@ -711,9 +716,12 @@ async function updateLavalinkPanel(guildId, client) {
     let message = null;
     const existingData = client.musicPanels.get(guildId);
     if (existingData && existingData.message) {
-      message = isEditableMessage(existingData.message, client.user?.id)
-        ? existingData.message
-        : null;
+      const sameChannel =
+        existingData.message.channelId === liveQueue.textChannel.id;
+      message =
+        sameChannel && isEditableMessage(existingData.message, client.user?.id)
+          ? existingData.message
+          : null;
     } else {
       const { getControllerPanel } = require("./panelStore");
       const storedId = getControllerPanel(liveQueue.textChannel.id);

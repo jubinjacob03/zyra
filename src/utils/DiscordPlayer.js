@@ -141,6 +141,26 @@ function getDiscordPlayerQueue(client, guildId) {
   return client.player.nodes.get(guildId) || null;
 }
 
+async function resolveMessageChannel(interaction, client) {
+  const direct = interaction?.channel;
+  if (direct?.send && direct?.messages?.fetch) return direct;
+
+  const channelId = interaction?.channelId;
+  if (!channelId) return null;
+
+  let channel = client.channels.cache.get(channelId);
+  if (!channel) {
+    try {
+      channel = await client.channels.fetch(channelId);
+    } catch {
+      channel = null;
+    }
+  }
+
+  if (channel?.send && channel?.messages?.fetch) return channel;
+  return null;
+}
+
 /**
  * Sets a voice channel's status line, preferring the client helper and falling back
  * to a raw REST call. Status updates are cosmetic, so failures are logged at debug
@@ -244,6 +264,7 @@ async function handleLavalinkPlay(
   client,
   watchdog,
 ) {
+  const messageChannel = await resolveMessageChannel(interaction, client);
   const searchTargets = /^https?:\/\//i.test(query)
     ? [query]
     : [`ytmsearch:${query}`, `ytsearch:${query}`];
@@ -468,7 +489,8 @@ async function handleLavalinkPlay(
       voiceChannelId: voiceChannel.id,
       tracks: [],
       current: null,
-      textChannel: interaction.channel,
+      textChannel: messageChannel,
+      textChannelId: messageChannel?.id || interaction?.channelId || null,
       loopMode: 0,
       paused: false,
       volume: 100,
@@ -479,7 +501,12 @@ async function handleLavalinkPlay(
 
     attachPlayerListeners(player, queue);
   } else {
-    queue.textChannel = interaction.channel;
+    queue.textChannel = messageChannel || queue.textChannel;
+    queue.textChannelId =
+      messageChannel?.id ||
+      queue.textChannelId ||
+      interaction?.channelId ||
+      null;
     const connectedChannelId = voiceChannel.guild.members.me.voice?.channelId;
     const shouldMoveToRequester =
       connectedChannelId &&
@@ -542,6 +569,20 @@ async function updateLavalinkPanel(guildId, client) {
   const queue = lavalinkQueues.get(getQueueKey(client, guildId));
   if (!queue || !queue.current) return;
 
+  if ((!queue.textChannel || !queue.textChannel.send) && queue.textChannelId) {
+    let recovered = client.channels.cache.get(queue.textChannelId);
+    if (!recovered) {
+      try {
+        recovered = await client.channels.fetch(queue.textChannelId);
+      } catch {
+        recovered = null;
+      }
+    }
+    if (recovered?.send && recovered?.messages?.fetch) {
+      queue.textChannel = recovered;
+    }
+  }
+
   const voiceChannelId =
     queue.voiceChannelId ||
     client.guilds.cache.get(guildId)?.members.me?.voice?.channelId ||
@@ -561,6 +602,10 @@ async function updateLavalinkPanel(guildId, client) {
   await withPanelLock(getQueueKey(client, guildId), async () => {
     const liveQueue = lavalinkQueues.get(getQueueKey(client, guildId));
     if (!liveQueue || !liveQueue.current) return;
+    if (!liveQueue.textChannel || !liveQueue.textChannel.send) {
+      log.warn(`No message channel available for panel in guild ${guildId}`);
+      return;
+    }
 
     const pseudoQueue = createPseudoQueue(liveQueue, guildId, client);
     const controller = createCompleteMusicController(pseudoQueue);

@@ -74,7 +74,10 @@ module.exports = function attachMusicApi(client, customPort = null) {
     }
 
     const url = new URL(req.url, `http://localhost:${port}`);
-    const path = url.pathname;
+    const rawPath = url.pathname;
+    const path = rawPath.startsWith("/api/music/")
+      ? "/" + rawPath.slice("/api/music/".length)
+      : rawPath;
 
     if (apiKey) {
       const auth = req.headers.authorization || "";
@@ -328,6 +331,142 @@ module.exports = function attachMusicApi(client, customPort = null) {
             })),
           queueLength: queue.tracks.size,
         });
+      }
+
+      if (req.method === "POST" && path === "/search") {
+        const body = await parseBody(req);
+        const query = body.query || "";
+        const limit = body.limit || 24;
+        if (!query) return send(res, 400, { error: "Missing query" });
+
+        const { searchWithPriority } = require("./utils/musicSearch");
+        const fakeUser = { id: "api", username: "WebDashboard" };
+        const results = await searchWithPriority(
+          query,
+          fakeUser,
+          client,
+          limit,
+        );
+
+        return send(res, 200, {
+          results: results.map((t) => ({
+            id: t.url?.split("v=")[1] || "",
+            title: t.title,
+            author: t.author,
+            thumbnail: t.url
+              ? `https://img.youtube.com/vi/${t.url.split("v=")[1]}/hqdefault.jpg`
+              : "",
+            duration:
+              t.duration > 10000 ? Math.floor(t.duration / 1000) : t.duration,
+            url: t.url,
+          })),
+        });
+      }
+
+      if (req.method === "GET" && path === "/trending") {
+        const { getWatchdog } = require("./utils/watchdog");
+        const watchdog = getWatchdog(client);
+        if (!watchdog || !watchdog.isNodeAvailable()) {
+          return send(res, 503, { error: "No Lavalink nodes available" });
+        }
+
+        const nodes = Array.from(watchdog.shoukaku.nodes.values()).filter(
+          (node) => node.state === 1,
+        );
+        if (!nodes.length) {
+          return send(res, 503, { error: "No online Lavalink nodes" });
+        }
+
+        const trendingQueries = [
+          "ytmsearch:top hits 2026",
+          "ytmsearch:trending music",
+          "ytmsearch:popular songs today",
+        ];
+
+        const allTracks = [];
+        const seenIds = new Set();
+        const node = nodes[0];
+
+        for (const searchStr of trendingQueries) {
+          if (allTracks.length >= 24) break;
+          try {
+            const result = await Promise.race([
+              node.rest.resolve(searchStr),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("timeout")), 5000),
+              ),
+            ]);
+            if (result?.loadType === "search" && Array.isArray(result.data)) {
+              for (const track of result.data) {
+                const id = track.info?.identifier;
+                if (!id || seenIds.has(id)) continue;
+                seenIds.add(id);
+                allTracks.push(track);
+                if (allTracks.length >= 24) break;
+              }
+            }
+          } catch {}
+        }
+
+        return send(res, 200, {
+          results: allTracks.map((t) => ({
+            id: t.info?.identifier || "",
+            title: t.info?.title || "Unknown",
+            author: t.info?.author || "Unknown",
+            thumbnail:
+              t.info?.artworkUrl ||
+              `https://img.youtube.com/vi/${t.info?.identifier}/hqdefault.jpg`,
+            duration: t.info?.length ? Math.floor(t.info.length / 1000) : 0,
+            url:
+              t.info?.uri ||
+              `https://www.youtube.com/watch?v=${t.info?.identifier}`,
+          })),
+        });
+      }
+
+      if (req.method === "POST" && path === "/play") {
+        const body = await parseBody(req);
+        const { guildId, voiceChannelId, query, userId, username } = body;
+        if (!guildId || !voiceChannelId || !query) {
+          return send(res, 400, {
+            error: "Missing guildId, voiceChannelId, or query",
+          });
+        }
+
+        const DiscordPlayer = require("./utils/DiscordPlayer");
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) return send(res, 404, { error: "Guild not found" });
+
+        const voiceChannel = guild.channels.cache.get(voiceChannelId);
+        if (!voiceChannel)
+          return send(res, 404, { error: "Voice channel not found" });
+
+        const fakeInteraction = {
+          user: {
+            id: userId || "api",
+            username: username || "WebDashboard",
+            displayName: username || "WebDashboard",
+          },
+          channelId: null,
+          guild,
+        };
+
+        try {
+          const result = await DiscordPlayer.play(
+            fakeInteraction,
+            query,
+            voiceChannel,
+            client,
+          );
+          return send(res, 200, {
+            success: true,
+            song: { title: result.track?.title || "Unknown" },
+            added: result.count || 1,
+            isPlaylist: result.isPlaylist || false,
+          });
+        } catch (e) {
+          return send(res, 500, { error: e.message });
+        }
       }
 
       return send(res, 404, { error: "Not found" });

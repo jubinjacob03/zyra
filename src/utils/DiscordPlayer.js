@@ -149,6 +149,15 @@ function getPinnedPanelChannelId(client) {
 async function resolveMessageChannel(interaction, client) {
   const pinnedChannelId = getPinnedPanelChannelId(client);
   if (pinnedChannelId) {
+    const directPinned = interaction?.channel;
+    if (
+      directPinned?.id === pinnedChannelId &&
+      directPinned?.send &&
+      directPinned?.messages?.fetch
+    ) {
+      return directPinned;
+    }
+
     let pinned = client.channels.cache.get(pinnedChannelId);
     if (!pinned) {
       try {

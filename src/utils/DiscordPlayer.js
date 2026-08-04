@@ -4,6 +4,7 @@ const { setControllerPanel } = require("./panelStore");
 const { createLogger } = require("./logger");
 const { withRetry, swallow, sleep } = require("./resilience");
 const log = createLogger("DiscordPlayer");
+const MAIN_PANEL_CHANNEL_ID = "1473105751575760917";
 
 /**
  * Upper bound on tracks retained in a single Lavalink queue. Protects against
@@ -141,7 +142,25 @@ function getDiscordPlayerQueue(client, guildId) {
   return client.player.nodes.get(guildId) || null;
 }
 
+function getPinnedPanelChannelId(client) {
+  return client?.INSTANCE_NAME ? null : MAIN_PANEL_CHANNEL_ID;
+}
+
 async function resolveMessageChannel(interaction, client) {
+  const pinnedChannelId = getPinnedPanelChannelId(client);
+  if (pinnedChannelId) {
+    let pinned = client.channels.cache.get(pinnedChannelId);
+    if (!pinned) {
+      try {
+        pinned = await client.channels.fetch(pinnedChannelId);
+      } catch {
+        pinned = null;
+      }
+    }
+    if (pinned?.send && pinned?.messages?.fetch) return pinned;
+    return null;
+  }
+
   const direct = interaction?.channel;
   if (direct?.send && direct?.messages?.fetch) return direct;
 
@@ -159,6 +178,63 @@ async function resolveMessageChannel(interaction, client) {
 
   if (channel?.send && channel?.messages?.fetch) return channel;
   return null;
+}
+
+function isEditableMessage(message, clientUserId) {
+  return (
+    !!message &&
+    typeof message.edit === "function" &&
+    !!clientUserId &&
+    message.author?.id === clientUserId
+  );
+}
+
+async function findFallbackPanelChannel(client, guildId, preferredChannelId) {
+  const pinnedChannelId = getPinnedPanelChannelId(client);
+  if (pinnedChannelId) {
+    let pinned = client.channels.cache.get(pinnedChannelId);
+    if (!pinned) {
+      try {
+        pinned = await client.channels.fetch(pinnedChannelId);
+      } catch {
+        pinned = null;
+      }
+    }
+    if (pinned?.send && pinned?.messages?.fetch) return pinned;
+    return null;
+  }
+
+  const candidateIds = [preferredChannelId].filter(Boolean);
+
+  const guild = guildId ? client.guilds.cache.get(guildId) : null;
+  const botVoiceChannelId = guild?.members?.me?.voice?.channelId || null;
+  if (botVoiceChannelId) candidateIds.push(botVoiceChannelId);
+
+  for (const channelId of candidateIds) {
+    let channel = client.channels.cache.get(channelId);
+    if (!channel) {
+      try {
+        channel = await client.channels.fetch(channelId);
+      } catch {
+        channel = null;
+      }
+    }
+    if (channel?.send && channel?.messages?.fetch) {
+      return channel;
+    }
+  }
+
+  if (!guild) return null;
+  const textLike = guild.channels.cache
+    .filter((ch) => ch?.send && ch?.messages?.fetch)
+    .sort((a, b) => {
+      const pa = typeof a.position === "number" ? a.position : 9999;
+      const pb = typeof b.position === "number" ? b.position : 9999;
+      return pa - pb;
+    })
+    .first();
+
+  return textLike || null;
 }
 
 /**
@@ -264,7 +340,14 @@ async function handleLavalinkPlay(
   client,
   watchdog,
 ) {
-  const messageChannel = await resolveMessageChannel(interaction, client);
+  const pinnedChannelId = getPinnedPanelChannelId(client);
+  const messageChannel =
+    (await resolveMessageChannel(interaction, client)) ||
+    (await findFallbackPanelChannel(
+      client,
+      voiceChannel.guild.id,
+      interaction?.channelId,
+    ));
   const searchTargets = /^https?:\/\//i.test(query)
     ? [query]
     : [`ytmsearch:${query}`, `ytsearch:${query}`];
@@ -490,7 +573,8 @@ async function handleLavalinkPlay(
       tracks: [],
       current: null,
       textChannel: messageChannel,
-      textChannelId: messageChannel?.id || interaction?.channelId || null,
+      textChannelId:
+        pinnedChannelId || messageChannel?.id || interaction?.channelId || null,
       loopMode: 0,
       paused: false,
       volume: 100,
@@ -503,6 +587,7 @@ async function handleLavalinkPlay(
   } else {
     queue.textChannel = messageChannel || queue.textChannel;
     queue.textChannelId =
+      pinnedChannelId ||
       messageChannel?.id ||
       queue.textChannelId ||
       interaction?.channelId ||
@@ -583,6 +668,18 @@ async function updateLavalinkPanel(guildId, client) {
     }
   }
 
+  if (!queue.textChannel || !queue.textChannel.send) {
+    const fallbackChannel = await findFallbackPanelChannel(
+      client,
+      guildId,
+      queue.textChannelId,
+    );
+    if (fallbackChannel) {
+      queue.textChannel = fallbackChannel;
+      queue.textChannelId = fallbackChannel.id;
+    }
+  }
+
   const voiceChannelId =
     queue.voiceChannelId ||
     client.guilds.cache.get(guildId)?.members.me?.voice?.channelId ||
@@ -614,13 +711,18 @@ async function updateLavalinkPanel(guildId, client) {
     let message = null;
     const existingData = client.musicPanels.get(guildId);
     if (existingData && existingData.message) {
-      message = existingData.message;
+      message = isEditableMessage(existingData.message, client.user?.id)
+        ? existingData.message
+        : null;
     } else {
       const { getControllerPanel } = require("./panelStore");
       const storedId = getControllerPanel(liveQueue.textChannel.id);
       if (storedId) {
         try {
-          message = await liveQueue.textChannel.messages.fetch(storedId);
+          const fetched = await liveQueue.textChannel.messages.fetch(storedId);
+          message = isEditableMessage(fetched, client.user?.id)
+            ? fetched
+            : null;
         } catch (e) {
           log.debug(`Stored panel ${storedId} not fetchable:`, e?.message || e);
         }

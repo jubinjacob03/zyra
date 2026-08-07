@@ -2,7 +2,7 @@ const WebSocket = require("ws");
 const http = require("http");
 
 const RELAY_URL =
-  process.env.SHANTHA_RELAY_URL || "ws://68.233.112.166:3001/ws/zyra-relay";
+  process.env.SHANTHA_RELAY_URL || "ws://68.233.112.166:3001/relay/zyra";
 const RELAY_SECRET = process.env.ZYRA_RELAY_SECRET || "zyra-relay-2026";
 const RECONNECT_INTERVAL = 5000;
 

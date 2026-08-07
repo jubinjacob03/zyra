@@ -28,10 +28,7 @@ module.exports = {
 
     if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
       return interaction.reply(
-        Object.assign(
-          errorEmbed("Spotify integration is not configured. Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to .env."),
-          { flags: 64 },
-        ),
+        errorEmbed("Spotify integration is not configured. Add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to .env."),
       );
     }
 

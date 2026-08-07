@@ -34,16 +34,12 @@ module.exports = {
     const voiceChannel = member.voice.channel;
 
     if (!voiceChannel) {
-      return interaction.reply(
-        Object.assign(errorEmbed("You need to be in a voice channel!"), { flags: 64 }),
-      );
+      return interaction.reply(errorEmbed("You need to be in a voice channel!"));
     }
 
     const permissions = voiceChannel.permissionsFor(interaction.client.user);
     if (!permissions.has("Connect") || !permissions.has("Speak")) {
-      return interaction.reply(
-        Object.assign(errorEmbed("I need permissions to join and speak in your voice channel!"), { flags: 64 }),
-      );
+      return interaction.reply(errorEmbed("I need permissions to join and speak in your voice channel!"));
     }
 
     await interaction.deferReply({ flags: 64 });

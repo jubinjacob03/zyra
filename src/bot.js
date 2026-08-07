@@ -54,6 +54,24 @@ if (os.platform() === 'win32') {
 const ffmpegPath = require('ffmpeg-static');
 process.env.FFMPEG_PATH = ffmpegPath;
 
+const idlePhrases = [
+  "🎧 /play to start",
+  "✨ Vibe check: passed",
+  "🫧 Breathing between beats",
+  "🌙 Lowkey online",
+  "🧊 Chill rn",
+  "💫 Just vibing",
+  "📻 Static-free",
+  "🪩 Mood: playlist",
+  "☕ Coffee break, still tuned in",
+  "🎯 Energy: steady",
+  "🍀 Good vibes only",
+  "🛰️ Ready when you are",
+];
+
+const pickIdlePhrase = () =>
+  idlePhrases[Math.floor(Math.random() * idlePhrases.length)];
+
 process.on('unhandledRejection', (reason, promise) => {
     if (reason && typeof reason === 'object') {
         if (reason.command && reason.command.includes('yt-dlp')) {
@@ -344,7 +362,7 @@ class MusicQueue {
                         const vcId = this.voiceChannel?.id;
                         if (vcId && panelClient.rest) {
                             panelClient.rest.put(`/channels/${vcId}/voice-status`, {
-                                body: { status: "🎵 /play to start" },
+                                body: { status: pickIdlePhrase() },
                             }).catch(() => {});
                         }
                     } catch {}
@@ -1080,8 +1098,22 @@ client.once(Events.ClientReady, async (readyClient) => {
         }
     }
     
-    client.user.setActivity('🎵 /play to start', { type: ActivityType.Listening });
+    client.user.setActivity(pickIdlePhrase(), { type: ActivityType.Listening });
     
+    setInterval(() => {
+        if (!client.queues.size) {
+            const phrase = pickIdlePhrase();
+            client.user.setActivity(phrase, { type: ActivityType.Listening });
+            const guild = client.guilds.cache.first();
+            const botChannel = guild?.members?.me?.voice?.channelId;
+            if (botChannel) {
+                client.rest.put(`/channels/${botChannel}/voice-status`, {
+                    body: { status: phrase },
+                }).catch(() => {});
+            }
+        }
+    }, 120_000);
+
     setInterval(() => {
         const status = `✅ Bot alive | ${client.guilds.cache.size} servers | ${client.queues.size} active queues`;
         console.log(status);

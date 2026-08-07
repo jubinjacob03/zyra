@@ -10,11 +10,11 @@ module.exports = {
         const queue = client.getQueue(interaction.guildId);
 
         if (!queue) {
-            return interaction.reply(Object.assign(errorEmbed('Nothing is playing right now.'), { flags: 64 }));
+            return interaction.reply(errorEmbed('Nothing is playing right now.'));
         }
 
         if (!queue.paused) {
-            return interaction.reply(Object.assign(errorEmbed('The music is not paused.'), { flags: 64 }));
+            return interaction.reply(errorEmbed('The music is not paused.'));
         }
 
         queue.resume();

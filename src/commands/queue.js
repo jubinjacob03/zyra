@@ -13,9 +13,7 @@ module.exports = {
     const queue = client.getQueue(interaction.guildId);
 
     if (!queue || !queue.songs.length) {
-      return interaction.reply(
-        Object.assign(errorEmbed("The queue is empty."), { flags: 64 }),
-      );
+      return interaction.reply(errorEmbed("The queue is empty."));
     }
 
     const page = (interaction.options.getInteger("page") || 1) - 1;

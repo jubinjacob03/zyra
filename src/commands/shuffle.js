@@ -10,11 +10,11 @@ module.exports = {
         const queue = client.getQueue(interaction.guildId);
 
         if (!queue) {
-            return interaction.reply(Object.assign(errorEmbed('Nothing is playing right now.'), { flags: 64 }));
+            return interaction.reply(errorEmbed('Nothing is playing right now.'));
         }
 
         if (queue.songs.length < 3) {
-            return interaction.reply(Object.assign(errorEmbed('Need at least 3 songs to shuffle.'), { flags: 64 }));
+            return interaction.reply(errorEmbed('Need at least 3 songs to shuffle.'));
         }
 
         await queue.shuffle();

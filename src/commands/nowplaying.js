@@ -11,16 +11,12 @@ module.exports = {
     const queue = client.getQueue(interaction.guildId);
 
     if (!queue || !queue.songs[0]) {
-      return interaction.reply(
-        Object.assign(errorEmbed("Nothing is playing right now."), { flags: 64 }),
-      );
+      return interaction.reply(errorEmbed("Nothing is playing right now."));
     }
 
     const controller = createCompleteMusicController(queue);
     if (!controller) {
-      return interaction.reply(
-        Object.assign(errorEmbed("Nothing is playing right now."), { flags: 64 }),
-      );
+      return interaction.reply(errorEmbed("Nothing is playing right now."));
     }
 
     await interaction.reply(controller);

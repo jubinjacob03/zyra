@@ -27,9 +27,7 @@ module.exports = {
     const voiceChannel = member.voice.channel;
 
     if (!voiceChannel) {
-      return interaction.reply(
-        Object.assign(errorEmbed("You need to be in a voice channel!"), { flags: 64 }),
-      );
+      return interaction.reply(errorEmbed("You need to be in a voice channel!"));
     }
 
     await interaction.reply({ content: `${e("INFO")} Searching...` });

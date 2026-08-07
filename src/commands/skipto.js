@@ -15,13 +15,13 @@ module.exports = {
         const queue = client.getQueue(interaction.guildId);
 
         if (!queue) {
-            return interaction.reply(Object.assign(errorEmbed('Nothing is playing right now.'), { flags: 64 }));
+            return interaction.reply(errorEmbed('Nothing is playing right now.'));
         }
 
         const position = interaction.options.getInteger('position');
 
         if (position > queue.songs.length) {
-            return interaction.reply(Object.assign(errorEmbed(`Invalid position. Queue has ${queue.songs.length} songs.`), { flags: 64 }));
+            return interaction.reply(errorEmbed(`Invalid position. Queue has ${queue.songs.length} songs.`));
         }
 
         queue.songs.splice(0, position - 1);

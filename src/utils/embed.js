@@ -78,7 +78,7 @@ function errorEmbed(description, title = null) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(content),
   );
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+  return { components: [container], flags: MessageFlags.IsComponentsV2 | 64 };
 }
 
 function infoEmbed(description, title = null) {
@@ -102,7 +102,7 @@ function warningEmbed(description, title = null) {
   container.addTextDisplayComponents(
     new TextDisplayBuilder().setContent(content),
   );
-  return { components: [container], flags: MessageFlags.IsComponentsV2 };
+  return { components: [container], flags: MessageFlags.IsComponentsV2 | 64 };
 }
 
 function queueEmbed(queue, page = 0) {

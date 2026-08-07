@@ -230,8 +230,9 @@ function startInstance(config, instanceIndex) {
     };
 
     await forceJoinVC();
-    setPresenceActivity(client, pickIdlePhrase());
-    await setVoiceChannelStatus(client, voiceChannel, "🎵 /play to start");
+    const idlePhrase = pickIdlePhrase();
+    setPresenceActivity(client, idlePhrase);
+    await setVoiceChannelStatus(client, voiceChannel, idlePhrase);
 
     let lastReconnectAttempt = 0;
     vcWatchdogInterval = setInterval(() => {
@@ -255,7 +256,9 @@ function startInstance(config, instanceIndex) {
     idleRefreshInterval = setInterval(() => {
       const queue = client.getQueue(GUILD_ID);
       if (!queue || !queue.playing) {
-        setPresenceActivity(client, pickIdlePhrase());
+        const phrase = pickIdlePhrase();
+        setPresenceActivity(client, phrase);
+        setVoiceChannelStatus(client, voiceChannel, phrase);
       }
     }, IDLE_REFRESH_INTERVAL_MS);
 

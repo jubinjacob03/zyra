@@ -22,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
+const { PassThrough } = require('stream');
 const { formatDuration } = require('./utils/embed');
 const SpotifyAPI = require('./utils/spotify');
 const YouTubeSearchEngine = require('./utils/youtubeSearch');
@@ -209,6 +210,8 @@ class MusicQueue {
                 '--no-check-certificates',
                 '--no-update',
                 '--extractor-args', 'youtube:player_client=web_embedded,default',
+                '--downloader', 'native',
+                '--buffer-size', '32K',
                 '--add-header', 'referer:youtube.com',
                 '--add-header', 'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             ];
@@ -221,36 +224,48 @@ class MusicQueue {
                 windowsHide: true,
             });
 
+            // Buffer between yt-dlp and ffmpeg to absorb network jitter
+            const downloadBuffer = new PassThrough({ highWaterMark: 2 * 1024 * 1024 });
+
             const ffmpegProcess = spawn(ffmpegPath, [
-                '-i', 'pipe:0',
                 '-analyzeduration', '0',
-                '-probesize', '32000',
                 '-loglevel', '0',
+                '-f', 'webm',
+                '-i', 'pipe:0',
                 '-vn',
+                '-map', '0:a',
                 '-c:a', 'libopus',
                 '-f', 'ogg',
                 '-ar', '48000',
                 '-ac', '2',
-                '-b:a', '64k',
-                '-application', 'audio',
+                '-b:a', '128k',
+                '-application', 'lowdelay',
                 '-frame_duration', '20',
-                '-vbr', 'off',
+                '-vbr', 'on',
+                '-packet_loss', '5',
                 'pipe:1',
             ], {
-                stdio: ['pipe', 'pipe', 'ignore'],
+                stdio: ['pipe', 'pipe', 'pipe'],
                 windowsHide: true,
             });
 
-            ytdlpProcess.stdout.pipe(ffmpegProcess.stdin);
+            // Pipeline: yt-dlp → buffer → ffmpeg → discord
+            ytdlpProcess.stdout.pipe(downloadBuffer);
+            downloadBuffer.pipe(ffmpegProcess.stdin);
+
             ytdlpProcess.stdout.on('error', () => {});
             ytdlpProcess.on('error', () => {});
+            downloadBuffer.on('error', () => {});
             ffmpegProcess.stdin.on('error', () => {});
             ffmpegProcess.stdout.on('error', () => {});
             ffmpegProcess.on('error', () => {});
             ytdlpProcess.on('close', () => {
+                try { downloadBuffer.end(); } catch {}
+            });
+            downloadBuffer.on('end', () => {
                 try { ffmpegProcess.stdin.end(); } catch {}
             });
-            ytdlpProcess.stderr?.on('data', () => {});
+            ffmpegProcess.stderr?.on('data', () => {});
             
             let streamTimeout;
             ffmpegProcess.stdout?.once('data', () => {
@@ -269,8 +284,13 @@ class MusicQueue {
 
             this.ytdlpProcess = ytdlpProcess;
             this.ffmpegProcess = ffmpegProcess;
+            this.downloadBuffer = downloadBuffer;
+
+            // Output buffer to smooth delivery to discord.js
+            const outputBuffer = new PassThrough({ highWaterMark: 256 * 1024 });
+            ffmpegProcess.stdout.pipe(outputBuffer);
             
-            this.currentResource = createAudioResource(ffmpegProcess.stdout, {
+            this.currentResource = createAudioResource(outputBuffer, {
                 metadata: song,
                 inputType: StreamType.OggOpus,
                 inlineVolume: false,
@@ -428,8 +448,10 @@ class MusicQueue {
     killStreams() {
         try { this.ytdlpProcess?.kill(); } catch {}
         try { this.ffmpegProcess?.kill(); } catch {}
+        try { this.downloadBuffer?.destroy(); } catch {}
         this.ytdlpProcess = null;
         this.ffmpegProcess = null;
+        this.downloadBuffer = null;
     }
 
     /**

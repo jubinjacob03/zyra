@@ -172,7 +172,7 @@ class MusicQueue {
     this.player = createAudioPlayer({
       behaviors: {
         noSubscriber: NoSubscriberBehavior.Play,
-        maxMissedFrames: Math.round(20000 / 20),
+        maxMissedFrames: Math.round(10000 / 20),
       },
     });
     this.currentResource = null;
@@ -273,14 +273,12 @@ class MusicQueue {
       const ffmpegProcess = spawn(
         ffmpegPath,
         [
-          "-threads",
-          "0",
           "-i",
           "pipe:0",
           "-analyzeduration",
-          "5000000",
+          "2000000",
           "-probesize",
-          "1048576",
+          "524288",
           "-loglevel",
           "0",
           "-vn",
@@ -293,11 +291,11 @@ class MusicQueue {
           "-ac",
           "2",
           "-b:a",
-          "192k",
+          "128k",
           "-application",
           "audio",
           "-frame_duration",
-          "60",
+          "20",
           "-vbr",
           "on",
           "-compression_level",
@@ -347,7 +345,6 @@ class MusicQueue {
         metadata: song,
         inputType: StreamType.OggOpus,
         inlineVolume: false,
-        silencePaddingFrames: 10,
       });
 
       this.player.play(this.currentResource);
@@ -679,7 +676,6 @@ client.createQueue = async function (guildId, textChannel, voiceChannel) {
     channelId: voiceChannel.id,
     guildId: guildId,
     adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-    selfDeaf: true,
   });
 
   try {

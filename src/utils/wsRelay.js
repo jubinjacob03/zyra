@@ -11,7 +11,9 @@ let _server = null;
 let _reconnectTimer = null;
 
 function connectRelay(localServer) {
+  if (_server) return;
   _server = localServer;
+  console.log(`[RELAY] Connecting to ${RELAY_URL}`);
   attempt();
 }
 
@@ -25,7 +27,8 @@ function attempt() {
 
   try {
     _ws = new WebSocket(RELAY_URL);
-  } catch {
+  } catch (err) {
+    console.error("[RELAY] WS constructor error:", err.message);
     scheduleReconnect();
     return;
   }

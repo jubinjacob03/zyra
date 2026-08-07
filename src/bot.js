@@ -364,13 +364,6 @@ class MusicQueue {
 
       if (existingPanel?.message) {
         message = existingPanel.message;
-      } else {
-        const storedId = getControllerPanel(panelChannel.id);
-        if (storedId) {
-          try {
-            message = await panelChannel.messages.fetch(storedId);
-          } catch {}
-        }
       }
 
       const payload = {

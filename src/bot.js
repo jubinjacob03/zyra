@@ -172,7 +172,7 @@ class MusicQueue {
     this.player = createAudioPlayer({
       behaviors: {
         noSubscriber: NoSubscriberBehavior.Play,
-        maxMissedFrames: Math.round(10000 / 20),
+        maxMissedFrames: Math.round(20000 / 20),
       },
     });
     this.currentResource = null;
@@ -247,11 +247,13 @@ class MusicQueue {
         "-q",
         "--no-warnings",
         "-f",
-        "bestaudio[ext=webm][acodec=opus]/bestaudio[ext=webm]/bestaudio",
+        "bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio",
         "--no-playlist",
         "--geo-bypass",
         "--no-check-certificates",
         "--no-update",
+        "--buffer-size",
+        "16K",
         "--extractor-args",
         "youtube:player_client=web_embedded,default",
         "--add-header",
@@ -271,12 +273,14 @@ class MusicQueue {
       const ffmpegProcess = spawn(
         ffmpegPath,
         [
+          "-threads",
+          "0",
           "-i",
           "pipe:0",
           "-analyzeduration",
-          "0",
+          "5000000",
           "-probesize",
-          "32000",
+          "1048576",
           "-loglevel",
           "0",
           "-vn",
@@ -289,13 +293,17 @@ class MusicQueue {
           "-ac",
           "2",
           "-b:a",
-          "64k",
+          "192k",
           "-application",
           "audio",
           "-frame_duration",
-          "20",
+          "60",
           "-vbr",
-          "off",
+          "on",
+          "-compression_level",
+          "10",
+          "-packet_loss",
+          "3",
           "pipe:1",
         ],
         {
@@ -339,6 +347,7 @@ class MusicQueue {
         metadata: song,
         inputType: StreamType.OggOpus,
         inlineVolume: false,
+        silencePaddingFrames: 10,
       });
 
       this.player.play(this.currentResource);
@@ -670,6 +679,7 @@ client.createQueue = async function (guildId, textChannel, voiceChannel) {
     channelId: voiceChannel.id,
     guildId: guildId,
     adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+    selfDeaf: true,
   });
 
   try {

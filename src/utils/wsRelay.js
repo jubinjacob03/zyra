@@ -4,11 +4,15 @@ const http = require("http");
 const RELAY_URL =
   process.env.SHANTHA_RELAY_URL || "ws://68.233.112.166:3001/relay/zyra";
 const RELAY_SECRET = process.env.ZYRA_RELAY_SECRET || "zyra-relay-2026";
-const RECONNECT_INTERVAL = 5000;
+const RECONNECT_BASE = 500;
+const RECONNECT_MAX = 10000;
+
+const localAgent = new http.Agent({ keepAlive: true, maxSockets: 10 });
 
 let _ws = null;
 let _server = null;
 let _reconnectTimer = null;
+let _reconnectDelay = RECONNECT_BASE;
 
 function connectRelay(localServer) {
   if (_server) return;
@@ -34,6 +38,7 @@ function attempt() {
   }
 
   _ws.on("open", () => {
+    _reconnectDelay = RECONNECT_BASE;
     console.log("[RELAY] Connected to Shantha relay");
     _ws.send(JSON.stringify({ type: "auth", secret: RELAY_SECRET }));
   });
@@ -90,7 +95,8 @@ function scheduleReconnect() {
   _reconnectTimer = setTimeout(() => {
     _reconnectTimer = null;
     attempt();
-  }, RECONNECT_INTERVAL);
+  }, _reconnectDelay);
+  _reconnectDelay = Math.min(_reconnectDelay * 2, RECONNECT_MAX);
 }
 
 function handleRelayRequest(msg) {
@@ -111,6 +117,7 @@ function handleRelayRequest(msg) {
       port,
       path: urlPath,
       method: method || "GET",
+      agent: localAgent,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.MUSIC_API_KEY || ""}`,

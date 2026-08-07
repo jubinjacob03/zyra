@@ -111,7 +111,10 @@ function handleRelayRequest(msg) {
       port,
       path: urlPath,
       method: method || "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.MUSIC_API_KEY || ""}`,
+      },
     };
 
     if (postData && method === "POST") {

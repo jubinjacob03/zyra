@@ -27,7 +27,10 @@ async function initEmojis(client) {
         };
       }
     }
-  } catch {}
+    log.info(`Fetched ${appEmojis.size} app emojis`);
+  } catch (err) {
+    log.warn(`App emoji fetch failed: ${err.message}`);
+  }
 
   for (const guild of client.guilds.cache.values()) {
     for (const emoji of guild.emojis.cache.values()) {

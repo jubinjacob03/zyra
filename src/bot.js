@@ -181,7 +181,7 @@ class MusicQueue {
     this.player = createAudioPlayer({
       behaviors: {
         noSubscriber: NoSubscriberBehavior.Play,
-        maxMissedFrames: Math.round(10000 / 20),
+        maxMissedFrames: Math.round(30000 / 20),
       },
     });
     this.currentResource = null;
@@ -284,7 +284,7 @@ class MusicQueue {
           "--js-runtimes",
           "node:/usr/local/bin/node",
           "--buffer-size",
-          "1M",
+          "4M",
           "--http-chunk-size",
           "10M",
           "--extractor-args",
@@ -364,15 +364,18 @@ class MusicQueue {
         [
           "-threads",
           "2",
+          "-re",
           "-i",
           "pipe:0",
           "-analyzeduration",
-          "5000000",
+          "10000000",
           "-probesize",
-          "2097152",
+          "5242880",
           "-loglevel",
           "warning",
           "-vn",
+          "-af",
+          "aresample=async=1:first_pts=0",
           "-c:a",
           "libopus",
           "-f",
@@ -382,7 +385,7 @@ class MusicQueue {
           "-ac",
           "2",
           "-b:a",
-          "192k",
+          "256k",
           "-application",
           "audio",
           "-frame_duration",
@@ -392,11 +395,13 @@ class MusicQueue {
           "-compression_level",
           "10",
           "-packet_loss",
-          "3",
+          "1",
           "-fflags",
-          "+genpts+discardcorrupt",
-          "-avioflags",
-          "direct",
+          "+genpts+discardcorrupt+nobuffer",
+          "-flags",
+          "low_delay",
+          "-max_delay",
+          "0",
           "pipe:1",
         ],
         {
@@ -408,7 +413,7 @@ class MusicQueue {
       if (ytdlpBuffered) {
         ffmpegProcess.stdin.write(ytdlpBuffered);
       }
-      ytdlpProcess.stdout.pipe(ffmpegProcess.stdin);
+      ytdlpProcess.stdout.pipe(ffmpegProcess.stdin, { highWaterMark: 1024 * 1024 });
       ytdlpProcess.stdout.resume();
       ytdlpProcess.stdout.on("error", () => {});
       ytdlpProcess.on("error", () => {});

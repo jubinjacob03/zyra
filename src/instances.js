@@ -109,7 +109,9 @@ function startInstance(config, instanceIndex) {
   } = config;
 
   if (!INSTANCE_BOT_TOKEN || !GUILD_ID) {
-    throw new Error("Missing configuration: botToken or guildId in config.json");
+    throw new Error(
+      "Missing configuration: botToken or guildId in config.json",
+    );
   }
 
   log.info(`Starting instance: ${INSTANCE_NAME}`);
@@ -138,7 +140,10 @@ function startInstance(config, instanceIndex) {
   };
 
   client.createQueue = async function (guildId, textChannel, voiceChannel) {
-    const { createAudioPlayer, NoSubscriberBehavior } = require("@discordjs/voice");
+    const {
+      createAudioPlayer,
+      NoSubscriberBehavior,
+    } = require("@discordjs/voice");
 
     const connection = joinVoiceChannel({
       channelId: voiceChannel.id,
@@ -206,9 +211,19 @@ function startInstance(config, instanceIndex) {
 
         const { getVoiceConnection } = require("@discordjs/voice");
         const existing = getVoiceConnection(GUILD_ID, INSTANCE_NAME);
-        if (existing && existing.state.status !== VoiceConnectionStatus.Destroyed) return;
 
-        const { createAudioPlayer, NoSubscriberBehavior } = require("@discordjs/voice");
+        if (existing) {
+          if (existing.state.status === VoiceConnectionStatus.Ready) return;
+          // Stale connection — destroy before rejoining
+          try {
+            existing.destroy();
+          } catch {}
+        }
+
+        const {
+          createAudioPlayer,
+          NoSubscriberBehavior,
+        } = require("@discordjs/voice");
 
         const connection = joinVoiceChannel({
           channelId: INSTANCE_VOICE_CHANNEL_ID,
@@ -235,6 +250,7 @@ function startInstance(config, instanceIndex) {
     await setVoiceChannelStatus(client, voiceChannel, idlePhrase);
 
     let lastReconnectAttempt = 0;
+    let lastReconnectLog = 0;
     vcWatchdogInterval = setInterval(() => {
       try {
         const now = Date.now();
@@ -243,9 +259,18 @@ function startInstance(config, instanceIndex) {
         const currentGuild = client.guilds.cache.get(GUILD_ID);
         if (!currentGuild) return;
         const me = currentGuild.members.me;
-        if (!me || !me.voice || me.voice.channelId !== INSTANCE_VOICE_CHANNEL_ID) {
+        if (
+          !me ||
+          !me.voice ||
+          me.voice.channelId !== INSTANCE_VOICE_CHANNEL_ID
+        ) {
           lastReconnectAttempt = now;
-          log.info(`[Watchdog] ${INSTANCE_NAME} disconnected; reconnecting...`);
+          if (now - lastReconnectLog > 120_000) {
+            log.info(
+              `[Watchdog] ${INSTANCE_NAME} disconnected; reconnecting...`,
+            );
+            lastReconnectLog = now;
+          }
           forceJoinVC();
         }
       } catch (error) {
@@ -311,7 +336,10 @@ function startInstance(config, instanceIndex) {
 
       if (!voiceChannel) {
         const { errorEmbed } = require("./utils/embed");
-        return interaction.reply({ ...errorEmbed("You need to be in a voice channel!"), flags: 64 });
+        return interaction.reply({
+          ...errorEmbed("You need to be in a voice channel!"),
+          flags: 64,
+        });
       }
 
       try {
@@ -337,18 +365,29 @@ function startInstance(config, instanceIndex) {
           let queue = client.getQueue(interaction.guildId);
           const isNewQueue = !queue;
           if (!queue) {
-            queue = await client.createQueue(interaction.guildId, interaction.channel, voiceChannel);
+            queue = await client.createQueue(
+              interaction.guildId,
+              interaction.channel,
+              voiceChannel,
+            );
           }
 
-          if (result.type === "playlist") { await queue.addSongs(result.songs); }
-          else { await queue.addSong(result); }
-          if (isNewQueue) { await queue.play(); }
+          if (result.type === "playlist") {
+            await queue.addSongs(result.songs);
+          } else {
+            await queue.addSong(result);
+          }
+          if (isNewQueue) {
+            await queue.play();
+          }
 
           await interaction.deleteReply().catch(() => {});
         } catch (error) {
           log.error("Modal play error:", error?.message || error);
           const { errorEmbed } = require("./utils/embed");
-          await interaction.editReply(errorEmbed(`${error.message || "Failed to play"}`));
+          await interaction.editReply(
+            errorEmbed(`${error.message || "Failed to play"}`),
+          );
         }
         return;
       }
@@ -364,23 +403,36 @@ function startInstance(config, instanceIndex) {
 
         const { e: ei } = require("./utils/customEmoji");
         const {
-          ContainerBuilder, TextDisplayBuilder, ActionRowBuilder,
-          StringSelectMenuBuilder, SeparatorBuilder, SeparatorSpacingSize,
+          ContainerBuilder,
+          TextDisplayBuilder,
+          ActionRowBuilder,
+          StringSelectMenuBuilder,
+          SeparatorBuilder,
+          SeparatorSpacingSize,
           MessageFlags,
         } = require("discord.js");
 
-        const fmtDur = (s) => { if (!s) return "0:00"; if (s > 10000) s = Math.floor(s / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+        const fmtDur = (s) => {
+          if (!s) return "0:00";
+          if (s > 10000) s = Math.floor(s / 1000);
+          return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+        };
 
         const container = new ContainerBuilder().setAccentColor(0x00ffff);
         container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(`### ${ei("MUSIC")} Results for "${query}"`),
+          new TextDisplayBuilder().setContent(
+            `### ${ei("MUSIC")} Results for "${query}"`,
+          ),
         );
 
         for (const [i, r] of results.entries()) {
           container.addSeparatorComponents(
-            new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
+            new SeparatorBuilder()
+              .setDivider(true)
+              .setSpacing(SeparatorSpacingSize.Small),
           );
-          const title = r.title.length > 50 ? r.title.slice(0, 50) + "…" : r.title;
+          const title =
+            r.title.length > 50 ? r.title.slice(0, 50) + "…" : r.title;
           container.addTextDisplayComponents(
             new TextDisplayBuilder().setContent(
               `\`${i + 1}.\` **${title}**\n-# ${r.channel || "Unknown"} · ${fmtDur(r.duration)}`,
@@ -389,17 +441,25 @@ function startInstance(config, instanceIndex) {
         }
 
         container.addSeparatorComponents(
-          new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
+          new SeparatorBuilder()
+            .setDivider(true)
+            .setSpacing(SeparatorSpacingSize.Small),
         );
 
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId("instance_play_select")
           .setPlaceholder("Select a song to play")
-          .addOptions(results.map((r, i) => ({
-            label: `${i + 1}. ${r.title}`.slice(0, 100),
-            description: `${fmtDur(r.duration)} • ${r.channel || "Unknown"}`.slice(0, 100),
-            value: r.url,
-          })));
+          .addOptions(
+            results.map((r, i) => ({
+              label: `${i + 1}. ${r.title}`.slice(0, 100),
+              description:
+                `${fmtDur(r.duration)} • ${r.channel || "Unknown"}`.slice(
+                  0,
+                  100,
+                ),
+              value: r.url,
+            })),
+          );
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
         container.addActionRowComponents(row);
@@ -426,7 +486,11 @@ function startInstance(config, instanceIndex) {
             let queue = client.getQueue(interaction.guildId);
             const isNewQueue = !queue;
             if (!queue) {
-              queue = await client.createQueue(interaction.guildId, interaction.channel, voiceChannel);
+              queue = await client.createQueue(
+                interaction.guildId,
+                interaction.channel,
+                voiceChannel,
+              );
             }
             await queue.addSong(result);
             if (isNewQueue) await queue.play();
@@ -441,13 +505,17 @@ function startInstance(config, instanceIndex) {
         collector.on("end", (_, reason) => {
           if (reason === "time") {
             const { errorEmbed } = require("./utils/embed");
-            interaction.editReply(errorEmbed("Selection timed out.")).catch(() => {});
+            interaction
+              .editReply(errorEmbed("Selection timed out."))
+              .catch(() => {});
           }
         });
       } catch (error) {
         log.error("Modal play error:", error?.message || error);
         const { errorEmbed } = require("./utils/embed");
-        await interaction.editReply(errorEmbed(`${error.message || "Failed to play"}`));
+        await interaction.editReply(
+          errorEmbed(`${error.message || "Failed to play"}`),
+        );
       }
     }
   });

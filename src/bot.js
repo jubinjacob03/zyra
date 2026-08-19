@@ -233,6 +233,17 @@ class MusicQueue {
       return;
     }
 
+    if (this.connection.state.status !== VoiceConnectionStatus.Ready) {
+      try {
+        await entersState(this.connection, VoiceConnectionStatus.Ready, 10_000);
+      } catch {
+        console.error("Voice connection not ready, skipping playback");
+        this.songs.shift();
+        this.processQueue();
+        return;
+      }
+    }
+
     const song = this.songs[0];
     this.playing = true;
     this.paused = false;
@@ -321,7 +332,10 @@ class MusicQueue {
           ffmpegProcess.stdin.end();
         } catch {}
       });
-      ytdlpProcess.stderr?.on("data", () => {});
+      ytdlpProcess.stderr?.on("data", (chunk) => {
+        const msg = chunk.toString().trim();
+        if (msg) console.error(`[yt-dlp] ${msg}`);
+      });
 
       let streamTimeout;
       ffmpegProcess.stdout?.once("data", () => {
@@ -1209,7 +1223,7 @@ for (const file of commandFiles) {
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
-  initEmojis(readyClient);
+  await initEmojis(readyClient);
   log.info(`Remani Music Bot is online!`);
   log.info(`Logged in as ${readyClient.user.tag}`);
   log.info(`Serving ${readyClient.guilds.cache.size} servers`);

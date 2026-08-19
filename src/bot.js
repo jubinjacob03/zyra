@@ -31,6 +31,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { spawn } = require("child_process");
+const { PassThrough } = require("stream");
 const { formatDuration } = require("./utils/embed");
 const SpotifyAPI = require("./utils/spotify");
 const YouTubeSearchEngine = require("./utils/youtubeSearch");
@@ -377,7 +378,6 @@ class MusicQueue {
         [
           "-threads",
           "2",
-          "-re",
           "-i",
           "pipe:0",
           "-analyzeduration",
@@ -387,8 +387,6 @@ class MusicQueue {
           "-loglevel",
           "warning",
           "-vn",
-          "-af",
-          "aresample=async=1:first_pts=0",
           "-c:a",
           "libopus",
           "-f",
@@ -406,15 +404,11 @@ class MusicQueue {
           "-vbr",
           "on",
           "-compression_level",
-          "10",
+          "6",
           "-packet_loss",
           "1",
           "-fflags",
-          "+genpts+discardcorrupt+nobuffer",
-          "-flags",
-          "low_delay",
-          "-max_delay",
-          "0",
+          "+genpts+discardcorrupt",
           "pipe:1",
         ],
         {
@@ -426,7 +420,7 @@ class MusicQueue {
       if (ytdlpBuffered) {
         ffmpegProcess.stdin.write(ytdlpBuffered);
       }
-      ytdlpProcess.stdout.pipe(ffmpegProcess.stdin, { highWaterMark: 1024 * 1024 });
+      ytdlpProcess.stdout.pipe(ffmpegProcess.stdin);
       ytdlpProcess.stdout.resume();
       ytdlpProcess.stdout.on("error", () => {});
       ytdlpProcess.on("error", () => {});
@@ -484,10 +478,15 @@ class MusicQueue {
       this.ytdlpProcess = ytdlpProcess;
       this.ffmpegProcess = ffmpegProcess;
 
-      this.currentResource = createAudioResource(ffmpegProcess.stdout, {
+      const jitterBuffer = new PassThrough({ highWaterMark: 1024 * 1024 });
+      ffmpegProcess.stdout.pipe(jitterBuffer);
+      jitterBuffer.on("error", () => {});
+
+      this.currentResource = createAudioResource(jitterBuffer, {
         metadata: song,
         inputType: StreamType.OggOpus,
         inlineVolume: false,
+        silencePaddingFrames: 5,
       });
 
       this.player.play(this.currentResource);

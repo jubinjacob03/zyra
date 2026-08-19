@@ -10,7 +10,7 @@ const {
   MessageFlags,
 } = require("discord.js");
 const { initRuntimeLogger } = require("./utils/runtimeLogger");
-const { initEmojis, e } = require("./utils/customEmoji");
+const { initEmojis, e, setActiveClient } = require("./utils/customEmoji");
 const { createLogger } = require("./utils/logger");
 const { musicBotCacheConfig } = require("./utils/clientCache");
 
@@ -113,7 +113,11 @@ process.on("unhandledRejection", (reason, promise) => {
       return;
     }
     const msg = reason.message || "";
-    if (msg.includes("IP discovery") || msg.includes("socket closed") || msg.includes("Socket was closed")) {
+    if (
+      msg.includes("IP discovery") ||
+      msg.includes("socket closed") ||
+      msg.includes("Socket was closed")
+    ) {
       return;
     }
   }
@@ -317,7 +321,12 @@ class MusicQueue {
               gotData = true;
               proc.stdout.removeListener("data", onData);
               proc.stdout.pause();
-              resolve({ ok: true, proc, stderr, buffered: Buffer.concat(chunks) });
+              resolve({
+                ok: true,
+                proc,
+                stderr,
+                buffered: Buffer.concat(chunks),
+              });
             }
           };
           proc.stdout.on("data", onData);
@@ -326,7 +335,11 @@ class MusicQueue {
             stderr += c.toString();
           });
           proc.on("close", (code) => {
-            if (!gotData) resolve({ ok: false, error: stderr.trim() || `exit code ${code}` });
+            if (!gotData)
+              resolve({
+                ok: false,
+                error: stderr.trim() || `exit code ${code}`,
+              });
           });
           setTimeout(() => {
             if (!gotData) {
@@ -433,12 +446,22 @@ class MusicQueue {
       ytdlpProcess.on("close", (code) => {
         ytdlpAlive = false;
         if (code && code !== 0) {
-          const lastLines = ytdlpStderr.trim().split("\n").slice(-3).join(" | ");
-          console.error(`[yt-dlp] exited with code ${code}: ${lastLines || "no stderr"}`);
+          const lastLines = ytdlpStderr
+            .trim()
+            .split("\n")
+            .slice(-3)
+            .join(" | ");
+          console.error(
+            `[yt-dlp] exited with code ${code}: ${lastLines || "no stderr"}`,
+          );
         }
-        try { ffmpegProcess.stdin.end(); } catch {}
+        try {
+          ffmpegProcess.stdin.end();
+        } catch {}
       });
-      ffmpegProcess.on("close", (code) => { ffmpegAlive = false; });
+      ffmpegProcess.on("close", (code) => {
+        ffmpegAlive = false;
+      });
 
       let streamTimeout;
       ffmpegProcess.stdout?.once("data", () => {
@@ -469,9 +492,9 @@ class MusicQueue {
 
       this.player.play(this.currentResource);
 
-      const controller = createCompleteMusicController(this);
-
       const panelClient = this.client || client;
+      setActiveClient(panelClient);
+      const controller = createCompleteMusicController(this);
       const isMainInstance = !panelClient.INSTANCE_NAME;
 
       let panelChannel = this.textChannel;
@@ -557,6 +580,7 @@ class MusicQueue {
           this.playing = false;
           this.stopProgressUpdates();
           const panelClient = this.client || client;
+          setActiveClient(panelClient);
           const panelData = panelClient.musicPanels.get(this.guildId);
           if (panelData?.message) {
             const idle = createIdleMusicController(
@@ -731,6 +755,7 @@ class MusicQueue {
     try {
       await panelData.message.fetch();
 
+      setActiveClient(this.client || client);
       const controller = createCompleteMusicController(this);
       if (!controller) return;
 
@@ -1594,6 +1619,7 @@ async function updateMusicController(interaction, queue) {
       return;
     }
 
+    setActiveClient(queue.client || client);
     const controller = createCompleteMusicController(queue);
 
     if (controller && interaction.message) {

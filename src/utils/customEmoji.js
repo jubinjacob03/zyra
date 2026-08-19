@@ -5,62 +5,71 @@ const EMOJI_MAP = require("./icon-map.json");
 
 const EMOJI_NAMES = {};
 const UNICODE = {};
-const resolved = {};
 
 for (const [key, value] of Object.entries(EMOJI_MAP)) {
   EMOJI_NAMES[value.serverEmojiName] = key;
   UNICODE[key] = value.fallback;
-  if (value.id) {
-    const a = value.animated ? "a" : "";
-    resolved[key] = {
-      id: value.id,
-      name: value.serverEmojiName,
-      animated: value.animated || false,
-      full: `<${a}:${value.serverEmojiName}:${value.id}>`,
-    };
-  }
 }
 
-log.info(`Pre-loaded ${Object.keys(resolved).length} emojis from icon-map IDs`);
+const clientEmojis = new Map();
+let activeClientId = null;
 
 async function initEmojis(client) {
+  const map = {};
   try {
     const appEmojis = await client.application.emojis.fetch();
-    let updated = 0;
     for (const emoji of appEmojis.values()) {
       const key = EMOJI_NAMES[emoji.name];
       if (key) {
-        resolved[key] = {
+        map[key] = {
           id: emoji.id,
           name: emoji.name,
           animated: emoji.animated,
           full: `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`,
         };
-        updated++;
       }
     }
-    log.info(`Refreshed ${updated} emojis from app (${appEmojis.size} total)`);
+    log.info(
+      `Loaded ${Object.keys(map).length} emojis for ${client.user?.tag || "bot"}`,
+    );
   } catch (err) {
-    log.warn(`App emoji fetch failed, using hardcoded IDs: ${err.message}`);
+    log.warn(`App emoji fetch failed for ${client.user?.tag}: ${err.message}`);
+    for (const [key, value] of Object.entries(EMOJI_MAP)) {
+      if (value.id) {
+        map[key] = {
+          id: value.id,
+          name: value.serverEmojiName,
+          animated: value.animated || false,
+          full: `<${value.animated ? "a" : ""}:${value.serverEmojiName}:${value.id}>`,
+        };
+      }
+    }
   }
 
-  const count = Object.keys(resolved).length;
-  log.info(`${count} emojis ready`);
+  const cid = client.user?.id || client.application?.id || "default";
+  clientEmojis.set(cid, map);
+  if (!activeClientId) activeClientId = cid;
+}
+
+function setActiveClient(client) {
+  const cid = client?.user?.id || client?.application?.id;
+  if (cid && clientEmojis.has(cid)) activeClientId = cid;
+}
+
+function getResolved() {
+  return clientEmojis.get(activeClientId) || {};
 }
 
 function e(key) {
-  if (resolved[key]) return resolved[key].full;
+  const r = getResolved()[key];
+  if (r) return r.full;
   return UNICODE[key] || "";
 }
 
 function btn(key) {
-  if (resolved[key])
-    return {
-      id: resolved[key].id,
-      name: resolved[key].name,
-      animated: resolved[key].animated,
-    };
+  const r = getResolved()[key];
+  if (r) return { id: r.id, name: r.name, animated: r.animated };
   return UNICODE[key] || "❓";
 }
 
-module.exports = { initEmojis, e, btn, UNICODE };
+module.exports = { initEmojis, e, btn, setActiveClient, UNICODE };

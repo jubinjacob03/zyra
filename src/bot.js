@@ -256,7 +256,7 @@ class MusicQueue {
     this.killStreams();
 
     try {
-      const PLAYER_CLIENTS = ["ios,web", "web_embedded,default", "tv,web"];
+      const PLAYER_CLIENTS = ["web_embedded", "android_vr", "tv"];
 
       let ytdlpProcess = null;
       let lastError = "";

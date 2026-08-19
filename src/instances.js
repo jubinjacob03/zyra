@@ -235,6 +235,22 @@ function startInstance(config, instanceIndex) {
 
         await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
 
+        connection.on(VoiceConnectionStatus.Disconnected, async () => {
+          try {
+            await Promise.race([
+              entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+              entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+            ]);
+          } catch {
+            try {
+              connection.destroy();
+            } catch {}
+            log.debug(
+              `[Idle] ${INSTANCE_NAME} connection lost, watchdog will rejoin`,
+            );
+          }
+        });
+
         const idlePlayer = createAudioPlayer({
           behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
         });
@@ -256,19 +272,15 @@ function startInstance(config, instanceIndex) {
         const now = Date.now();
         if (now - lastReconnectAttempt < 30_000) return;
 
-        const currentGuild = client.guilds.cache.get(GUILD_ID);
-        if (!currentGuild) return;
-        const me = currentGuild.members.me;
-        if (
-          !me ||
-          !me.voice ||
-          me.voice.channelId !== INSTANCE_VOICE_CHANNEL_ID
-        ) {
+        const { getVoiceConnection } = require("@discordjs/voice");
+        const conn = getVoiceConnection(GUILD_ID, INSTANCE_NAME);
+        const isReady =
+          conn && conn.state.status === VoiceConnectionStatus.Ready;
+
+        if (!isReady) {
           lastReconnectAttempt = now;
           if (now - lastReconnectLog > 120_000) {
-            log.info(
-              `[Watchdog] ${INSTANCE_NAME} disconnected; reconnecting...`,
-            );
+            log.info(`[Watchdog] ${INSTANCE_NAME} not connected; rejoining...`);
             lastReconnectLog = now;
           }
           forceJoinVC();

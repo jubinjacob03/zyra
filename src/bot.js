@@ -65,10 +65,15 @@ if (os.platform() === "win32") {
     console.log("⚠️ Using bundled yt-dlp");
   }
 } else {
-  const systemYtdlp = "/root/.nix-profile/bin/yt-dlp";
-  if (fs.existsSync(systemYtdlp)) {
-    youtubedl = youtubedlExec.create(systemYtdlp);
-    console.log("✅ Using system yt-dlp (Nix)");
+  const candidates = [
+    "/root/.nix-profile/bin/yt-dlp",
+    "/usr/bin/yt-dlp",
+    "/usr/local/bin/yt-dlp",
+  ];
+  const found = candidates.find((p) => fs.existsSync(p));
+  if (found) {
+    youtubedl = youtubedlExec.create(found);
+    console.log(`✅ Using system yt-dlp (${found})`);
   } else {
     youtubedl = youtubedlExec;
     console.log("✅ Using bundled yt-dlp (Linux/Mac)");
@@ -251,35 +256,81 @@ class MusicQueue {
     this.killStreams();
 
     try {
-      const ytdlpArgs = [
-        song.url,
-        "-o",
-        "-",
-        "-q",
-        "--no-warnings",
-        "-f",
-        "bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio",
-        "--no-playlist",
-        "--geo-bypass",
-        "--no-check-certificates",
-        "--no-update",
-        "--buffer-size",
-        "16K",
-        "--extractor-args",
-        "youtube:player_client=web_embedded,default",
-        "--add-header",
-        "referer:youtube.com",
-        "--add-header",
-        "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      ];
-      if (fs.existsSync("./cookies.txt")) {
-        ytdlpArgs.push("--cookies", "./cookies.txt");
+      const PLAYER_CLIENTS = ["ios,web", "web_embedded,default", "tv,web"];
+
+      let ytdlpProcess = null;
+      let lastError = "";
+
+      for (const pc of PLAYER_CLIENTS) {
+        const ytdlpArgs = [
+          song.url,
+          "-o",
+          "-",
+          "-q",
+          "--no-warnings",
+          "-f",
+          "bestaudio/best",
+          "--no-playlist",
+          "--geo-bypass",
+          "--no-check-certificates",
+          "--no-update",
+          "--buffer-size",
+          "16K",
+          "--extractor-args",
+          `youtube:player_client=${pc}`,
+          "--add-header",
+          "referer:youtube.com",
+          "--add-header",
+          "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        ];
+        if (fs.existsSync("./cookies.txt")) {
+          ytdlpArgs.push("--cookies", "./cookies.txt");
+        }
+
+        const proc = spawn(ytdlpBinaryPath, ytdlpArgs, {
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+        });
+
+        const result = await new Promise((resolve) => {
+          let gotData = false;
+          let stderr = "";
+          proc.stdout.once("data", () => {
+            gotData = true;
+            resolve({ ok: true, proc });
+          });
+          proc.stderr.on("data", (c) => {
+            stderr += c.toString();
+          });
+          proc.on("close", (code) => {
+            if (!gotData) resolve({ ok: false, error: stderr.trim() });
+          });
+          setTimeout(() => {
+            if (!gotData) {
+              proc.kill();
+              resolve({ ok: false, error: "timeout" });
+            }
+          }, 15_000);
+        });
+
+        if (result.ok) {
+          ytdlpProcess = result.proc;
+          break;
+        }
+
+        lastError = result.error;
+        const retryable =
+          lastError.includes("403") ||
+          lastError.includes("format is not available");
+        console.warn(
+          `[yt-dlp] player_client=${pc} failed: ${lastError.split("\n").pop()}`,
+        );
+        if (!retryable) break;
       }
 
-      const ytdlpProcess = spawn(ytdlpBinaryPath, ytdlpArgs, {
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-      });
+      if (!ytdlpProcess) {
+        throw new Error(lastError || "All player_clients failed");
+      }
 
       const ffmpegProcess = spawn(
         ffmpegPath,
@@ -332,10 +383,7 @@ class MusicQueue {
           ffmpegProcess.stdin.end();
         } catch {}
       });
-      ytdlpProcess.stderr?.on("data", (chunk) => {
-        const msg = chunk.toString().trim();
-        if (msg) console.error(`[yt-dlp] ${msg}`);
-      });
+      ytdlpProcess.stderr?.on("data", () => {});
 
       let streamTimeout;
       ffmpegProcess.stdout?.once("data", () => {
@@ -784,7 +832,7 @@ async function searchSongInternal(query, user) {
   // Enhanced anti-detection options
   const antiDetectionOpts = {
     ...cookieOpts,
-    extractorArgs: "youtube:player_client=web_embedded,default",
+    extractorArgs: "youtube:player_client=ios,web",
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     referer: "https://www.youtube.com/",

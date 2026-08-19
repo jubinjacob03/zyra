@@ -292,10 +292,13 @@ class MusicQueue {
           windowsHide: true,
         });
 
+        // Pause stdout so no data is lost before we pipe to ffmpeg
+        proc.stdout.pause();
+
         const result = await new Promise((resolve) => {
           let gotData = false;
           let stderr = "";
-          proc.stdout.once("data", () => {
+          proc.stdout.once("readable", () => {
             gotData = true;
             resolve({ ok: true, proc });
           });
@@ -373,6 +376,7 @@ class MusicQueue {
       );
 
       ytdlpProcess.stdout.pipe(ffmpegProcess.stdin);
+      ytdlpProcess.stdout.resume();
       ytdlpProcess.stdout.on("error", () => {});
       ytdlpProcess.on("error", () => {});
       ffmpegProcess.stdin.on("error", () => {});

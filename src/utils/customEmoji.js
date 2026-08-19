@@ -5,17 +5,28 @@ const EMOJI_MAP = require("./icon-map.json");
 
 const EMOJI_NAMES = {};
 const UNICODE = {};
+const resolved = {};
 
 for (const [key, value] of Object.entries(EMOJI_MAP)) {
   EMOJI_NAMES[value.serverEmojiName] = key;
   UNICODE[key] = value.fallback;
+  if (value.id) {
+    const a = value.animated ? "a" : "";
+    resolved[key] = {
+      id: value.id,
+      name: value.serverEmojiName,
+      animated: value.animated || false,
+      full: `<${a}:${value.serverEmojiName}:${value.id}>`,
+    };
+  }
 }
 
-const resolved = {};
+log.info(`Pre-loaded ${Object.keys(resolved).length} emojis from icon-map IDs`);
 
 async function initEmojis(client) {
   try {
     const appEmojis = await client.application.emojis.fetch();
+    let updated = 0;
     for (const emoji of appEmojis.values()) {
       const key = EMOJI_NAMES[emoji.name];
       if (key) {
@@ -25,28 +36,16 @@ async function initEmojis(client) {
           animated: emoji.animated,
           full: `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`,
         };
+        updated++;
       }
     }
-    log.info(`Fetched ${appEmojis.size} app emojis`);
+    log.info(`Refreshed ${updated} emojis from app (${appEmojis.size} total)`);
   } catch (err) {
-    log.warn(`App emoji fetch failed: ${err.message}`);
+    log.warn(`App emoji fetch failed, using hardcoded IDs: ${err.message}`);
   }
 
-  for (const guild of client.guilds.cache.values()) {
-    for (const emoji of guild.emojis.cache.values()) {
-      const key = EMOJI_NAMES[emoji.name];
-      if (key && !resolved[key]) {
-        resolved[key] = {
-          id: emoji.id,
-          name: emoji.name,
-          animated: emoji.animated,
-          full: `<${emoji.animated ? "a" : ""}:${emoji.name}:${emoji.id}>`,
-        };
-      }
-    }
-  }
   const count = Object.keys(resolved).length;
-  if (count > 0) log.info(`Loaded ${count} custom emojis`);
+  log.info(`${count} emojis ready`);
 }
 
 function e(key) {

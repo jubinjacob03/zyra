@@ -80,6 +80,10 @@ const setVoiceChannelStatus = async (client, channel, status) => {
 process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
     if (reason.code === 10008 || reason.code === 10062) return;
+    const msg = reason.message || "";
+    if (msg.includes("IP discovery") || msg.includes("socket closed") || msg.includes("Socket was closed")) {
+      return;
+    }
   }
   log.error("Unhandled rejection:", reason);
 });
@@ -233,7 +237,7 @@ function startInstance(config, instanceIndex) {
           group: INSTANCE_NAME,
         });
 
-        await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+        await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
 
         connection.on(VoiceConnectionStatus.Disconnected, async () => {
           try {
@@ -270,7 +274,7 @@ function startInstance(config, instanceIndex) {
     vcWatchdogInterval = setInterval(() => {
       try {
         const now = Date.now();
-        if (now - lastReconnectAttempt < 30_000) return;
+        if (now - lastReconnectAttempt < 60_000) return;
 
         const { getVoiceConnection } = require("@discordjs/voice");
         const conn = getVoiceConnection(GUILD_ID, INSTANCE_NAME);
@@ -283,7 +287,7 @@ function startInstance(config, instanceIndex) {
             log.info(`[Watchdog] ${INSTANCE_NAME} not connected; rejoining...`);
             lastReconnectLog = now;
           }
-          forceJoinVC();
+          forceJoinVC().catch(() => {});
         }
       } catch (error) {
         log.error(`[Watchdog] ${INSTANCE_NAME}:`, error?.message || error);

@@ -112,6 +112,10 @@ process.on("unhandledRejection", (reason, promise) => {
       );
       return;
     }
+    const msg = reason.message || "";
+    if (msg.includes("IP discovery") || msg.includes("socket closed") || msg.includes("Socket was closed")) {
+      return;
+    }
   }
   console.error("Unhandled rejection:", reason);
 });
@@ -260,6 +264,8 @@ class MusicQueue {
 
       let ytdlpProcess = null;
       let lastError = "";
+      let ytdlpStderr = "";
+      let ytdlpBuffered = null;
 
       for (const pc of PLAYER_CLIENTS) {
         const ytdlpArgs = [
@@ -274,8 +280,13 @@ class MusicQueue {
           "--geo-bypass",
           "--no-check-certificates",
           "--no-update",
+          "--force-ipv4",
+          "--js-runtimes",
+          "node:/usr/local/bin/node",
           "--buffer-size",
-          "16K",
+          "1M",
+          "--http-chunk-size",
+          "10M",
           "--extractor-args",
           `youtube:player_client=${pc}`,
           "--add-header",
@@ -292,39 +303,52 @@ class MusicQueue {
           windowsHide: true,
         });
 
-        // Pause stdout so no data is lost before we pipe to ffmpeg
         proc.stdout.pause();
 
         const result = await new Promise((resolve) => {
           let gotData = false;
           let stderr = "";
-          proc.stdout.once("readable", () => {
-            gotData = true;
-            resolve({ ok: true, proc });
-          });
+          let bytesReceived = 0;
+          const chunks = [];
+          const onData = (chunk) => {
+            chunks.push(chunk);
+            bytesReceived += chunk.length;
+            if (!gotData && bytesReceived >= 1024) {
+              gotData = true;
+              proc.stdout.removeListener("data", onData);
+              proc.stdout.pause();
+              resolve({ ok: true, proc, stderr, buffered: Buffer.concat(chunks) });
+            }
+          };
+          proc.stdout.on("data", onData);
+          proc.stdout.resume();
           proc.stderr.on("data", (c) => {
             stderr += c.toString();
           });
           proc.on("close", (code) => {
-            if (!gotData) resolve({ ok: false, error: stderr.trim() });
+            if (!gotData) resolve({ ok: false, error: stderr.trim() || `exit code ${code}` });
           });
           setTimeout(() => {
             if (!gotData) {
+              proc.stdout.removeListener("data", onData);
               proc.kill();
-              resolve({ ok: false, error: "timeout" });
+              resolve({ ok: false, error: stderr.trim() || "timeout" });
             }
           }, 15_000);
         });
 
         if (result.ok) {
           ytdlpProcess = result.proc;
+          ytdlpStderr = result.stderr || "";
+          ytdlpBuffered = result.buffered;
           break;
         }
 
         lastError = result.error;
         const retryable =
           lastError.includes("403") ||
-          lastError.includes("format is not available");
+          lastError.includes("format is not available") ||
+          lastError.includes("Sign in");
         console.warn(
           `[yt-dlp] player_client=${pc} failed: ${lastError.split("\n").pop()}`,
         );
@@ -338,14 +362,16 @@ class MusicQueue {
       const ffmpegProcess = spawn(
         ffmpegPath,
         [
+          "-threads",
+          "2",
           "-i",
           "pipe:0",
           "-analyzeduration",
-          "2000000",
+          "5000000",
           "-probesize",
-          "524288",
+          "2097152",
           "-loglevel",
-          "0",
+          "warning",
           "-vn",
           "-c:a",
           "libopus",
@@ -356,7 +382,7 @@ class MusicQueue {
           "-ac",
           "2",
           "-b:a",
-          "128k",
+          "192k",
           "-application",
           "audio",
           "-frame_duration",
@@ -367,14 +393,21 @@ class MusicQueue {
           "10",
           "-packet_loss",
           "3",
+          "-fflags",
+          "+genpts+discardcorrupt",
+          "-avioflags",
+          "direct",
           "pipe:1",
         ],
         {
-          stdio: ["pipe", "pipe", "ignore"],
+          stdio: ["pipe", "pipe", "pipe"],
           windowsHide: true,
         },
       );
 
+      if (ytdlpBuffered) {
+        ffmpegProcess.stdin.write(ytdlpBuffered);
+      }
       ytdlpProcess.stdout.pipe(ffmpegProcess.stdin);
       ytdlpProcess.stdout.resume();
       ytdlpProcess.stdout.on("error", () => {});
@@ -382,12 +415,25 @@ class MusicQueue {
       ffmpegProcess.stdin.on("error", () => {});
       ffmpegProcess.stdout.on("error", () => {});
       ffmpegProcess.on("error", () => {});
-      ytdlpProcess.on("close", () => {
-        try {
-          ffmpegProcess.stdin.end();
-        } catch {}
+      ytdlpProcess.stderr?.on("data", (c) => {
+        ytdlpStderr += c.toString();
       });
-      ytdlpProcess.stderr?.on("data", () => {});
+      ffmpegProcess.stderr?.on("data", (c) => {
+        const msg = c.toString().trim();
+        if (msg) console.warn(`[ffmpeg] ${msg}`);
+      });
+
+      let ytdlpAlive = true;
+      let ffmpegAlive = true;
+      ytdlpProcess.on("close", (code) => {
+        ytdlpAlive = false;
+        if (code && code !== 0) {
+          const lastLines = ytdlpStderr.trim().split("\n").slice(-3).join(" | ");
+          console.error(`[yt-dlp] exited with code ${code}: ${lastLines || "no stderr"}`);
+        }
+        try { ffmpegProcess.stdin.end(); } catch {}
+      });
+      ffmpegProcess.on("close", (code) => { ffmpegAlive = false; });
 
       let streamTimeout;
       ffmpegProcess.stdout?.once("data", () => {
@@ -397,7 +443,10 @@ class MusicQueue {
 
       streamTimeout = setTimeout(() => {
         if (!this.streamStarted) {
-          console.error("Audio stream failed to start within 30 seconds");
+          const connState = this.connection?.state?.status || "unknown";
+          console.error(
+            `Audio stream failed to start within 30s — yt-dlp alive: ${ytdlpAlive}, ffmpeg alive: ${ffmpegAlive}, voice: ${connState}`,
+          );
           ytdlpProcess.kill();
           ffmpegProcess.kill();
           this.processQueue();
@@ -514,9 +563,10 @@ class MusicQueue {
           try {
             const vcId = this.voiceChannel?.id;
             if (vcId && panelClient.rest) {
+              const phrase = pickIdlePhrase();
               panelClient.rest
                 .put(`/channels/${vcId}/voice-status`, {
-                  body: { status: pickIdlePhrase() },
+                  body: { status: phrase },
                 })
                 .catch(() => {});
             }
@@ -567,6 +617,17 @@ class MusicQueue {
     this.stopProgressUpdates();
 
     const isInstance = this.client && this.client.INSTANCE_NAME;
+    const panelClient = this.client || client;
+
+    try {
+      const vcId = this.voiceChannel?.id;
+      if (vcId && panelClient.rest) {
+        panelClient.rest
+          .put(`/channels/${vcId}/voice-status`, { body: { status: "" } })
+          .catch(() => {});
+      }
+    } catch {}
+
     if (
       !isInstance &&
       this.connection &&
@@ -579,7 +640,6 @@ class MusicQueue {
       }
     }
 
-    const panelClient = this.client || client;
     panelClient.queues.delete(this.guildId);
     panelClient.musicPanels.delete(this.guildId);
   }
@@ -837,6 +897,8 @@ async function searchSongInternal(query, user) {
   const antiDetectionOpts = {
     ...cookieOpts,
     extractorArgs: "youtube:player_client=web_embedded,android_vr",
+    forceIpv4: true,
+    jsRuntimes: "node:/usr/local/bin/node",
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     referer: "https://www.youtube.com/",

@@ -4,8 +4,9 @@ const http = require("http");
 const RELAY_URL =
   process.env.SHANTHA_RELAY_URL || "ws://68.233.112.166:3001/relay/zyra";
 const RELAY_SECRET = process.env.ZYRA_RELAY_SECRET || "zyra-relay-2026";
-const RECONNECT_BASE = 500;
-const RECONNECT_MAX = 10000;
+const RECONNECT_BASE = 1000;
+const RECONNECT_MAX = 30000;
+const BACKOFF_RESET_AFTER_MS = 30_000;
 
 const localAgent = new http.Agent({ keepAlive: true, maxSockets: 10 });
 
@@ -13,6 +14,7 @@ let _ws = null;
 let _server = null;
 let _reconnectTimer = null;
 let _reconnectDelay = RECONNECT_BASE;
+let _connectedAt = 0;
 
 function connectRelay(localServer) {
   if (_server) return;
@@ -38,7 +40,7 @@ function attempt() {
   }
 
   _ws.on("open", () => {
-    _reconnectDelay = RECONNECT_BASE;
+    _connectedAt = Date.now();
     console.log("[RELAY] Connected to Shantha relay");
     _ws.send(JSON.stringify({ type: "auth", secret: RELAY_SECRET }));
   });
@@ -77,16 +79,18 @@ function attempt() {
   });
 
   _ws.on("close", () => {
+    const wasStable = _connectedAt && (Date.now() - _connectedAt > BACKOFF_RESET_AFTER_MS);
+    if (wasStable) _reconnectDelay = RECONNECT_BASE;
     _ws = null;
+    _connectedAt = 0;
     scheduleReconnect();
   });
 
-  _ws.on("error", () => {
+  _ws.on("error", (err) => {
+    console.error("[RELAY] WS error:", err?.message || err);
     try {
       _ws.close();
     } catch {}
-    _ws = null;
-    scheduleReconnect();
   });
 }
 

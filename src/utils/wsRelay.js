@@ -1,12 +1,12 @@
 const WebSocket = require("ws");
 const http = require("http");
 
-const RELAY_URL =
-  process.env.SHANTHA_RELAY_URL || "ws://68.233.112.166:3001/relay/zyra";
-const RELAY_SECRET = process.env.ZYRA_RELAY_SECRET || "zyra-relay-2026";
+const RELAY_URL = process.env.SHANTHA_RELAY_URL;
+const RELAY_SECRET = process.env.ZYRA_RELAY_SECRET;
 const RECONNECT_BASE = 1000;
 const RECONNECT_MAX = 30000;
 const BACKOFF_RESET_AFTER_MS = 30_000;
+const LOCAL_REQUEST_TIMEOUT = 65_000;
 
 const localAgent = new http.Agent({ keepAlive: true, maxSockets: 10 });
 
@@ -18,6 +18,14 @@ let _connectedAt = 0;
 
 function connectRelay(localServer) {
   if (_server) return;
+
+  if (!RELAY_URL || !RELAY_SECRET) {
+    console.warn(
+      "[RELAY] Disabled: set both SHANTHA_RELAY_URL and ZYRA_RELAY_SECRET to enable the relay",
+    );
+    return;
+  }
+
   _server = localServer;
   console.log(`[RELAY] Connecting to ${RELAY_URL}`);
   attempt();
@@ -79,7 +87,8 @@ function attempt() {
   });
 
   _ws.on("close", () => {
-    const wasStable = _connectedAt && (Date.now() - _connectedAt > BACKOFF_RESET_AFTER_MS);
+    const wasStable =
+      _connectedAt && Date.now() - _connectedAt > BACKOFF_RESET_AFTER_MS;
     if (wasStable) _reconnectDelay = RECONNECT_BASE;
     _ws = null;
     _connectedAt = 0;
@@ -148,7 +157,7 @@ function handleRelayRequest(msg) {
       resolve({ status: 500, data: { error: err.message } });
     });
 
-    req.setTimeout(25000, () => {
+    req.setTimeout(LOCAL_REQUEST_TIMEOUT, () => {
       req.destroy();
       resolve({ status: 504, data: { error: "Local API timeout" } });
     });

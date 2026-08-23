@@ -11,6 +11,9 @@ package-lock.json
 config.json
 cookies.txt
 
+# Backups of secret-bearing files (created by scripts/migrate-instance-tokens.cjs)
+*.bak
+
 # Logs
 *.log
 logs/

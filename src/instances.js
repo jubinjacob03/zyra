@@ -11,7 +11,7 @@ const {
   TextInputStyle,
   ActionRowBuilder,
 } = require("discord.js");
-const { initEmojis } = require("./utils/customEmoji");
+const { initEmojis, setActiveClient } = require("./utils/customEmoji");
 const { ensurePlayMusicPanel } = require("./utils/playPanel");
 const { createLogger } = require("./utils/logger");
 const { swallow } = require("./utils/resilience");
@@ -81,7 +81,11 @@ process.on("unhandledRejection", (reason) => {
   if (reason && typeof reason === "object") {
     if (reason.code === 10008 || reason.code === 10062) return;
     const msg = reason.message || "";
-    if (msg.includes("IP discovery") || msg.includes("socket closed") || msg.includes("Socket was closed")) {
+    if (
+      msg.includes("IP discovery") ||
+      msg.includes("socket closed") ||
+      msg.includes("Socket was closed")
+    ) {
       return;
     }
   }
@@ -106,15 +110,17 @@ function startInstance(config, instanceIndex) {
 
   const {
     name: INSTANCE_NAME,
-    botToken: INSTANCE_BOT_TOKEN,
     guildId: GUILD_ID,
     voiceChannelId: INSTANCE_VOICE_CHANNEL_ID,
     apiPort: INSTANCE_API_PORT,
   } = config;
 
+  const TOKEN_ENV_KEY = `MUSIC${instanceIndex + 1}_TOKEN`;
+  const INSTANCE_BOT_TOKEN = process.env[TOKEN_ENV_KEY] || config.botToken;
+
   if (!INSTANCE_BOT_TOKEN || !GUILD_ID) {
     throw new Error(
-      "Missing configuration: botToken or guildId in config.json",
+      `Missing configuration: set ${TOKEN_ENV_KEY} in .env (or botToken in config.json) plus guildId`,
     );
   }
 
@@ -313,6 +319,8 @@ function startInstance(config, instanceIndex) {
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.channelId !== INSTANCE_VOICE_CHANNEL_ID) return;
 
+    setActiveClient(interaction.client);
+
     if (interaction.isButton()) {
       if (interaction.customId === "play_song") {
         const modal = new ModalBuilder()
@@ -437,7 +445,7 @@ function startInstance(config, instanceIndex) {
         const container = new ContainerBuilder().setAccentColor(0x00ffff);
         container.addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            `### ${ei("MUSIC")} Results for "${query}"`,
+            `### ${ei("MUSIC", client)} Results for "${query}"`,
           ),
         );
 

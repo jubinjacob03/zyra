@@ -35,10 +35,7 @@ const { PassThrough } = require("stream");
 const { formatDuration } = require("./utils/embed");
 const SpotifyAPI = require("./utils/spotify");
 const YouTubeSearchEngine = require("./utils/youtubeSearch");
-const {
-  createCompleteMusicController,
-  createIdleMusicController,
-} = require("./utils/componentsV2");
+const { createCompleteMusicController } = require("./utils/componentsV2");
 const {
   getControllerPanel,
   setControllerPanel,
@@ -154,7 +151,8 @@ client.commands = new Collection();
 client.queues = new Map();
 client.musicPanels = new Map();
 
-const MAIN_PANEL_CHANNEL_ID = "1473105751575760917";
+const MAIN_PANEL_CHANNEL_ID =
+  process.env.MAIN_PANEL_CHANNEL_ID || "1473105751575760917";
 
 let spotifyAPI = null;
 if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET) {
@@ -579,15 +577,11 @@ class MusicQueue {
           this.playing = false;
           this.stopProgressUpdates();
           const panelClient = this.client || client;
-          setActiveClient(panelClient);
           const panelData = panelClient.musicPanels.get(this.guildId);
-          if (panelData?.message) {
-            const idle = createIdleMusicController(
-              "Queue finished. Add more songs!",
-              panelClient.user?.username,
-            );
-            panelData.message.edit(idle).catch(() => {});
+          if (panelData?.message?.delete) {
+            panelData.message.delete().catch(() => {});
           }
+          panelClient.musicPanels.delete(this.guildId);
           try {
             const vcId = this.voiceChannel?.id;
             if (vcId && panelClient.rest) {
@@ -723,7 +717,8 @@ class MusicQueue {
       clearInterval(this.progressInterval);
     }
 
-    const panelData = client.musicPanels.get(this.guildId);
+    const panelClient = this.client || client;
+    const panelData = panelClient.musicPanels.get(this.guildId);
     if (!panelData) return;
 
     this.progressInterval = setInterval(async () => {
@@ -748,13 +743,14 @@ class MusicQueue {
    * Update the music panel embed with current progress
    */
   async updateMusicPanel() {
-    const panelData = client.musicPanels.get(this.guildId);
+    const panelClient = this.client || client;
+    const panelData = panelClient.musicPanels.get(this.guildId);
     if (!panelData?.message || !this.songs[0]) return;
 
     try {
       await panelData.message.fetch();
 
-      setActiveClient(this.client || client);
+      setActiveClient(panelClient);
       const controller = createCompleteMusicController(this);
       if (!controller) return;
 
@@ -766,11 +762,11 @@ class MusicQueue {
     } catch (error) {
       if (error.code === 10008) {
         console.log("Music panel message was deleted - cleaning up");
-        client.musicPanels.delete(this.guildId);
+        panelClient.musicPanels.delete(this.guildId);
         this.stopProgressUpdates();
       } else if (error.code === 10003) {
         console.log("Music panel channel not found - cleaning up");
-        client.musicPanels.delete(this.guildId);
+        panelClient.musicPanels.delete(this.guildId);
         this.stopProgressUpdates();
       } else {
         console.error("Error updating music panel:", error.message);
@@ -1372,7 +1368,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   log.info(`Serving ${readyClient.guilds.cache.size} servers`);
 
   try {
-    const avatarPath = path.join(__dirname, "..", "assets", "avatar.jpg");
+    const avatarPath = path.join(__dirname, "..", "assets", "avatar.jpeg");
     if (fs.existsSync(avatarPath)) {
       await client.user.setAvatar(avatarPath);
       console.log("✅ Avatar updated successfully!");
@@ -1408,6 +1404,8 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  setActiveClient(interaction.client);
+
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -1632,13 +1630,14 @@ async function updateMusicController(interaction, queue) {
     if (error.code === 10008) {
       console.log("Message was deleted - cannot update music controller");
 
-      const panelData = client.musicPanels.get(queue.guildId);
+      const panelClient = queue.client || client;
+      const panelData = panelClient.musicPanels.get(queue.guildId);
       if (
         panelData &&
         panelData.message &&
         panelData.message.id === interaction.message.id
       ) {
-        client.musicPanels.delete(queue.guildId);
+        panelClient.musicPanels.delete(queue.guildId);
       }
     } else if (error.code === 10062) {
       console.log("Interaction expired - cannot update music controller");

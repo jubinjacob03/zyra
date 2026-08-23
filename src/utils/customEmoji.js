@@ -56,18 +56,20 @@ function setActiveClient(client) {
   if (cid && clientEmojis.has(cid)) activeClientId = cid;
 }
 
-function getResolved() {
+function getResolved(client) {
+  const cid = client?.user?.id || client?.application?.id;
+  if (cid && clientEmojis.has(cid)) return clientEmojis.get(cid);
   return clientEmojis.get(activeClientId) || {};
 }
 
-function e(key) {
-  const r = getResolved()[key];
+function e(key, client) {
+  const r = getResolved(client)[key];
   if (r) return r.full;
   return UNICODE[key] || "";
 }
 
-function btn(key) {
-  const r = getResolved()[key];
+function btn(key, client) {
+  const r = getResolved(client)[key];
   if (r) return { id: r.id, name: r.name, animated: r.animated };
   return UNICODE[key] || "❓";
 }

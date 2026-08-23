@@ -1,0 +1,22 @@
+{
+  "instances": [
+    {
+      "name": "music-vc",
+      "guildId": "000000000000000000",
+      "voiceChannelId": "000000000000000000",
+      "apiPort": 8001
+    },
+    {
+      "name": "music-vc-II",
+      "guildId": "000000000000000000",
+      "voiceChannelId": "000000000000000000",
+      "apiPort": 8002
+    },
+    {
+      "name": "music-vc-III",
+      "guildId": "000000000000000000",
+      "voiceChannelId": "000000000000000000",
+      "apiPort": 8003
+    }
+  ]
+}
